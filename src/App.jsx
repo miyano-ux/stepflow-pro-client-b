@@ -4,7 +4,7 @@ import axios from "axios";
 import { LayoutDashboard, UserPlus, Settings, MessageSquare, Trash2, Edit3, ChevronRight, Plus, Minus, Save, Calendar, Eye, Loader2 } from "lucide-react";
 
 // ⚠️ あなたのGAS URL (/exec)
-const GAS_URL = "https://script.google.com/macros/s/AKfycbyQOb52pH34LRU-JK06x3eZKA6i5KCF83pTKiw5kFsbH1nnwmMaRBeU3gyhZLrwd1RxMQ/exec"; 
+const GAS_URL = "https://script.google.com/macros/s/AKfycbwFVcroo9001k-6_yX6ccwemrIPbv0Da_OlA20gvLL23lXdSE6CPJJQidpQPN8cOCE/exec"; 
 
 const THEME = {
   primary: "#4F46E5", sidebar: "#0F172A", bg: "#F8FAFC", card: "#FFFFFF", textMain: "#1E293B", textMuted: "#64748B", border: "#E2E8F0", success: "#10B981", danger: "#EF4444",
