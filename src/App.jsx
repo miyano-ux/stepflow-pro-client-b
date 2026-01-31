@@ -8,8 +8,13 @@ import {
 import { GoogleOAuthProvider, GoogleLogin } from '@react-oauth/google';
 import { jwtDecode } from "jwt-decode";
 
-// ⚠️ 環境変数とURLの設定
+// ⚠️ URLの設定
+// 1. 各クライアント固有のデータ用GAS
 const GAS_URL = "https://script.google.com/macros/s/AKfycbwFVcroo9001k-6_yX6ccwemrIPbv0Da_OlA20gvLL23lXdSE6CPJJQidpQPN8cOCE/exec"; 
+
+// 2. あなたが管理するマスターホワイトリスト用GAS (今回発行したもの)
+const MASTER_WHITELIST_API = "https://script.google.com/macros/s/AKfycbyHgp0QFGMHBKOdohWQ4kLH-qM1khFwwESmpEveW-oXhtFg5Np85ZTDeXrpRXKnTNzm3g/exec";
+
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID;
 
 const THEME = {
@@ -55,8 +60,6 @@ function Sidebar({ onLogout, user }) {
           </Link>
         ))}
       </div>
-      
-      {/* ユーザー情報とログアウト */}
       <div style={{ marginTop: "auto", paddingTop: "20px", borderTop: `1px solid #1E293B` }}>
         <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "16px" }}>
           <img src={user.picture} style={{ width: "32px", height: "32px", borderRadius: "50%" }} alt="profile" />
@@ -82,8 +85,7 @@ function Page({ title, subtitle, children }) {
   );
 }
 
-// --- 各画面コンポーネント (CustomerList, CustomerDetail, etc. は変更なし) ---
-
+// --- 画面コンポーネント ---
 function CustomerList({ customers, scenarios, onRefresh }) {
   const del = async (id) => { if(window.confirm("削除しますか？")) { await api.post({ action: "delete", id }); onRefresh(); }};
   return (
@@ -275,52 +277,70 @@ function CustomerEdit({ customers, scenarios, onRefresh }) {
 export default function App() {
   const [d, setD] = useState({ customers: [], scenarios: [] });
   const [load, setLoad] = useState(true);
-  const [user, setUser] = useState(null); // ログイン状態管理
+  const [user, setUser] = useState(null); 
+  const [checking, setChecking] = useState(false); // ホワイトリスト照会中フラグ
 
   const refresh = useCallback(async () => {
-    if(!user) return; // ログインしてない時は取得しない
+    if(!user) return;
     try { const res = await axios.get(`${GAS_URL}?mode=api`); setD(res.data); } catch (e) { console.error(e); } finally { setLoad(false); }
   }, [user]);
 
   useEffect(() => { refresh(); }, [refresh]);
 
-  // ログイン成功時の処理
-  const handleLoginSuccess = (res) => {
+  // ログイン成功時の処理 (マスターホワイトリスト照会を追加)
+  const handleLoginSuccess = async (res) => {
     const decoded = jwtDecode(res.credential);
-    console.log("Login Success:", decoded);
-    
-    // 【💡 制限のヒント】特定のドメインのみ許可する場合
-    // if (!decoded.email.endsWith("@your-company.com")) { alert("拒否"); return; }
-    
-    setUser(decoded);
+    const email = decoded.email;
+    setChecking(true);
+
+    try {
+      // 🌐 マスターホワイトリスト用GASへ問い合わせ
+      const check = await axios.get(`${MASTER_WHITELIST_API}?email=${email}`);
+      
+      if (check.data.allowed) {
+        console.log("Master Whitelist: Access Granted");
+        setUser(decoded);
+      } else {
+        alert(`未登録のユーザーです: ${email}\n管理者に利用申請を行ってください。`);
+      }
+    } catch (error) {
+      console.error("Whitelist check failed:", error);
+      alert("認証サーバーとの通信に失敗しました。");
+    } finally {
+      setChecking(false);
+    }
   };
 
-  // 1. ログインしていない場合の画面
+  // 1. ログイン画面、または照会中画面
   if (!user) {
     return (
       <GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID}>
         <div style={{ height: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", backgroundColor: THEME.bg, fontFamily: "sans-serif" }}>
           <div style={{ ...s.card, textAlign: "center", width: "400px", padding: "48px" }}>
             <div style={{ backgroundColor: THEME.primary, width: "48px", height: "48px", borderRadius: "12px", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 24px" }}>
-              <MessageSquare color="white" />
+              {checking ? <Loader2 color="white" className="animate-spin" /> : <MessageSquare color="white" />}
             </div>
             <h1 style={{ fontSize: "24px", fontWeight: "800", marginBottom: "8px" }}>StepFlow Login</h1>
-            <p style={{ color: THEME.textMuted, marginBottom: "32px", fontSize: "14px" }}>管理者アカウントでログインしてください</p>
+            <p style={{ color: THEME.textMuted, marginBottom: "32px", fontSize: "14px" }}>
+              {checking ? "アクセス権限を照会中..." : "管理者アカウントでログインしてください"}
+            </p>
             
-            <div style={{ display: "flex", justifyContent: "center" }}>
-              <GoogleLogin
-                onSuccess={handleLoginSuccess}
-                onError={() => alert("ログインに失敗しました")}
-                useOneTap
-              />
-            </div>
+            {!checking && (
+              <div style={{ display: "flex", justifyContent: "center" }}>
+                <GoogleLogin
+                  onSuccess={handleLoginSuccess}
+                  onError={() => alert("ログインに失敗しました")}
+                  useOneTap
+                />
+              </div>
+            )}
           </div>
         </div>
       </GoogleOAuthProvider>
     );
   }
 
-  // 2. ローディング中の表示
+  // 2. ログイン後のデータロード中
   if(load) return (
     <div style={{ height: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", backgroundColor: THEME.bg }}>
       <Loader2 size={48} color={THEME.primary} className="animate-spin" />
@@ -328,7 +348,7 @@ export default function App() {
     </div>
   );
 
-  // 3. ログイン済みの本番画面
+  // 3. メインアプリ
   return (
     <GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID}>
       <Router>
