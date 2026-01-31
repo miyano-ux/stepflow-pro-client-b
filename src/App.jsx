@@ -1,13 +1,21 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { BrowserRouter as Router, Routes, Route, Link, useParams, useNavigate, useLocation } from "react-router-dom";
 import axios from "axios";
-import { LayoutDashboard, UserPlus, Settings, MessageSquare, Trash2, Edit3, ChevronRight, Plus, Minus, Save, Calendar, Eye, Loader2 } from "lucide-react";
+import { 
+  LayoutDashboard, UserPlus, Settings, MessageSquare, Trash2, 
+  Edit3, ChevronRight, Plus, Minus, Save, Calendar, Eye, Loader2, LogOut 
+} from "lucide-react";
+import { GoogleOAuthProvider, GoogleLogin } from '@react-oauth/google';
+import { jwtDecode } from "jwt-decode";
 
-// ⚠️ あなたのGAS URL (/exec)
+// ⚠️ 環境変数とURLの設定
 const GAS_URL = "https://script.google.com/macros/s/AKfycbwFVcroo9001k-6_yX6ccwemrIPbv0Da_OlA20gvLL23lXdSE6CPJJQidpQPN8cOCE/exec"; 
+const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID;
 
 const THEME = {
-  primary: "#4F46E5", sidebar: "#0F172A", bg: "#F8FAFC", card: "#FFFFFF", textMain: "#1E293B", textMuted: "#64748B", border: "#E2E8F0", success: "#10B981", danger: "#EF4444",
+  primary: "#4F46E5", primaryLight: "#EEF2FF", sidebar: "#0F172A", 
+  bg: "#F8FAFC", card: "#FFFFFF", textMain: "#1E293B", 
+  textMuted: "#64748B", border: "#E2E8F0", success: "#10B981", danger: "#EF4444",
 };
 
 const s = {
@@ -27,8 +35,8 @@ const api = {
   }
 };
 
-// --- レイアウト ---
-function Sidebar() {
+// --- レイアウト部品 ---
+function Sidebar({ onLogout, user }) {
   const l = useLocation();
   const m = [
     { n: "ダッシュボード", p: "/", i: <LayoutDashboard size={20} /> },
@@ -40,11 +48,24 @@ function Sidebar() {
       <div style={{ display: "flex", alignItems: "center", gap: "12px", fontSize: "22px", fontWeight: "800", marginBottom: "48px" }}>
         <div style={{ backgroundColor: THEME.primary, padding: "8px", borderRadius: "8px" }}><MessageSquare size={22} color="white" /></div> StepFlow
       </div>
-      {m.map(x => (
-        <Link key={x.p} to={x.p} style={{ display: "flex", alignItems: "center", gap: "12px", padding: "14px 16px", borderRadius: "12px", textDecoration: "none", color: l.pathname === x.p || (x.p !== "/" && l.pathname.startsWith(x.p)) ? "white" : "#94A3B8", backgroundColor: l.pathname === x.p || (x.p !== "/" && l.pathname.startsWith(x.p)) ? THEME.primary : "transparent", marginBottom: "8px", fontWeight: "600" }}>
-          {x.i} {x.n}
-        </Link>
-      ))}
+      <div style={{ flex: 1 }}>
+        {m.map(x => (
+          <Link key={x.p} to={x.p} style={{ display: "flex", alignItems: "center", gap: "12px", padding: "14px 16px", borderRadius: "12px", textDecoration: "none", color: l.pathname === x.p || (x.p !== "/" && l.pathname.startsWith(x.p)) ? "white" : "#94A3B8", backgroundColor: l.pathname === x.p || (x.p !== "/" && l.pathname.startsWith(x.p)) ? THEME.primary : "transparent", marginBottom: "8px", fontWeight: "600" }}>
+            {x.i} {x.n}
+          </Link>
+        ))}
+      </div>
+      
+      {/* ユーザー情報とログアウト */}
+      <div style={{ marginTop: "auto", paddingTop: "20px", borderTop: `1px solid #1E293B` }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "16px" }}>
+          <img src={user.picture} style={{ width: "32px", height: "32px", borderRadius: "50%" }} alt="profile" />
+          <div style={{ fontSize: "13px", overflow: "hidden", textOverflow: "ellipsis" }}>{user.name}</div>
+        </div>
+        <button onClick={onLogout} style={{ width: "100%", padding: "10px", backgroundColor: "#1E293B", color: "#94A3B8", border: "none", borderRadius: "8px", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: "8px", fontSize: "13px", fontWeight: "600" }}>
+          <LogOut size={16} /> ログアウト
+        </button>
+      </div>
     </div>
   );
 }
@@ -61,7 +82,8 @@ function Page({ title, subtitle, children }) {
   );
 }
 
-// --- 画面：ダッシュボード ---
+// --- 各画面コンポーネント (CustomerList, CustomerDetail, etc. は変更なし) ---
+
 function CustomerList({ customers, scenarios, onRefresh }) {
   const del = async (id) => { if(window.confirm("削除しますか？")) { await api.post({ action: "delete", id }); onRefresh(); }};
   return (
@@ -90,7 +112,6 @@ function CustomerList({ customers, scenarios, onRefresh }) {
   );
 }
 
-// --- 画面：スケジュール詳細（復旧版） ---
 function CustomerDetail({ customers, scenarios }) {
   const { id } = useParams();
   const c = customers[id];
@@ -119,7 +140,6 @@ function CustomerDetail({ customers, scenarios }) {
   );
 }
 
-// --- 画面：シナリオ一覧（詳細/編集ボタン追加） ---
 function ScenarioList({ scenarios, onRefresh }) {
   const grouped = scenarios.reduce((acc, s) => { (acc[s.シナリオID] = acc[s.シナリオID] || []).push(s); return acc; }, {});
   const del = async (id) => { if(window.confirm(`シナリオ「${id}」を削除しますか？`)) { await api.post({ action: "deleteScenario", scenarioID: id }); onRefresh(); }};
@@ -150,7 +170,6 @@ function ScenarioList({ scenarios, onRefresh }) {
   );
 }
 
-// --- 画面：シナリオ作成/編集フォーム（統合版） ---
 function ScenarioForm({ scenarios, onRefresh }) {
   const { id: editId } = useParams();
   const navigate = useNavigate();
@@ -184,14 +203,13 @@ function ScenarioForm({ scenarios, onRefresh }) {
       <div style={{ ...s.card, maxWidth: "700px" }}>
         <label style={{ fontWeight: "800", display: "block", marginBottom: "8px" }}>シナリオ名</label>
         <input style={{ ...s.input, fontSize: "18px", fontWeight: "700" }} value={id} onChange={e=>setId(e.target.value)} disabled={editId} placeholder="シナリオIDを入力" />
-        
         {steps.map((x, i) => (
           <div key={i} style={{ backgroundColor: "#F8FAFC", padding: "24px", borderRadius: "12px", marginBottom: "20px", border: `1px solid ${THEME.border}` }}>
             <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "16px" }}>
               <span style={{ color: THEME.primary, fontWeight: "900" }}>STEP {i+1}</span>
               {steps.length > 1 && <button onClick={() => setSteps(steps.filter((_, idx) => idx !== i))} style={{ color: THEME.danger, background: "none", border: "none", cursor: "pointer", fontWeight: "700" }}>削除</button>}
             </div>
-            <label style={{ fontSize: "14px", fontWeight: "700", marginBottom: "8px", display: "block" }}>経過日数（登録日の何日後か）</label>
+            <label style={{ fontSize: "14px", fontWeight: "700", marginBottom: "8px", display: "block" }}>経過日数</label>
             <input type="number" style={s.input} value={x.elapsedDays} onChange={e=>{ const n=[...steps]; n[i].elapsedDays=e.target.value; setSteps(n); }} />
             <label style={{ fontSize: "14px", fontWeight: "700", marginBottom: "8px", display: "block" }}>メッセージ内容</label>
             <textarea style={{ ...s.input, height: "100px", resize: "none" }} value={x.message} onChange={e=>{ const n=[...steps]; n[i].message=e.target.value; setSteps(n); }} />
@@ -204,7 +222,6 @@ function ScenarioForm({ scenarios, onRefresh }) {
   );
 }
 
-// --- 他（新規登録・顧客編集） ---
 function CustomerForm({ scenarios, onRefresh }) {
   const n = useNavigate();
   const [f, setF] = useState({ name: "", phone: "", scenarioID: "" });
@@ -253,35 +270,81 @@ function CustomerEdit({ customers, scenarios, onRefresh }) {
   );
 }
 
+// --- メイン：Appコンポーネント ---
+
 export default function App() {
   const [d, setD] = useState({ customers: [], scenarios: [] });
   const [load, setLoad] = useState(true);
+  const [user, setUser] = useState(null); // ログイン状態管理
+
   const refresh = useCallback(async () => {
+    if(!user) return; // ログインしてない時は取得しない
     try { const res = await axios.get(`${GAS_URL}?mode=api`); setD(res.data); } catch (e) { console.error(e); } finally { setLoad(false); }
-  }, []);
+  }, [user]);
+
   useEffect(() => { refresh(); }, [refresh]);
 
+  // ログイン成功時の処理
+  const handleLoginSuccess = (res) => {
+    const decoded = jwtDecode(res.credential);
+    console.log("Login Success:", decoded);
+    
+    // 【💡 制限のヒント】特定のドメインのみ許可する場合
+    // if (!decoded.email.endsWith("@your-company.com")) { alert("拒否"); return; }
+    
+    setUser(decoded);
+  };
+
+  // 1. ログインしていない場合の画面
+  if (!user) {
+    return (
+      <GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID}>
+        <div style={{ height: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", backgroundColor: THEME.bg, fontFamily: "sans-serif" }}>
+          <div style={{ ...s.card, textAlign: "center", width: "400px", padding: "48px" }}>
+            <div style={{ backgroundColor: THEME.primary, width: "48px", height: "48px", borderRadius: "12px", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 24px" }}>
+              <MessageSquare color="white" />
+            </div>
+            <h1 style={{ fontSize: "24px", fontWeight: "800", marginBottom: "8px" }}>StepFlow Login</h1>
+            <p style={{ color: THEME.textMuted, marginBottom: "32px", fontSize: "14px" }}>管理者アカウントでログインしてください</p>
+            
+            <div style={{ display: "flex", justifyContent: "center" }}>
+              <GoogleLogin
+                onSuccess={handleLoginSuccess}
+                onError={() => alert("ログインに失敗しました")}
+                useOneTap
+              />
+            </div>
+          </div>
+        </div>
+      </GoogleOAuthProvider>
+    );
+  }
+
+  // 2. ローディング中の表示
   if(load) return (
-    <div style={{ height: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", backgroundColor: THEME.bg, fontFamily: "sans-serif" }}>
+    <div style={{ height: "100vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", backgroundColor: THEME.bg }}>
       <Loader2 size={48} color={THEME.primary} className="animate-spin" />
       <p style={{ marginTop: "16px", color: THEME.textMuted, fontWeight: "700" }}>データを同期しています...</p>
     </div>
   );
 
+  // 3. ログイン済みの本番画面
   return (
-    <Router>
-      <div style={{ display: "flex", fontFamily: "Inter, sans-serif" }}>
-        <Sidebar />
-        <Routes>
-          <Route path="/" element={<CustomerList customers={d.customers} scenarios={d.scenarios} onRefresh={refresh} />} />
-          <Route path="/add" element={<CustomerForm scenarios={d.scenarios} onRefresh={refresh} />} />
-          <Route path="/edit/:id" element={<CustomerEdit customers={d.customers} scenarios={d.scenarios} onRefresh={refresh} />} />
-          <Route path="/detail/:id" element={<CustomerDetail customers={d.customers} scenarios={d.scenarios} />} />
-          <Route path="/scenarios" element={<ScenarioList scenarios={d.scenarios} onRefresh={refresh} />} />
-          <Route path="/scenarios/new" element={<ScenarioForm scenarios={d.scenarios} onRefresh={refresh} />} />
-          <Route path="/scenarios/edit/:id" element={<ScenarioForm scenarios={d.scenarios} onRefresh={refresh} />} />
-        </Routes>
-      </div>
-    </Router>
+    <GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID}>
+      <Router>
+        <div style={{ display: "flex", fontFamily: "Inter, sans-serif" }}>
+          <Sidebar onLogout={() => setUser(null)} user={user} />
+          <Routes>
+            <Route path="/" element={<CustomerList customers={d.customers} scenarios={d.scenarios} onRefresh={refresh} />} />
+            <Route path="/add" element={<CustomerForm scenarios={d.scenarios} onRefresh={refresh} />} />
+            <Route path="/edit/:id" element={<CustomerEdit customers={d.customers} scenarios={d.scenarios} onRefresh={refresh} />} />
+            <Route path="/detail/:id" element={<CustomerDetail customers={d.customers} scenarios={d.scenarios} />} />
+            <Route path="/scenarios" element={<ScenarioList scenarios={d.scenarios} onRefresh={refresh} />} />
+            <Route path="/scenarios/new" element={<ScenarioForm scenarios={d.scenarios} onRefresh={refresh} />} />
+            <Route path="/scenarios/edit/:id" element={<ScenarioForm scenarios={d.scenarios} onRefresh={refresh} />} />
+          </Routes>
+        </div>
+      </Router>
+    </GoogleOAuthProvider>
   );
 }
