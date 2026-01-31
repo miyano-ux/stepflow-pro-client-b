@@ -3,7 +3,7 @@ import { BrowserRouter as Router, Routes, Route, Link, useParams, useNavigate, u
 import axios from "axios";
 import { 
   LayoutDashboard, UserPlus, Settings, MessageSquare, Trash2, 
-  Plus, Loader2, LogOut, Users, X, GripVertical, ListFilter, Check
+  Plus, Loader2, LogOut, Users, X, GripVertical, ListFilter, Eye, Calendar, Edit3
 } from "lucide-react";
 import { GoogleOAuthProvider, GoogleLogin } from '@react-oauth/google';
 import { jwtDecode } from "jwt-decode";
@@ -31,7 +31,8 @@ const s = {
   badge: { padding: "4px 10px", borderRadius: "6px", fontSize: "12px", fontWeight: "700" },
   tableTh: { padding: "16px 24px", color: THEME.textMuted, fontSize: "12px", fontWeight: "700", borderBottom: `1px solid ${THEME.border}`, textAlign: "left" },
   tableTd: { padding: "16px 24px", fontSize: "14px", borderBottom: `1px solid ${THEME.border}` },
-  actionLink: { fontSize: "13px", fontWeight: "700", color: THEME.primary, textDecoration: "none", cursor: "pointer" }
+  actionLink: { fontSize: "13px", fontWeight: "700", color: THEME.primary, textDecoration: "none", cursor: "pointer" },
+  popover: { position: "absolute", top: "100%", right: 0, backgroundColor: "white", border: `1px solid ${THEME.border}`, borderRadius: "12px", boxShadow: "0 10px 15px -3px rgba(0,0,0,0.1)", padding: "16px", zIndex: 100, minWidth: "200px" }
 };
 
 const api = {
@@ -87,16 +88,16 @@ function Page({ title, subtitle, children, topButton }) {
   );
 }
 
-// --- 画面：顧客ダッシュボード ---
+// --- 顧客リスト ---
 function CustomerList({ customers, formSettings, onRefresh }) {
-  const [visibleCols, setVisibleCols] = useState(formSettings.length > 0 ? formSettings.slice(0, 2).map(f => f.name) : []);
+  const [visibleCols, setVisibleCols] = useState([]);
   const [showColMenu, setShowColMenu] = useState(false);
   
   useEffect(() => {
-    if (visibleCols.length === 0 && formSettings.length > 0) {
+    if (formSettings.length > 0 && visibleCols.length === 0) {
       setVisibleCols(formSettings.slice(0, 2).map(f => f.name));
     }
-  }, [formSettings]);
+  }, [formSettings, visibleCols]);
 
   const del = async (id) => { if(window.confirm("削除しますか？")) { await api.post(GAS_URL, { action: "delete", id }); onRefresh(); }};
   
@@ -145,7 +146,7 @@ function CustomerList({ customers, formSettings, onRefresh }) {
   );
 }
 
-// --- 画面：新規登録 ---
+// --- 新規登録 ---
 function CustomerForm({ formSettings, scenarios, onRefresh }) {
   const navigate = useNavigate();
   const [formData, setFormData] = useState({});
@@ -181,7 +182,7 @@ function CustomerForm({ formSettings, scenarios, onRefresh }) {
   );
 }
 
-// --- 画面：項目設定 (Googleフォーム風DND) ---
+// --- 1. 項目調整 (チェックボックス修正) ---
 function FormSettings({ formSettings, onRefresh }) {
   const [items, setItems] = useState(formSettings || []);
   const [dragIdx, setDragIdx] = useState(null);
@@ -193,19 +194,31 @@ function FormSettings({ formSettings, onRefresh }) {
     setDragIdx(i); setItems(n);
   };
   const save = async () => {
-    try { await api.post(GAS_URL, { action: "saveFormSettings", settings: items }); onRefresh(); navigate("/add"); } catch (e) { alert("失敗"); }
+    try { await api.post(GAS_URL, { action: "saveFormSettings", settings: items }); onRefresh(); navigate("/add"); } catch (e) { alert("保存失敗"); }
   };
   return (
-    <Page title="項目の調整" subtitle="ドラッグして並び替え、保存すると即座に反映されます">
-      <div style={{ maxWidth: "700px" }}>
+    <Page title="項目の調整" subtitle="ドラッグで並び替え。必須設定も可能です。">
+      <div style={{ maxWidth: "800px" }}>
         {items.map((x, i) => (
-          <div key={i} draggable onDragStart={() => setDragIdx(i)} onDragEnter={() => handleDragEnter(i)} onDragOver={e => e.preventDefault()} style={{ ...s.card, marginBottom: "12px", padding: "16px", display: "flex", gap: "12px", alignItems: "center", cursor: "grab", border: dragIdx === i ? `2px solid ${THEME.primary}` : `1px solid ${THEME.border}` }}>
+          <div key={i} draggable onDragStart={() => setDragIdx(i)} onDragEnter={() => handleDragEnter(i)} onDragOver={e => e.preventDefault()} 
+            style={{ ...s.card, marginBottom: "12px", padding: "16px 24px", display: "flex", gap: "20px", alignItems: "center", cursor: "grab", border: dragIdx === i ? `2px solid ${THEME.primary}` : `1px solid ${THEME.border}` }}>
             <GripVertical size={20} color={THEME.border} />
-            <input style={{ ...s.input, marginBottom: 0, flex: 2 }} value={x.name} onChange={e => updateItem(i, "name", e.target.value)} />
-            <select style={{ ...s.input, marginBottom: 0, flex: 1 }} value={x.type} onChange={e => updateItem(i, "type", e.target.value)}>
-              <option value="text">テキスト</option><option value="tel">電話番号</option><option value="email">メール</option><option value="date">日付</option>
-            </select>
-            <button onClick={() => setItems(items.filter((_, idx) => idx !== i))} style={{ background: "none", border: "none", color: THEME.danger, cursor: "pointer" }}><Trash2 size={20}/></button>
+            <div style={{ flex: 2 }}>
+              <label style={{ fontSize: "11px", fontWeight: "800", color: THEME.textMuted }}>項目名</label>
+              <input style={{ ...s.input, marginBottom: 0 }} value={x.name} onChange={e => updateItem(i, "name", e.target.value)} />
+            </div>
+            <div style={{ flex: 1.5 }}>
+              <label style={{ fontSize: "11px", fontWeight: "800", color: THEME.textMuted }}>形式</label>
+              <select style={{ ...s.input, marginBottom: 0 }} value={x.type} onChange={e => updateItem(i, "type", e.target.value)}>
+                <option value="text">テキスト</option><option value="tel">電話番号</option><option value="email">メール</option><option value="date">日付</option>
+              </select>
+            </div>
+            {/* 🆕 必須チェックボックスを表示 */}
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", minWidth: "50px" }}>
+              <label style={{ fontSize: "11px", fontWeight: "800", color: THEME.textMuted, marginBottom: "8px" }}>必須</label>
+              <input type="checkbox" style={{ width: "18px", height: "18px", cursor: "pointer" }} checked={x.required} onChange={e => updateItem(i, "required", e.target.checked)} />
+            </div>
+            <button onClick={() => setItems(items.filter((_, idx) => idx !== i))} style={{ background: "none", border: "none", color: THEME.danger, cursor: "pointer", padding: "8px" }}><Trash2 size={20}/></button>
           </div>
         ))}
         <button onClick={() => setItems([...items, { name: "", type: "text", required: true }])} style={{ ...s.btn, width: "100%", background: "none", border: `2px dashed ${THEME.border}`, color: THEME.textMuted, marginBottom: "20px" }}>+ 新規項目追加</button>
@@ -215,7 +228,58 @@ function FormSettings({ formSettings, onRefresh }) {
   );
 }
 
-// --- 画面：顧客詳細 (全項目表示) ---
+// --- 2. シナリオ管理 (ボタン配置・デザイン修正) ---
+function ScenarioList({ scenarios, onRefresh }) {
+  const grouped = scenarios.reduce((acc, s) => { (acc[s.シナリオID] = acc[s.シナリオID] || []).push(s); return acc; }, {});
+  const del = async (id) => { if(window.confirm("シナリオを削除しますか？")) { await api.post(GAS_URL, { action: "deleteScenario", scenarioID: id }); onRefresh(); }};
+  return (
+    <Page title="シナリオ管理" topButton={<Link to="/scenarios/new" style={{ ...s.btn, textDecoration: "none" }}><Plus size={18} /> 新規シナリオ作成</Link>}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: "24px" }}>
+        {Object.entries(grouped).map(([id, steps]) => (
+          <div key={id} style={{ ...s.card, padding: "24px", display: "flex", flexDirection: "column", gap: "20px" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+              <div><h3 style={{ margin: 0, fontSize: "20px", fontWeight: "800" }}>{id}</h3><span style={{ fontSize: "13px", color: THEME.textMuted }}>{steps.length} ステップ設定済み</span></div>
+              <button onClick={() => del(id)} style={{ color: THEME.danger, background: "none", border: "none", cursor: "pointer", padding: "4px" }}><Trash2 size={20}/></button>
+            </div>
+            {/* ボタンのデザインと配置を適正化 */}
+            <Link to={`/scenarios/edit/${id}`} style={{ ...s.btn, width: "100%", background: THEME.bg, color: THEME.textMain, textDecoration: "none", border: `1px solid ${THEME.border}`, padding: "12px" }}>
+              詳細・編集
+            </Link>
+          </div>
+        ))}
+      </div>
+    </Page>
+  );
+}
+
+function ScenarioForm({ scenarios, onRefresh }) {
+  const { id: editId } = useParams(); const navigate = useNavigate();
+  const [id, setId] = useState(""); const [steps, setSteps] = useState([{ elapsedDays: 1, message: "" }]);
+  useEffect(() => { if (editId) { setId(editId); const ex = scenarios.filter(s => s.シナリオID === editId).sort((a,b) => a.ステップ数 - b.ステップ数); if (ex.length) setSteps(ex.map(s => ({ elapsedDays: s.経過日数, message: s.message }))); } }, [editId, scenarios]);
+  const save = async () => { if(!id) return alert("名前を入力してください"); try { await api.post(GAS_URL, { action: "saveScenario", scenarioID: id, steps }); onRefresh(); navigate("/scenarios"); } catch(e) { alert("失敗"); } };
+  return (
+    <Page title={editId ? "シナリオ編集" : "新規シナリオ作成"}>
+      <Link to="/scenarios" style={{ display: "block", marginBottom: "24px", color: THEME.primary, fontWeight: "700", textDecoration: "none" }}>← 戻る</Link>
+      <div style={{ ...s.card, maxWidth: "700px" }}>
+        <label style={{ fontWeight: "800", display: "block", marginBottom: "8px" }}>シナリオID</label>
+        <input style={s.input} value={id} onChange={e=>setId(e.target.value)} placeholder="例: 予約フォロー" disabled={!!editId} />
+        {steps.map((x, i) => (
+          <div key={i} style={{ padding: "20px", background: "#F8FAFC", marginBottom: "15px", borderRadius: "12px", border: `1px solid ${THEME.border}` }}>
+            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "8px" }}><span style={{ fontWeight: "900", color: THEME.primary, fontSize: "13px" }}>STEP {i+1}</span>{steps.length > 1 && <button onClick={() => setSteps(steps.filter((_, idx) => idx !== i))} style={{ color: THEME.danger, background: "none", border: "none", cursor: "pointer", fontWeight: "700", fontSize: "12px" }}>削除</button>}</div>
+            <label style={{ fontSize: "13px", fontWeight: "700", display: "block", marginBottom: "4px" }}>経過日数</label>
+            <input type="number" style={s.input} value={x.elapsedDays} onChange={e=>{ const n=[...steps]; n[i].elapsedDays=e.target.value; setSteps(n); }} />
+            <label style={{ fontSize: "13px", fontWeight: "700", display: "block", marginBottom: "4px" }}>メッセージ内容</label>
+            <textarea style={{ ...s.input, height: "100px", resize: "none" }} value={x.message} onChange={e=>{ const n=[...steps]; n[i].message=e.target.value; setSteps(n); }} />
+          </div>
+        ))}
+        <button onClick={() => setSteps([...steps, { elapsedDays: 1, message: "" }])} style={{ ...s.btn, background: "none", color: THEME.primary, border: `1px solid ${THEME.primary}`, width: "100%", marginBottom: "12px" }}>+ ステップ追加</button>
+        <button onClick={save} style={{ ...s.btn, width: "100%" }}>設定を保存する</button>
+      </div>
+    </Page>
+  );
+}
+
+// --- 顧客詳細 ---
 function CustomerDetail({ customers, formSettings }) {
   const { id } = useParams();
   const c = customers.find(x => x.id === Number(id));
@@ -245,21 +309,18 @@ function CustomerDetail({ customers, formSettings }) {
   );
 }
 
-// --- 画面：配信スケジュール (不具合修正版) ---
+// --- 配信スケジュール ---
 function CustomerSchedule({ customers, scenarios }) {
   const { id } = useParams();
   const c = customers.find(x => x.id === Number(id));
   if(!c || !scenarios) return <Page title="Loading..."><Loader2 className="animate-spin" /></Page>;
-  
   const mySteps = scenarios.filter(s => s.シナリオID === c.シナリオID).sort((a,b) => a.ステップ数 - b.ステップ数);
-  
   const calcDate = (regStr, days) => {
     if (!regStr) return "日付不明";
     const dt = new Date(regStr);
     dt.setDate(dt.getDate() + Number(days));
     return dt.toLocaleDateString('ja-JP', { year: 'numeric', month: 'long', day: 'numeric' });
   };
-
   return (
     <Page title="配信スケジュール" subtitle={`${c[Object.keys(c)[1]] || "顧客"} 様へのスケジュール`}>
       <Link to="/" style={{ display: "block", marginBottom: "24px", color: THEME.primary, fontWeight: "700", textDecoration: "none" }}>← 一覧へ戻る</Link>
@@ -276,43 +337,31 @@ function CustomerSchedule({ customers, scenarios }) {
               <div style={{ whiteSpace: "pre-wrap", fontSize: "15px", lineHeight: "1.6", color: THEME.textMain }}>{st.message}</div>
             </div>
           </div>
-        )) : <div style={s.card}>このシナリオには配信ステップが設定されていません。</div>}
+        )) : <div style={s.card}>シナリオ設定が見つかりません。</div>}
       </div>
     </Page>
   );
 }
 
-// --- 画面：顧客情報編集 (ステータス編集の削除版) ---
+// --- 顧客編集 ---
 function CustomerEdit({ customers, scenarios, formSettings, onRefresh }) {
   const { id } = useParams(); const nav = useNavigate();
   const c = customers.find(x => x.id === Number(id));
   const [formData, setFormData] = useState({});
   const [scenarioID, setScenarioID] = useState("");
-  
-  useEffect(() => {
-    if (c) { setFormData(c); setScenarioID(c.シナリオID); }
-  }, [c]);
-
+  useEffect(() => { if (c) { setFormData(c); setScenarioID(c.シナリオID); } }, [c]);
   const onUpdate = async (e) => {
     e.preventDefault();
-    try {
-      // 配信ステータスは既存のものを維持
-      await api.post(GAS_URL, { action: "update", id, data: formData, status: c.配信ステータス, scenarioID });
-      onRefresh(); nav("/");
-    } catch(e) { alert("更新に失敗しました"); }
+    try { await api.post(GAS_URL, { action: "update", id, data: formData, status: c.配信ステータス, scenarioID }); onRefresh(); nav("/"); } catch(e) { alert("更新に失敗しました"); }
   };
-  
   if(!c) return <Page title="Loading..."><Loader2 className="animate-spin" /></Page>;
-  
   return (
-    <Page title="情報の編集" subtitle="動的項目の内容のみ修正可能です（ステータスは自動管理されます）">
+    <Page title="情報の編集">
       <div style={{ ...s.card, maxWidth: "600px" }}>
         <form onSubmit={onUpdate}>
           {formSettings.map(f => (
-            <div key={f.name}>
-              <label style={{ fontWeight: "700", display: "block", marginBottom: "8px" }}>{f.name}</label>
-              <input style={s.input} type={f.type} value={formData[f.name] || ""} onChange={e => setFormData({ ...formData, [f.name]: e.target.value })} placeholder={`${f.name}を修正`} />
-            </div>
+            <div key={f.name}><label style={{ fontWeight: "700", display: "block", marginBottom: "8px" }}>{f.name}</label>
+            <input style={s.input} type={f.type} value={formData[f.name] || ""} onChange={e => setFormData({ ...formData, [f.name]: e.target.value })} /></div>
           ))}
           <label style={{ fontWeight: "700", display: "block", marginBottom: "8px" }}>適用シナリオ</label>
           <select style={s.input} value={scenarioID} onChange={e => setScenarioID(e.target.value)}>
@@ -325,55 +374,7 @@ function CustomerEdit({ customers, scenarios, formSettings, onRefresh }) {
   );
 }
 
-// --- 画面：シナリオ管理 (デザイン復旧) ---
-function ScenarioList({ scenarios, onRefresh }) {
-  const grouped = scenarios.reduce((acc, s) => { (acc[s.シナリオID] = acc[s.シナリオID] || []).push(s); return acc; }, {});
-  const del = async (id) => { if(window.confirm("このシナリオを削除しますか？")) { await api.post(GAS_URL, { action: "deleteScenario", scenarioID: id }); onRefresh(); }};
-  return (
-    <Page title="シナリオ管理" topButton={<Link to="/scenarios/new" style={{ ...s.btn, textDecoration: "none" }}><Plus size={18} /> 新規シナリオ作成</Link>}>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: "24px" }}>
-        {Object.entries(grouped).map(([id, steps]) => (
-          <div key={id} style={s.card}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "20px" }}>
-              <div><h3 style={{ margin: 0, fontSize: "18px", fontWeight: "800" }}>{id}</h3><span style={{ fontSize: "13px", color: THEME.textMuted, fontWeight: "600" }}>{steps.length} ステップ設定済み</span></div>
-              <button onClick={() => del(id)} style={{ color: THEME.danger, background: "none", border: "none", cursor: "pointer" }}><Trash2 size={20}/></button>
-            </div>
-            <Link to={`/scenarios/edit/${id}`} style={{ ...s.btn, width: "100%", background: THEME.bg, color: THEME.textMain, textDecoration: "none", border: `1px solid ${THEME.border}` }}>詳細・編集</Link>
-          </div>
-        ))}
-      </div>
-    </Page>
-  );
-}
-
-function ScenarioForm({ scenarios, onRefresh }) {
-  const { id: editId } = useParams(); const navigate = useNavigate();
-  const [id, setId] = useState(""); const [steps, setSteps] = useState([{ elapsedDays: 1, message: "" }]);
-  useEffect(() => { if (editId) { setId(editId); const ex = scenarios.filter(s => s.シナリオID === editId).sort((a,b) => a.ステップ数 - b.ステップ数); if (ex.length) setSteps(ex.map(s => ({ elapsedDays: s.経過日数, message: s.message }))); } }, [editId, scenarios]);
-  const save = async () => { try { await api.post(GAS_URL, { action: "saveScenario", scenarioID: id, steps }); onRefresh(); navigate("/scenarios"); } catch(e) { alert("保存に失敗しました"); } };
-  return (
-    <Page title={editId ? "シナリオ編集" : "新規シナリオ作成"}>
-      <Link to="/scenarios" style={{ display: "block", marginBottom: "24px", color: THEME.primary, fontWeight: "700", textDecoration: "none" }}>← 戻る</Link>
-      <div style={{ ...s.card, maxWidth: "700px" }}>
-        <label style={{ fontWeight: "800", display: "block", marginBottom: "8px" }}>シナリオID</label>
-        <input style={s.input} value={id} onChange={e=>setId(e.target.value)} placeholder="例: 予約フォロー" disabled={!!editId} />
-        {steps.map((x, i) => (
-          <div key={i} style={{ padding: "20px", background: "#F8FAFC", marginBottom: "15px", borderRadius: "12px", border: `1px solid ${THEME.border}` }}>
-            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "8px" }}><span style={{ fontWeight: "900", color: THEME.primary, fontSize: "13px" }}>STEP {i+1}</span>{steps.length > 1 && <button onClick={() => setSteps(steps.filter((_, idx) => idx !== i))} style={{ color: THEME.danger, background: "none", border: "none", cursor: "pointer", fontWeight: "700", fontSize: "12px" }}>削除</button>}</div>
-            <label style={{ fontSize: "13px", fontWeight: "700", display: "block", marginBottom: "4px" }}>経過日数</label>
-            <input type="number" style={s.input} value={x.elapsedDays} onChange={e=>{ const n=[...steps]; n[i].elapsedDays=e.target.value; setSteps(n); }} />
-            <label style={{ fontSize: "13px", fontWeight: "700", display: "block", marginBottom: "4px" }}>メッセージ内容</label>
-            <textarea style={{ ...s.input, height: "100px", resize: "none" }} value={x.message} onChange={e=>{ const n=[...steps]; n[i].message=e.target.value; setSteps(n); }} />
-          </div>
-        ))}
-        <button onClick={() => setSteps([...steps, { elapsedDays: 1, message: "" }])} style={{ ...s.btn, background: "none", color: THEME.primary, border: `1px solid ${THEME.primary}`, width: "100%", marginBottom: "12px" }}>+ ステップ追加</button>
-        <button onClick={save} style={{ ...s.btn, width: "100%" }}>設定を保存する</button>
-      </div>
-    </Page>
-  );
-}
-
-// --- 画面：ユーザー管理 (デザイン復旧版) ---
+// --- ユーザー管理 ---
 function UserManager({ masterUrl }) {
   const [users, setUsers] = useState([]);
   const [load, setLoad] = useState(true);
@@ -381,9 +382,9 @@ function UserManager({ masterUrl }) {
   const fetchUsers = useCallback(async () => { try { const res = await axios.get(`${masterUrl}?action=list&company=${CLIENT_COMPANY_NAME}`); setUsers(res.data.users); } catch (e) { console.error(e); } finally { setLoad(false); } }, [masterUrl]);
   useEffect(() => { fetchUsers(); }, [fetchUsers]);
   const sub = async (e) => { e.preventDefault(); try { await api.post(masterUrl, { action: modal.mode === "add" ? "addUser" : "editUser", company: CLIENT_COMPANY_NAME, ...modal.data }); setModal({ open: false, mode: "add", data: { name: "", email: "", oldEmail: "" } }); fetchUsers(); } catch (e) { alert("エラー"); } };
-  const del = async (email) => { if(window.confirm("このユーザーのアクセス権を削除しますか？")) { try { await api.post(masterUrl, { action: "deleteUser", company: CLIENT_COMPANY_NAME, email }); fetchUsers(); } catch (e) { alert("失敗"); } } };
+  const del = async (email) => { if(window.confirm("削除しますか？")) { try { await api.post(masterUrl, { action: "deleteUser", company: CLIENT_COMPANY_NAME, email }); fetchUsers(); } catch (e) { alert("失敗"); } } };
   return (
-    <Page title="ユーザー管理" subtitle="アプリへログインできるメンバーの管理" topButton={<button onClick={() => setModal({ open: true, mode: "add", data: { name: "", email: "", oldEmail: "" } })} style={s.btn}><Plus size={18} /> メンバーを追加</button>}>
+    <Page title="ユーザー管理" subtitle="アクセス許可メンバーの管理" topButton={<button onClick={() => setModal({ open: true, mode: "add", data: { name: "", email: "", oldEmail: "" } })} style={s.btn}><Plus size={18} /> メンバーを追加</button>}>
       <div style={{ ...s.card, padding: 0 }}>
         <table style={{ width: "100%", borderCollapse: "collapse" }}>
           <thead style={{ background: "#F8FAFC" }}>
@@ -411,11 +412,11 @@ function UserManager({ masterUrl }) {
             <h3 style={{ marginTop: 0, marginBottom: "24px", fontSize: "20px" }}>{modal.mode === "add" ? "メンバーの新規追加" : "メンバー情報の編集"}</h3>
             <form onSubmit={sub}>
               <label style={{ fontSize: "14px", fontWeight: "700", display: "block", marginBottom: "8px" }}>名前</label>
-              <input style={s.input} value={modal.data.name} onChange={e=>setModal({...modal, data:{...modal.data, name: e.target.value}})} required placeholder="山田 太郎" />
+              <input style={s.input} value={modal.data.name} onChange={e=>setModal({...modal, data:{...modal.data, name: e.target.value}})} required />
               <label style={{ fontSize: "14px", fontWeight: "700", display: "block", marginBottom: "8px" }}>メールアドレス</label>
-              <input style={s.input} type="email" value={modal.data.email} onChange={e=>setModal({...modal, data:{...modal.data, email: e.target.value}})} required placeholder="example@gmail.com" />
+              <input style={s.input} type="email" value={modal.data.email} onChange={e=>setModal({...modal, data:{...modal.data, email: e.target.value}})} required />
               <div style={{ display: "flex", gap: "12px", marginTop: "12px" }}>
-                <button type="submit" style={{ ...s.btn, flex: 1 }}>{modal.mode === "add" ? "追加する" : "更新する"}</button>
+                <button type="submit" style={{ ...s.btn, flex: 1 }}>{modal.mode === "add" ? "追加" : "更新"}</button>
                 <button type="button" onClick={()=>setModal({open:false})} style={{ ...s.btn, flex: 1, background: THEME.bg, color: THEME.textMain }}>キャンセル</button>
               </div>
             </form>
@@ -426,7 +427,7 @@ function UserManager({ masterUrl }) {
   );
 }
 
-// --- App メイン ---
+// --- 3. ログイン画面 (中央揃え修正) ---
 export default function App() {
   const [d, setD] = useState({ customers: [], scenarios: [], formSettings: [] });
   const [load, setLoad] = useState(true);
@@ -438,12 +439,15 @@ export default function App() {
   useEffect(() => { refresh(); }, [refresh]);
   if (!user) return (
     <GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID}>
-      <div style={{ height: "100vh", display: "flex", alignItems: "center", justifyContent: "center", backgroundColor: THEME.bg }}>
+      <div style={{ height: "100vh", display: "flex", alignItems: "center", justifyContent: "center", backgroundColor: THEME.bg, fontFamily: "sans-serif" }}>
         <div style={{ ...s.card, textAlign: "center", width: "400px", padding: "48px" }}>
           <div style={{ backgroundColor: THEME.primary, width: "56px", height: "56px", borderRadius: "14px", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 24px" }}><MessageSquare color="white" size={32} /></div>
           <h1 style={{ fontSize: "28px", fontWeight: "800", marginBottom: "8px" }}>StepFlow</h1>
           <p style={{ color: THEME.textMuted, marginBottom: "32px" }}>管理者アカウントでログイン</p>
-          <GoogleLogin onSuccess={(res) => setUser(jwtDecode(res.credential))} useOneTap />
+          {/* 🆕 中央揃えのためのラッパーを追加 */}
+          <div style={{ display: "flex", justifyContent: "center" }}>
+            <GoogleLogin onSuccess={(res) => setUser(jwtDecode(res.credential))} useOneTap />
+          </div>
         </div>
       </div>
     </GoogleOAuthProvider>
