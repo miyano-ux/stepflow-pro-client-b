@@ -57,43 +57,40 @@ function Sidebar({ onLogout, user }) {
   );
 }
 
-function Page({ title, subtitle, children, topButton }) {
-  return (<div style={s.main}><div style={{ padding: "40px 60px", maxWidth: "1300px", margin: "0 auto" }}><div style={{ marginBottom: "32px", display: "flex", justifyContent: "space-between", alignItems: "flex-end" }}><div><h1 style={{ fontSize: "28px", fontWeight: "800" }}>{title}</h1>{subtitle && <p style={{ color: THEME.textMuted, marginTop: "4px" }}>{subtitle}</p>}</div>{topButton}</div>{children}</div></div>);
+function Page({ title, children, topButton }) {
+  return (<div style={s.main}><div style={{ padding: "40px 60px", maxWidth: "1300px", margin: "0 auto" }}><div style={{ marginBottom: "32px", display: "flex", justifyContent: "space-between", alignItems: "flex-end" }}><div><h1 style={{ fontSize: "28px", fontWeight: "800" }}>{title}</h1></div>{topButton}</div>{children}</div></div>);
 }
 
-// --- 共通部品 ---
+// --- 共通フォーム部品 ---
 function DynamicField({ f, value, onChange }) {
   if (f.type === "dropdown") return <select style={s.input} required={f.required} value={value || ""} onChange={e => onChange(e.target.value)}><option value="">選択してください</option>{f.options?.split(",").map(opt => <option key={opt} value={opt}>{opt}</option>)}</select>;
   return <input style={s.input} type={f.type} required={f.required} value={value || ""} onChange={e => onChange(e.target.value)} placeholder={`${f.name}を入力`} />;
 }
 
-// --- 顧客リスト (並び替え完全修正・動的検索) ---
+// --- 顧客リスト (バグ修正版) ---
 function CustomerList({ customers, formSettings, onRefresh }) {
-  const [visibleCols, setVisibleCols] = useState(() => JSON.parse(localStorage.getItem("sf_cols_v13") || '["姓", "名", "電話番号", "シナリオID"]'));
+  const [visibleCols, setVisibleCols] = useState(() => JSON.parse(localStorage.getItem("sf_cols_final_v14") || '["姓", "名", "電話番号", "シナリオID"]'));
   const [tempCols, setTempCols] = useState(visibleCols);
   const [showColMenu, setShowColMenu] = useState(false);
   const [search, setSearch] = useState({});
   const [dragIdx, setDragIdx] = useState(null);
 
-  useEffect(() => localStorage.setItem("sf_cols_v13", JSON.stringify(visibleCols)), [visibleCols]);
+  useEffect(() => localStorage.setItem("sf_cols_final_v14", JSON.stringify(visibleCols)), [visibleCols]);
 
   const filtered = useMemo(() => customers.filter(c => Object.keys(search).every(key => !search[key] || String(c[key] || "").toLowerCase().includes(search[key].toLowerCase()))), [customers, search]);
 
-  // 🆕 ドラッグ＆ドロップロジックの修正
   const onDragStart = (e, index) => {
     setDragIdx(index);
     e.dataTransfer.effectAllowed = "move";
   };
 
   const onDragOver = (e, index) => {
-    e.preventDefault(); // これがないと入れ替えが起きない
+    e.preventDefault();
     if (dragIdx === null || dragIdx === index) return;
-    
     const newList = [...tempCols];
     const draggedItem = newList[dragIdx];
     newList.splice(dragIdx, 1);
     newList.splice(index, 0, draggedItem);
-    
     setDragIdx(index);
     setTempCols(newList);
   };
@@ -102,22 +99,13 @@ function CustomerList({ customers, formSettings, onRefresh }) {
     <Page title="顧客ダッシュボード" topButton={<button onClick={() => { setTempCols(visibleCols); setShowColMenu(true); }} style={{ ...s.btn, ...s.btnSecondary }}><ListFilter size={18} /> 表示・順序設定</button>}>
       {showColMenu && (
         <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(0,0,0,0.3)", zIndex: 2000, display: "flex", justifyContent: "center", alignItems: "center" }}>
-          <div style={{ ...s.card, width: "400px", marginBottom: 0 }}>
-            <h3 style={{ marginTop: 0 }}>項目の表示設定</h3>
-            <p style={{ fontSize: "12px", color: THEME.textMuted, marginBottom: "20px" }}>項目をドラッグして順序を入れ替えられます</p>
+          <div style={{ ...s.card, width: "380px", marginBottom: 0 }}>
+            <h3 style={{ marginTop: 0, marginBottom: "8px" }}>表示項目の順序調整</h3>
+            <p style={{ fontSize: "12px", color: THEME.textMuted, marginBottom: "20px" }}>ドラッグで入れ替え、チェックで表示切替</p>
             <div style={{ maxHeight: "400px", overflowY: "auto", marginBottom: "24px" }}>
               {["姓", "名", "電話番号", "シナリオID", ...formSettings.map(f => f.name)].map((col, i) => (
-                <div key={col} 
-                  draggable 
-                  onDragStart={(e) => onDragStart(e, i)}
-                  onDragOver={(e) => onDragOver(e, i)}
-                  onDragEnd={() => setDragIdx(null)}
-                  style={{ 
-                    display: "flex", alignItems: "center", gap: "12px", padding: "12px", 
-                    border: `1px solid ${dragIdx === i ? THEME.primary : THEME.border}`, 
-                    borderRadius: "8px", marginBottom: "8px", backgroundColor: "white", 
-                    cursor: "grab", opacity: dragIdx === i ? 0.5 : 1, transform: dragIdx === i ? "scale(1.02)" : "scale(1)", transition: "0.1s"
-                  }}>
+                <div key={col} draggable onDragStart={(e) => onDragStart(e, i)} onDragOver={(e) => onDragOver(e, i)} onDragEnd={() => setDragIdx(null)}
+                  style={{ display: "flex", alignItems: "center", gap: "12px", padding: "10px", border: dragIdx === i ? `2px solid ${THEME.primary}` : `1px solid ${THEME.border}`, borderRadius: "8px", marginBottom: "6px", backgroundColor: "white", cursor: "grab", opacity: dragIdx === i ? 0.5 : 1, transition: "0.1s" }}>
                   <GripVertical size={16} color={THEME.textMuted} />
                   <input type="checkbox" checked={tempCols.includes(col)} onChange={() => setTempCols(v => v.includes(col) ? v.filter(n => n !== col) : [...v, col])} />
                   <span style={{ fontSize: "14px", fontWeight: "600" }}>{col}</span>
@@ -125,14 +113,14 @@ function CustomerList({ customers, formSettings, onRefresh }) {
               ))}
             </div>
             <div style={{ display: "flex", gap: "12px" }}>
-              <button onClick={() => { setVisibleCols(tempCols); setShowColMenu(false); }} style={{ ...s.btn, ...s.btnPrimary, flex: 1 }}>設定を適用</button>
+              <button onClick={() => { setVisibleCols(tempCols); setShowColMenu(false); }} style={{ ...s.btn, ...s.btnPrimary, flex: 1 }}>適用</button>
               <button onClick={() => setShowColMenu(false)} style={{ ...s.btn, ...s.btnSecondary, flex: 1 }}>キャンセル</button>
             </div>
           </div>
         </div>
       )}
-
-      {/* 動的検索バー */}
+      
+      {/* 検索フィルタバー (表示列と連動) */}
       <div style={{ ...s.card, padding: "16px 20px", marginBottom: "24px", background: "#F1F5F9", border: "none", display: "flex", gap: "12px", flexWrap: "wrap", alignItems: "center" }}>
         <Search size={18} color={THEME.textMuted} />
         {visibleCols.map(col => {
@@ -140,6 +128,7 @@ function CustomerList({ customers, formSettings, onRefresh }) {
           if (f?.type === "dropdown") return <select key={col} style={{ ...s.input, width: "160px", marginBottom: 0 }} onChange={e => setSearch({...search, [col]: e.target.value})}><option value="">{col}: 全て</option>{f.options?.split(",").map(o => <option key={o} value={o}>{o}</option>)}</select>;
           return <input key={col} placeholder={`${col}...`} style={{ ...s.input, width: "140px", marginBottom: 0 }} onChange={e => setSearch({...search, [col]: e.target.value})} />;
         })}
+        <button onClick={() => setSearch({})} style={{ fontSize: "12px", color: THEME.primary, background: "none", border: "none", cursor: "pointer", fontWeight: "700", marginLeft: "auto" }}>リセット</button>
       </div>
 
       <div style={{ ...s.card, padding: 0, overflowX: "auto" }}>
@@ -161,39 +150,32 @@ function CustomerList({ customers, formSettings, onRefresh }) {
   );
 }
 
-// --- 画面：配信スケジュール (プリセット編集) ---
+// --- 配信状況 (プリセット・編集) ---
 function CustomerSchedule({ customers, deliveryLogs, onRefresh }) {
   const { id } = useParams(); const c = customers.find(x => x.id === Number(id));
   const [editLog, setEditLog] = useState(null);
   if(!c) return <Page title="Loading..."><Loader2 size={24} className="animate-spin" /></Page>;
   const myLogs = deliveryLogs.filter(log => cleanPhone(log.電話番号) === cleanPhone(c["電話番号"]));
-
-  const startEdit = (log) => {
-    const d = new Date(log.配信予定日時);
-    const tzOffset = d.getTimezoneOffset() * 60000;
-    const localISOTime = new Date(d.getTime() - tzOffset).toISOString().slice(0, 16);
-    setEditLog({ ...log, t: localISOTime, m: log.内容 });
-  };
-
-  return (<Page title="配信スケジュール" subtitle={`${c["姓"]}${c["名"]} 様`}><Link to="/" style={{display:"block", marginBottom:"24px", color:THEME.primary, textDecoration:"none", fontWeight:"700"}}>← 戻る</Link><div style={{display:"flex", flexDirection:"column", gap:"16px"}}>{myLogs.map((log, i) => (<div key={i} style={{ ...s.card, borderLeft: `6px solid ${log.ステータス === "配信済み" ? THEME.success : THEME.primary}`, padding: "20px" }}><div style={{display:"flex", justifyContent:"space-between"}}><div><span style={s.badge}>{log.ステータス}</span><div style={{fontWeight:"800", marginTop:"8px"}}>{new Date(log.配信予定日時).toLocaleString()}</div></div>{log.ステータス === "配信待ち" && <button onClick={()=>startEdit(log)} style={{color:THEME.primary, background:"none", border:"none", cursor:"pointer", fontWeight:"600"}}>編集</button>}</div><div style={{marginTop:"15px", whiteSpace:"pre-wrap", fontSize:"14px"}}>{log.内容}</div></div>))}</div>
-  {editLog && (<div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(0,0,0,0.6)", display: "flex", justifyContent: "center", alignItems: "center", zIndex: 2000 }}><div style={{ ...s.card, width: "500px", marginBottom: 0 }}><h3>配信内容の調整</h3><div style={{marginBottom:"15px"}}><label style={{fontSize:"12px"}}>配信日時</label><input type="datetime-local" style={s.input} value={editLog.t} onChange={e=>setEditLog({...editLog, t:e.target.value})} /></div><div style={{marginBottom:"20px"}}><label style={{fontSize:"12px"}}>メッセージ内容</label><textarea style={{...s.input, height:"150px", resize:"none"}} value={editLog.m} onChange={e=>setEditLog({...editLog, m:e.target.value})} /></div><div style={{display:"flex", gap:"10px"}}><button onClick={async()=>{await api.post(GAS_URL,{action:"updateDeliveryTime",logId:editLog.ログID,newTime:editLog.t, newMessage:editLog.m}); onRefresh(); setEditLog(null);}} style={{...s.btn, ...s.btnPrimary, flex:1}}>保存</button><button onClick={()=>setEditLog(null)} style={{...s.btn, ...s.btnSecondary, flex:1}}>閉じる</button></div></div></div>)}</Page>);
+  const startEdit = (log) => { const d = new Date(log.配信予定日時); const tzOffset = d.getTimezoneOffset() * 60000; const localISOTime = new Date(d.getTime() - tzOffset).toISOString().slice(0, 16); setEditLog({ ...log, t: localISOTime, m: log.内容 }); };
+  return (<Page title="状況" subtitle={`${c["姓"]}${c["名"]} 様`}><Link to="/" style={{display:"block", marginBottom:"24px", color:THEME.primary, textDecoration:"none", fontWeight:"700"}}>← 戻る</Link><div style={{display:"flex", flexDirection:"column", gap:"16px"}}>{myLogs.map((log, i) => (<div key={i} style={{ ...s.card, borderLeft: `6px solid ${log.ステータス === "配信済み" ? THEME.success : THEME.primary}`, padding: "20px", marginBottom: 0 }}><div style={{display:"flex", justifyContent:"space-between"}}><div><span style={s.badge}>{log.ステータス}</span><div style={{fontWeight:"800", marginTop:"8px"}}>{new Date(log.配信予定日時).toLocaleString()}</div></div>{log.ステータス === "配信待ち" && <button onClick={()=>startEdit(log)} style={{color:THEME.primary, background:"none", border:"none", cursor:"pointer", fontWeight:"600"}}>編集</button>}</div><div style={{marginTop:"15px", whiteSpace:"pre-wrap", fontSize:"14px"}}>{log.内容}</div></div>))}</div>
+  {editLog && (<div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(0,0,0,0.6)", display: "flex", justifyContent: "center", alignItems: "center", zIndex: 2000 }}><div style={{ ...s.card, width: "500px", marginBottom: 0 }}><h3>配信の調整</h3><div style={{marginBottom:"15px"}}><label style={{fontSize:"12px"}}>配信日時</label><input type="datetime-local" style={s.input} value={editLog.t} onChange={e=>setEditLog({...editLog, t:e.target.value})} /></div><div style={{marginBottom:"20px"}}><label style={{fontSize:"12px"}}>内容</label><textarea style={{...s.input, height:"150px", resize:"none"}} value={editLog.m} onChange={e=>setEditLog({...editLog, m:e.target.value})} /></div><div style={{display:"flex", gap:"10px"}}><button onClick={async()=>{await api.post(GAS_URL,{action:"updateDeliveryTime",logId:editLog.ログID,newTime:editLog.t, newMessage:editLog.m}); onRefresh(); setEditLog(null);}} style={{...s.btn, ...s.btnPrimary, flex:1}}>保存</button><button onClick={()=>setEditLog(null)} style={{...s.btn, ...s.btnSecondary, flex:1}}>閉じる</button></div></div></div>)}</Page>);
 }
 
-// --- 画面：新規登録 (項目調整ボタンあり) ---
+// --- 新規登録 ---
 function CustomerForm({ formSettings, scenarios, onRefresh }) {
-  const navigate = useNavigate();
+  const n = useNavigate();
   const [lastName, setLastName] = useState(""); const [firstName, setFirstName] = useState(""); const [phone, setPhone] = useState("");
   const [formData, setFormData] = useState({}); const [scenarioID, setScenarioID] = useState("");
   useEffect(() => { if(scenarios.length > 0) setScenarioID(scenarios[0].シナリオID); }, [scenarios]);
-  return (<Page title="新規顧客登録" topButton={<button onClick={() => navigate("/form-settings")} style={{ ...s.btn, ...s.btnSecondary }}>項目を調整</button>}><div style={{ ...s.card, maxWidth: "650px", margin: "0 auto" }}><form onSubmit={async (e) => { e.preventDefault(); await api.post(GAS_URL, { action: "add", lastName, firstName, phone, data: formData, scenarioID }); onRefresh(); navigate("/"); }}>
+  return (<Page title="新規顧客登録" topButton={<button onClick={() => n("/form-settings")} style={{ ...s.btn, ...s.btnSecondary }}>項目を調整</button>}><div style={{ ...s.card, maxWidth: "650px", margin: "0 auto" }}><form onSubmit={async (e) => { e.preventDefault(); await api.post(GAS_URL, { action: "add", lastName, firstName, phone, data: formData, scenarioID }); onRefresh(); n("/"); }}>
     <div style={{ display: "flex", gap: "20px", marginBottom: "20px" }}><div style={{ flex: 1 }}><label style={{fontWeight:"700", display:"block", marginBottom:"8px"}}>姓</label><input style={s.input} required value={lastName} onChange={e => setLastName(e.target.value)} /></div><div style={{ flex: 1 }}><label style={{fontWeight:"700", display:"block", marginBottom:"8px"}}>名</label><input style={s.input} required value={firstName} onChange={e => setFirstName(e.target.value)} /></div></div>
     <div style={{ marginBottom: "20px" }}><label style={{fontWeight:"700", display:"block", marginBottom:"8px"}}>電話番号</label><input style={s.input} required value={phone} onChange={e => setPhone(e.target.value)} /></div>
     <div style={{ borderTop: `1px solid ${THEME.border}`, paddingTop: "24px", marginTop: "10px" }}>{formSettings.map(f => <div key={f.name} style={{marginBottom:"20px"}}><label style={{fontWeight:"700", display:"block", marginBottom:"8px"}}>{f.name}</label><DynamicField f={f} value={formData[f.name]} onChange={val => setFormData({...formData, [f.name]: val})} /></div>)}</div>
-    <label style={{fontWeight:"700", display:"block", marginBottom:"8px"}}>適用シナリオ</label><select style={s.input} value={scenarioID} onChange={e => setScenarioID(e.target.value)}>{[...new Set(scenarios.map(x => x.シナリオID))].map(id => <option key={id} value={id}>{id}</option>)}</select>
+    <label style={{fontWeight:"700", display:"block", marginBottom:"8px"}}>シナリオ</label><select style={s.input} value={scenarioID} onChange={e => setScenarioID(e.target.value)}>{[...new Set(scenarios.map(x => x.シナリオID))].map(id => <option key={id} value={id}>{id}</option>)}</select>
     <button type="submit" style={{ ...s.btn, ...s.btnPrimary, width: "100%", padding: "14px" }}>登録する</button></form></div></Page>);
 }
 
-// --- 他コンポーネント (指示通りの完全統合版) ---
+// --- 他コンポーネント (指示通りの完全統合) ---
 function CustomerEdit({ customers, scenarios, formSettings, onRefresh }) {
   const { id } = useParams(); const nav = useNavigate(); const c = customers.find(x => x.id === Number(id));
   const [lastName, setL] = useState(""); const [firstName, setF] = useState(""); const [phone, setP] = useState("");
@@ -208,7 +190,7 @@ function CustomerEdit({ customers, scenarios, formSettings, onRefresh }) {
 }
 
 function UserManager({ masterUrl }) {
-  const [users, setUsers] = useState([]); const [modal, setModal] = useState({ open: false, mode: "add", data: { name: "", email: "", oldEmail: "" } });
+  const [users, setUsers] = useState([]); const [modal, setModal] = useState({ open: false, mode: "add", data: { name: "", email: "" } });
   const fetchUsers = useCallback(async () => { const res = await axios.get(`${masterUrl}?action=list&company=${CLIENT_COMPANY_NAME}`); setUsers(res.data.users); }, [masterUrl]);
   useEffect(() => { fetchUsers(); }, [fetchUsers]);
   const sub = async (e) => { e.preventDefault(); await api.post(masterUrl, { action: modal.mode === "add" ? "addUser" : "editUser", company: CLIENT_COMPANY_NAME, ...modal.data }); setModal({ open: false }); fetchUsers(); };
@@ -225,8 +207,7 @@ function FormSettings({ formSettings, onRefresh }) {
 
 function ScenarioList({ scenarios, onRefresh }) {
   const grouped = scenarios.reduce((acc, s) => { (acc[s.シナリオID] = acc[s.シナリオID] || []).push(s); return acc; }, {});
-  const del = async (id) => { if(window.confirm("削除？")) { await api.post(GAS_URL, { action: "deleteScenario", scenarioID: id }); onRefresh(); }};
-  return (<Page title="シナリオ管理" topButton={<Link to="/scenarios/new" style={{...s.btn, ...s.btnPrimary, textDecoration:"none"}}><Plus size={18}/> 新規</Link>}><div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: "24px" }}>{Object.entries(grouped).map(([id, steps]) => (<div key={id} style={s.card}><div style={{display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:"20px"}}><div><h3 style={{margin:0, fontSize:"18px"}}>{id}</h3><span style={{fontSize:"13px", color:THEME.textMuted}}>{steps.length} ステップ</span></div><button onClick={()=>del(id)} style={{color:THEME.danger, background:"none", border:"none", cursor:"pointer"}}><Trash2 size={18}/></button></div><Link to={`/scenarios/edit/${id}`} style={{ ...s.btn, ...s.btnSecondary, width: "100%", textDecoration: "none" }}>構成を編集</Link></div>))}</div></Page>);
+  return (<Page title="シナリオ管理" topButton={<Link to="/scenarios/new" style={{...s.btn, ...s.btnPrimary, textDecoration:"none"}}><Plus size={18}/> 新規</Link>}><div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: "24px" }}>{Object.entries(grouped).map(([id, steps]) => (<div key={id} style={s.card}><div style={{display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:"20px"}}><div><h3 style={{margin:0, fontSize:"18px"}}>{id}</h3><span style={{fontSize:"13px", color:THEME.textMuted}}>{steps.length} ステップ</span></div><button onClick={async()=>{if(window.confirm("削除？")){await api.post(GAS_URL,{action:"deleteScenario",scenarioID:id});onRefresh();}}} style={{color:THEME.danger, background:"none", border:"none", cursor:"pointer"}}><Trash2 size={18}/></button></div><Link to={`/scenarios/edit/${id}`} style={{ ...s.btn, backgroundColor: "white", border: `1px solid ${THEME.border}`, color: THEME.textMain, width: "100%", textDecoration: "none" }}>構成を編集</Link></div>))}</div></Page>);
 }
 
 function ScenarioForm({ scenarios, onRefresh }) {
@@ -234,26 +215,32 @@ function ScenarioForm({ scenarios, onRefresh }) {
   const [id, setId] = useState(""); const [steps, setSteps] = useState([{ elapsedDays: 1, deliveryHour: 10, message: "" }]);
   const [isSaving, setIsSaving] = useState(false);
   useEffect(() => { if (editId) { setId(editId); const ex = scenarios.filter(s => s.シナリオID === editId).sort((a,b) => a.ステップ数 - b.ステップ数); if (ex.length) setSteps(ex.map(s => ({ elapsedDays: s.経過日数, deliveryHour: s.配信時間, message: s.message }))); } }, [editId, scenarios]);
-  return (<Page title="シナリオ編集"><div style={{ ...s.card, maxWidth: "800px" }}><label>シナリオ名</label><input style={s.input} value={id} onChange={e=>setId(e.target.value)} disabled={!!editId} />
-    {steps.map((x, i) => (<div key={i} style={{ padding: "24px", background: "#F8FAFC", marginBottom: "15px", borderRadius: "16px", border: `1px solid ${THEME.border}` }}><div style={{ display: "flex", justifyContent: "space-between", marginBottom: "15px" }}><span style={{ fontWeight: "900" }}>STEP {i + 1}</span><button onClick={() => setSteps(steps.filter((_, idx) => idx !== i))} style={{color:THEME.danger, background:"none", border:"none", cursor:"pointer"}}>削除</button></div>
-    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px", marginBottom: "15px" }}><div><label style={{fontSize:"12px"}}>配信日</label><input type="number" style={s.input} value={x.elapsedDays} onChange={e=>{ const n=[...steps]; n[i].elapsedDays=e.target.value; setSteps(n); }} /></div><div><label style={{fontSize:"12px"}}>時間(0-23)</label><input type="number" style={s.input} value={x.deliveryHour} onChange={e=>{ const n=[...steps]; n[i].deliveryHour=e.target.value; setSteps(n); }} /></div></div><textarea style={{ ...s.input, height: "100px", resize:"none" }} value={x.message} onChange={e=>{ const n=[...steps]; n[i].message=e.target.value; setSteps(n); }} /></div>))}
+  return (<Page title="構成"><div style={{ ...s.card, maxWidth: "800px" }}><label>シナリオ名</label><input style={s.input} value={id} onChange={e=>setId(e.target.value)} disabled={!!editId} />
+    {steps.map((x, i) => (<div key={i} style={{ padding: "20px", background: "#F8FAFC", marginBottom: "15px", borderRadius: "16px", border: `1px solid ${THEME.border}` }}><div style={{ display: "flex", justifyContent: "space-between", marginBottom: "15px" }}><span style={{ fontWeight: "900" }}>STEP {i + 1}</span><button onClick={() => setSteps(steps.filter((_, idx) => idx !== i))} style={{color:THEME.danger, background:"none", border:"none", cursor:"pointer"}}>削除</button></div>
+    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px", marginBottom: "15px" }}><div><label>配信日</label><input type="number" style={s.input} value={x.elapsedDays} onChange={e=>{ const n=[...steps]; n[i].elapsedDays=e.target.value; setSteps(n); }} /></div><div><label>配信時間</label><input type="number" style={s.input} value={x.deliveryHour} onChange={e=>{ const n=[...steps]; n[i].deliveryHour=e.target.value; setSteps(n); }} /></div></div><textarea style={{ ...s.input, height: "100px", resize:"none" }} value={x.message} onChange={e=>{ const n=[...steps]; n[i].message=e.target.value; setSteps(n); }} /></div>))}
     <button onClick={() => setSteps([...steps, { elapsedDays: 1, deliveryHour: 10, message: "" }])} style={{ ...s.btn, ...s.btnSecondary, width: "100%", marginBottom: "15px" }}>+ 追加</button>
     <button onClick={async () => { if(!id) return alert("名必須"); setIsSaving(true); try { const cRes = await axios.get(`${GAS_URL}?mode=countAffected&scenarioID=${id}`); if (window.confirm(`${cRes.data.count}名の予約も更新されます。？`)) { await api.post(GAS_URL, { action: "saveScenario", scenarioID: id, steps }); alert("完了"); nav("/scenarios"); } } finally { setIsSaving(false); } }} disabled={isSaving} style={{ ...s.btn, ...s.btnPrimary, width: "100%" }}>保存</button></div></Page>);
 }
 
-// --- App メイン ---
+function CustomerDetail({ customers, formSettings }) {
+  const { id } = useParams(); const c = customers.find(x => x.id === Number(id));
+  if(!c) return <div>Loading...</div>;
+  return (<Page title="詳細"><Link to="/" style={{display:"block", marginBottom:"20px", color:THEME.primary, textDecoration:"none", fontWeight:"700"}}>← 戻る</Link><div style={{...s.card, padding: "40px"}}><div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "32px" }}>{["姓", "名", "電話番号", "シナリオID", ...formSettings.map(f => f.name)].map(f => (<div key={f} style={{borderBottom:`1px solid ${THEME.border}`, paddingBottom:"12px"}}><label style={{fontSize:"11px", color:THEME.textMuted, fontWeight:"800"}}>{f}</label><div style={{fontWeight:"600", fontSize: "16px", marginTop:"4px"}}>{c[f] || "-"}</div></div>))}</div></div></Page>);
+}
+
 export default function App() {
   const [d, setD] = useState({ customers: [], scenarios: [], formSettings: [], deliveryLogs: [] });
   const [load, setLoad] = useState(true);
   const [user, setUser] = useState(() => { const saved = localStorage.getItem("sf_user"); return saved ? JSON.parse(saved) : null; });
   const refresh = useCallback(async () => { if(!user) return; try { const res = await axios.get(`${GAS_URL}?mode=api`); setD(res.data); } finally { setLoad(false); } }, [user]);
   useEffect(() => { refresh(); }, [refresh]);
-  if (!user) return (<div style={{ height: "100vh", display: "flex", alignItems: "center", justifyContent: "center", backgroundColor: THEME.bg }}><div style={{ ...s.card, textAlign: "center", width: "400px", padding: "48px" }}><div style={{ backgroundColor: THEME.primary, width: "56px", height: "56px", borderRadius: "16px", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 24px" }}><MessageSquare color="white" size={32} /></div><h1>StepFlow</h1><p style={{ color: THEME.textMuted, marginBottom: "32px" }}>管理者ログイン</p><GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID}><GoogleLogin onSuccess={(res) => { const dec = jwtDecode(res.credential); setUser(dec); localStorage.setItem("sf_user", JSON.stringify(dec)); }} /></GoogleOAuthProvider></div></div>);
+  if (!user) return (<div style={{ height: "100vh", display: "flex", alignItems: "center", justifyContent: "center", backgroundColor: THEME.bg }}><div style={{ ...s.card, textAlign: "center", width: "400px", padding: "48px", marginBottom: 0 }}><div style={{ backgroundColor: THEME.primary, width: "56px", height: "56px", borderRadius: "16px", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 24px" }}><MessageSquare color="white" size={32} /></div><h1>StepFlow</h1><p style={{ color: THEME.textMuted, marginBottom: "32px" }}>管理者ログイン</p><div style={{ display: "flex", justifyContent: "center" }}><GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID}><GoogleLogin onSuccess={(res) => { const dec = jwtDecode(res.credential); setUser(dec); localStorage.setItem("sf_user", JSON.stringify(dec)); }} /></GoogleOAuthProvider></div></div></div>);
   if(load) return <div style={{ height: "100vh", display: "flex", alignItems: "center", justifyContent: "center", backgroundColor: THEME.bg }}><Loader2 size={48} className="animate-spin" color={THEME.primary} /></div>;
   return (<GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID}><Router><div style={{ display: "flex", fontFamily: "'Inter', sans-serif" }}><Sidebar onLogout={() => { setUser(null); localStorage.removeItem("sf_user"); }} user={user} /><Routes>
     <Route path="/" element={<CustomerList customers={d.customers} formSettings={d.formSettings} onRefresh={refresh} />} />
     <Route path="/add" element={<CustomerForm scenarios={d.scenarios} formSettings={d.formSettings} onRefresh={refresh} />} />
     <Route path="/edit/:id" element={<CustomerEdit customers={d.customers} scenarios={d.scenarios} formSettings={d.formSettings} onRefresh={refresh} />} />
+    <Route path="/detail/:id" element={<CustomerDetail customers={d.customers} formSettings={d.formSettings} />} />
     <Route path="/schedule/:id" element={<CustomerSchedule customers={d.customers} deliveryLogs={d.deliveryLogs} onRefresh={refresh} />} />
     <Route path="/form-settings" element={<FormSettings formSettings={d.formSettings} onRefresh={refresh} />} />
     <Route path="/scenarios" element={<ScenarioList scenarios={d.scenarios} onRefresh={refresh} />} />
