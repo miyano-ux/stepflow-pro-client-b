@@ -112,13 +112,10 @@ function CustomerList({ customers, formSettings, onRefresh }) {
     }>
       <div style={{ ...s.card, padding: 0 }}>
         <table style={{ width: "100%", borderCollapse: "collapse" }}>
-          <thead style={{ background: "#F8FAFC" }}>
-            <tr>
-              {visibleCols.map(col => <th key={col} style={s.tableTh}>{col}</th>)}
-              <th style={s.tableTh}>ステータス</th>
-              <th style={{ ...s.tableTh, textAlign: "right" }}>操作</th>
-            </tr>
-          </thead>
+          <thead style={{ background: "#F8FAFC" }}><tr>
+            {visibleCols.map(col => <th key={col} style={s.tableTh}>{col}</th>)}
+            <th style={s.tableTh}>ステータス</th><th style={{ ...s.tableTh, textAlign: "right" }}>操作</th>
+          </tr></thead>
           <tbody>{customers.map((c, i) => (
             <tr key={i}>
               {visibleCols.map(col => <td key={col} style={{ ...s.tableTd, fontWeight: col === "姓" || col === "名" ? "700" : "400" }}>{c[col] || "-"}</td>)}
@@ -128,7 +125,7 @@ function CustomerList({ customers, formSettings, onRefresh }) {
                   <Link to={`/detail/${c.id}`} style={s.actionLink}>詳細</Link>
                   <Link to={`/schedule/${c.id}`} style={s.actionLink}>スケジュール</Link>
                   <Link to={`/edit/${c.id}`} style={{ ...s.actionLink, color: THEME.textMuted }}>編集</Link>
-                  <button onClick={() => del(c.id)} style={{ background: "none", border: "none", cursor: "pointer", color: THEME.danger }}><Trash2 size={18}/></button>
+                  <button onClick={() => del(c.id)} style={{ background: "none", border: "none", color: THEME.danger }}><Trash2 size={18}/></button>
                 </div>
               </td>
             </tr>
@@ -355,7 +352,7 @@ function CustomerEdit({ customers, scenarios, formSettings, onRefresh }) {
   );
 }
 
-// --- 画面：シナリオ一覧 ---
+// --- シナリオ・詳細・ユーザー管理 ---
 function ScenarioList({ scenarios, onRefresh }) {
   const grouped = scenarios.reduce((acc, s) => { (acc[s.シナリオID] = acc[s.シナリオID] || []).push(s); return acc; }, {});
   const del = async (id) => { if(window.confirm("削除しますか？")) { await api.post(GAS_URL, { action: "deleteScenario", scenarioID: id }); onRefresh(); }};
@@ -366,7 +363,7 @@ function ScenarioList({ scenarios, onRefresh }) {
           <div key={id} style={{ ...s.card, padding: "24px" }}>
             <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "20px" }}>
               <div><h3 style={{ margin: 0, fontSize: "18px" }}>{id}</h3><span style={{ fontSize: "13px", color: THEME.textMuted }}>{steps.length} ステップ</span></div>
-              <button onClick={() => del(id)} style={{ color: THEME.danger, background: "none", border: "none", cursor: "pointer" }}><Trash2 size={20}/></button>
+              <button onClick={() => del(id)} style={{ color: THEME.danger, background: "none", border: "none" }}><Trash2 size={20}/></button>
             </div>
             <Link to={`/scenarios/edit/${id}`} style={{ ...s.btn, width: "100%", background: THEME.bg, color: THEME.textMain, border: `1px solid ${THEME.border}` }}>詳細・編集</Link>
           </div>
@@ -376,81 +373,45 @@ function ScenarioList({ scenarios, onRefresh }) {
   );
 }
 
-// --- 画面：シナリオ編集 (保存時アラート機能付き) ---
 function ScenarioForm({ scenarios, onRefresh }) {
-  const { id: editId } = useParams();
-  const navigate = useNavigate();
-  const [id, setId] = useState("");
-  const [steps, setSteps] = useState([{ elapsedDays: 1, message: "" }]);
+  const { id: editId } = useParams(); const navigate = useNavigate();
+  const [id, setId] = useState(""); const [steps, setSteps] = useState([{ elapsedDays: 1, message: "" }]);
   const [isSaving, setIsSaving] = useState(false);
-
-  useEffect(() => {
-    if (editId) {
-      setId(editId);
-      const ex = scenarios.filter(s => s.シナリオID === editId).sort((a,b) => a.ステップ数 - b.ステップ数);
-      if (ex.length) setSteps(ex.map(s => ({ elapsedDays: s.経過日数, message: s.message })));
-    }
-  }, [editId, scenarios]);
-
+  useEffect(() => { if (editId) { setId(editId); const ex = scenarios.filter(s => s.シナリオID === editId).sort((a,b) => a.ステップ数 - b.ステップ数); if (ex.length) setSteps(ex.map(s => ({ elapsedDays: s.経過日数, message: s.message }))); } }, [editId, scenarios]);
   const handleSave = async () => {
-    if(!id) return alert("シナリオ名を入力してください");
+    if(!id) return alert("名前必須");
     setIsSaving(true);
     try {
       const countRes = await axios.get(`${GAS_URL}?mode=countAffected&scenarioID=${id}`);
-      const affectedCount = countRes.data.count || 0;
-      const confirmMsg = editId 
-        ? `このシナリオは現在 ${affectedCount} 名の顧客に適用されています。\nシナリオを更新すると、これらの顧客の「配信待ち」スケジュールもすべて最新版に再構築されます。\n\n更新してもよろしいですか？`
-        : "新しいシナリオを保存しますか？";
-
-      if (window.confirm(confirmMsg)) {
+      const count = countRes.data.count || 0;
+      const msg = editId ? `${count}名の顧客スケジュールも更新されます。よろしいですか？` : "保存しますか？";
+      if (window.confirm(msg)) {
         await api.post(GAS_URL, { action: "saveScenario", scenarioID: id, steps });
-        alert("シナリオと顧客スケジュールを更新しました");
-        onRefresh();
-        navigate("/scenarios");
+        alert("完了"); onRefresh(); navigate("/scenarios");
       }
-    } catch(e) { alert("保存中にエラーが発生しました"); } finally { setIsSaving(false); }
+    } catch(e) { alert("エラー"); } finally { setIsSaving(false); }
   };
-
   return (
-    <Page title={editId ? "シナリオ構成の変更" : "新規シナリオ作成"}>
+    <Page title="シナリオの構成">
       <div style={s.card}>
-        <div style={{ marginBottom: "32px" }}>
-          <label style={{ fontWeight: "800", display: "block", marginBottom: "8px" }}>シナリオ名</label>
-          <input style={s.input} value={id} onChange={e=>setId(e.target.value)} disabled={!!editId} placeholder="例: 初回購入フォロー" />
-        </div>
+        <label style={{fontWeight: "800"}}>シナリオ名</label>
+        <input style={s.input} value={id} onChange={e=>setId(e.target.value)} disabled={!!editId} placeholder="例: 予約フォロー" />
         {steps.map((x, i) => (
-          <div key={i} style={{ padding: "24px", background: "#F8FAFC", marginBottom: "20px", borderRadius: "16px", border: `1px solid ${THEME.border}` }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
-              <span style={{ fontWeight: "900", color: THEME.primary, fontSize: "15px" }}>STEP {i + 1}</span>
-              {steps.length > 1 && (
-                <button onClick={() => setSteps(steps.filter((_, idx) => idx !== i))} style={{ color: THEME.danger, background: "none", border: "none", cursor: "pointer", display: "flex", alignItems: "center", gap: "4px", fontSize: "13px" }}>
-                  <Trash2 size={16} /> 削除
-                </button>
-              )}
-            </div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr", gap: "20px" }}>
-              <div>
-                <label style={{ fontSize: "12px", fontWeight: "800", color: THEME.textMuted }}>配信タイミング</label>
-                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                  <input type="number" style={{ ...s.input, marginBottom: 0 }} value={x.elapsedDays} onChange={e=>{ const n=[...steps]; n[i].elapsedDays=e.target.value; setSteps(n); }} />
-                  <span style={{ fontSize: "14px", fontWeight: "700" }}>日後</span>
-                </div>
-              </div>
-              <div>
-                <label style={{ fontSize: "12px", fontWeight: "800", color: THEME.textMuted }}>送信メッセージ</label>
-                <textarea style={{ ...s.input, height: "100px", marginBottom: 0, resize: "none" }} value={x.message} onChange={e=>{ const n=[...steps]; n[i].message=e.target.value; setSteps(n); }} />
-              </div>
-            </div>
+          <div key={i} style={{ padding: "20px", background: "#F8FAFC", marginBottom: "15px", borderRadius: "12px", border: `1px solid ${THEME.border}` }}>
+            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "8px" }}><span style={{ fontWeight: "900", color: THEME.primary }}>STEP {i+1}</span>{steps.length > 1 && <button onClick={() => setSteps(steps.filter((_, idx) => idx !== i))} style={{ color: THEME.danger, background: "none", border: "none" }}>削除</button>}</div>
+            <label style={{fontSize: "12px"}}>経過日数</label>
+            <input type="number" style={s.input} value={x.elapsedDays} onChange={e=>{ const n=[...steps]; n[i].elapsedDays=e.target.value; setSteps(n); }} />
+            <label style={{fontSize: "12px"}}>メッセージ内容</label>
+            <textarea style={{ ...s.input, height: "100px", resize: "none" }} value={x.message} onChange={e=>{ const n=[...steps]; n[i].message=e.target.value; setSteps(n); }} />
           </div>
         ))}
-        <button onClick={() => setSteps([...steps, { elapsedDays: 1, message: "" }])} style={{ ...s.btn, background: "white", color: THEME.primary, border: `2px dashed ${THEME.primary}`, width: "100%", marginBottom: "24px" }}>+ 新しいステップを追加</button>
+        <button onClick={() => setSteps([...steps, { elapsedDays: 1, message: "" }])} style={{ ...s.btn, background: "none", color: THEME.primary, border: `1px solid ${THEME.primary}`, width: "100%", marginBottom: "12px" }}>+ 追加</button>
         <button onClick={handleSave} disabled={isSaving} style={{ ...s.btn, width: "100%" }}>{isSaving ? "同期中..." : "保存して全顧客に反映"}</button>
       </div>
     </Page>
   );
 }
 
-// --- 画面：顧客詳細 ---
 function CustomerDetail({ customers, formSettings }) {
   const { id } = useParams();
   const c = customers.find(x => x.id === Number(id));
@@ -476,7 +437,6 @@ function CustomerDetail({ customers, formSettings }) {
   );
 }
 
-// --- 画面：ユーザー管理 ---
 function UserManager({ masterUrl }) {
   const [users, setUsers] = useState([]);
   const [load, setLoad] = useState(true);
@@ -484,16 +444,19 @@ function UserManager({ masterUrl }) {
   const fetchUsers = useCallback(async () => { try { const res = await axios.get(`${masterUrl}?action=list&company=${CLIENT_COMPANY_NAME}`); setUsers(res.data.users); } catch (e) { console.error(e); } finally { setLoad(false); } }, [masterUrl]);
   useEffect(() => { fetchUsers(); }, [fetchUsers]);
   const sub = async (e) => { e.preventDefault(); try { await api.post(masterUrl, { action: modal.mode === "add" ? "addUser" : "editUser", company: CLIENT_COMPANY_NAME, ...modal.data }); setModal({ open: false }); fetchUsers(); } catch (e) { alert("エラー"); } };
+  const del = async (email) => { if(window.confirm("削除しますか？")) { try { await api.post(masterUrl, { action: "deleteUser", company: CLIENT_COMPANY_NAME, email }); fetchUsers(); } catch (e) { alert("失敗"); } } };
   return (
     <Page title="ユーザー管理" topButton={<button onClick={() => setModal({ open: true, mode: "add", data: { name: "", email: "" } })} style={s.btn}><Plus size={18} /> 追加</button>}>
-      <div style={s.card}>
+      <div style={{ ...s.card, padding: 0 }}>
         <table style={{ width: "100%", borderCollapse: "collapse" }}>
           <thead style={{ background: "#F8FAFC" }}><tr><th style={s.tableTh}>名前</th><th style={s.tableTh}>メール</th><th style={{ ...s.tableTh, textAlign: "right" }}>操作</th></tr></thead>
           <tbody>{users.map((u, i) => (
-            <tr key={i}><td style={s.tableTd}>{u.name}</td><td style={s.tableTd}>{u.email}</td><td style={{ ...s.tableTd, textAlign: "right" }}><button onClick={() => setModal({ open: true, mode: "edit", data: { name: u.name, email: u.email, oldEmail: u.email } })}>編集</button></td></tr>
+            <tr key={i}><td style={s.tableTd}>{u.name}</td><td style={s.tableTd}>{u.email}</td><td style={{ ...s.tableTd, textAlign: "right" }}>
+              <button onClick={() => setModal({ open: true, mode: "edit", data: { name: u.name, email: u.email, oldEmail: u.email } })} style={{ background: "none", border: "none", color: THEME.primary }}>編集</button>
+              <button onClick={() => del(u.email)} style={{ background: "none", border: "none", color: THEME.danger, marginLeft: "10px" }}><Trash2 size={18}/></button>
+            </td></tr>
           ))}</tbody>
         </table>
-        {load && <div style={{ padding: "40px", textAlign: "center" }}><Loader2 size={32} className="animate-spin" color={THEME.primary} /></div>}
       </div>
       {modal.open && (
         <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 2000 }}>
@@ -501,7 +464,7 @@ function UserManager({ masterUrl }) {
             <h3>{modal.mode === "add" ? "メンバー追加" : "編集"}</h3>
             <form onSubmit={sub}>
               <input style={s.input} value={modal.data.name} onChange={e=>setModal({...modal, data:{...modal.data, name: e.target.value}})} required placeholder="氏名" />
-              <input style={s.input} type="email" value={modal.data.email} onChange={e=>setModal({...modal, data:{...modal.data, email: e.target.value}})} required placeholder="メールアドレス" />
+              <input style={s.input} type="email" value={modal.data.email} onChange={e=>setModal({...modal, data:{...modal.data, email: e.target.value}})} required placeholder="アドレス" />
               <div style={{ display: "flex", gap: "10px" }}><button type="submit" style={s.btn}>保存</button><button onClick={()=>setModal({open:false})}>閉じる</button></div>
             </form>
           </div>
@@ -518,10 +481,7 @@ export default function App() {
   const [user, setUser] = useState(null); 
   const refresh = useCallback(async () => {
     if(!user) return;
-    try { 
-      const res = await axios.get(`${GAS_URL}?mode=api`); 
-      setD(res.data); 
-    } catch (e) { console.error(e); } finally { setLoad(false); }
+    try { const res = await axios.get(`${GAS_URL}?mode=api`); setD(res.data); } catch (e) { console.error(e); } finally { setLoad(false); }
   }, [user]);
   useEffect(() => { refresh(); }, [refresh]);
   if (!user) return (
