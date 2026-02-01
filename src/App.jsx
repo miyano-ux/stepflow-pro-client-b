@@ -190,36 +190,69 @@ function CustomerSchedule({ customers, deliveryLogs, onRefresh }) {
   );
 }
 
-// --- 画面：新規登録 ---
+// --- 新規登録画面 (姓名分割・固定項目版) ---
 function CustomerForm({ formSettings, scenarios, onRefresh }) {
   const navigate = useNavigate();
+  const [lastName, setLastName] = useState("");
+  const [firstName, setFirstName] = useState("");
+  const [phone, setPhone] = useState("");
   const [formData, setFormData] = useState({});
   const [scenarioID, setScenarioID] = useState("");
   const [errors, setErrors] = useState({});
+
   useEffect(() => { if(scenarios.length > 0) setScenarioID(scenarios[0].シナリオID); }, [scenarios]);
+
   const sub = async (e) => {
     e.preventDefault();
-    const newErrors = {};
-    formSettings.forEach(f => { if (f.type === "tel" && formData[f.name] && !validateTel(formData[f.name])) newErrors[f.name] = "電話番号が正しくありません"; });
-    if (Object.keys(newErrors).length > 0) return setErrors(newErrors);
-    try { await api.post(GAS_URL, { action: "add", data: formData, scenarioID }); onRefresh(); navigate("/"); } catch (err) { alert("エラー"); }
+    if (!validateTel(phone)) return setErrors({ phone: "正しい電話番号を入力してください" });
+
+    try {
+      await api.post(GAS_URL, { 
+        action: "add", 
+        lastName, 
+        firstName, 
+        phone, 
+        data: formData, 
+        scenarioID 
+      });
+      alert("登録完了"); onRefresh(); navigate("/");
+    } catch (err) { alert("エラー"); }
   };
+
   return (
-    <Page title="新規顧客登録" topButton={<button onClick={() => navigate("/form-settings")} style={{ ...s.btn, background: THEME.bg, color: THEME.primary, border: `1px solid ${THEME.primary}` }}>項目調整</button>}>
-      <div style={{ ...s.card, maxWidth: "600px" }}>
+    <Page title="新規顧客登録" topButton={<button onClick={() => navigate("/form-settings")} style={{ ...s.btn, background: THEME.bg, color: THEME.primary, border: `1px solid ${THEME.primary}` }}>追加項目を調整</button>}>
+      <div style={{ ...s.card, maxWidth: "650px" }}>
         <form onSubmit={sub}>
+          {/* 姓名を横並びで配置 */}
+          <div style={{ display: "flex", gap: "16px", marginBottom: "20px" }}>
+            <div style={{ flex: 1 }}>
+              <label style={{ fontWeight: "700", display: "block", marginBottom: "8px" }}>姓 *</label>
+              <input style={s.input} required value={lastName} onChange={e => setLastName(e.target.value)} placeholder="山田" />
+            </div>
+            <div style={{ flex: 1 }}>
+              <label style={{ fontWeight: "700", display: "block", marginBottom: "8px" }}>名 *</label>
+              <input style={s.input} required value={firstName} onChange={e => setFirstName(e.target.value)} placeholder="太郎" />
+            </div>
+          </div>
+
+          <label style={{ fontWeight: "700", display: "block", marginBottom: "8px" }}>電話番号 *</label>
+          <input style={{ ...s.input, borderColor: errors.phone ? THEME.danger : THEME.border }} required value={phone} onChange={e => setPhone(e.target.value)} placeholder="09012345678" />
+          {errors.phone && <p style={{ color: THEME.danger, fontSize: "12px", marginTop: "-15px", marginBottom: "15px" }}>{errors.phone}</p>}
+
+          {/* カスタム項目を表示 */}
           {formSettings.map(f => (
             <div key={f.name}>
               <label style={{ fontWeight: "700", display: "block", marginBottom: "8px" }}>{f.name} {f.required && "*"}</label>
-              <input style={{ ...s.input, borderColor: errors[f.name] ? THEME.danger : THEME.border }} type={f.type} required={f.required} onChange={e => setFormData({ ...formData, [f.name]: e.target.value })} placeholder={`${f.name}を入力`} />
-              {errors[f.name] && <p style={{ color: THEME.danger, fontSize: "12px", marginTop: "-15px", marginBottom: "15px" }}>{errors[f.name]}</p>}
+              <input style={s.input} type={f.type} required={f.required} onChange={e => setFormData({ ...formData, [f.name]: e.target.value })} placeholder={`${f.name}を入力`} />
             </div>
           ))}
-          <label style={{ fontWeight: "700", display: "block", marginBottom: "8px" }}>適用シナリオ</label>
+
+          <label style={{ fontWeight: "700", display: "block", marginBottom: "8px", marginTop: "20px" }}>適用シナリオ</label>
           <select style={s.input} value={scenarioID} onChange={e => setScenarioID(e.target.value)}>
             {[...new Set(scenarios.map(x => x.シナリオID))].map(id => <option key={id} value={id}>{id}</option>)}
           </select>
-          <button type="submit" style={{ ...s.btn, width: "100%", padding: "16px" }}>登録する</button>
+          
+          <button type="submit" style={{ ...s.btn, width: "100%", padding: "16px", marginTop: "24px" }}>顧客を登録する</button>
         </form>
       </div>
     </Page>
