@@ -309,36 +309,87 @@ function CustomerDetail({ customers, formSettings }) {
   );
 }
 
-// --- 配信スケジュール ---
-function CustomerSchedule({ customers, scenarios }) {
+// --- 🆕 配信スケジュール & ログ画面 ---
+function CustomerSchedule({ customers, deliveryLogs, onRefresh }) {
   const { id } = useParams();
   const c = customers.find(x => x.id === Number(id));
-  if(!c || !scenarios) return <Page title="Loading..."><Loader2 className="animate-spin" /></Page>;
-  const mySteps = scenarios.filter(s => s.シナリオID === c.シナリオID).sort((a,b) => a.ステップ数 - b.ステップ数);
-  const calcDate = (regStr, days) => {
-    if (!regStr) return "日付不明";
-    const dt = new Date(regStr);
-    dt.setDate(dt.getDate() + Number(days));
-    return dt.toLocaleDateString('ja-JP', { year: 'numeric', month: 'long', day: 'numeric' });
+  const [editingLog, setEditingLog] = useState(null);
+
+  if(!c || !deliveryLogs) return <Page title="読み込み中..."><Loader2 className="animate-spin" /></Page>;
+
+  // この顧客の配信ログのみを抽出
+  const myLogs = deliveryLogs.filter(log => log.電話番号.replace("'", "") === String(c["電話番号"]).replace("'", ""));
+
+  const handleTimeUpdate = async (logId, newTime) => {
+    if (!newTime) return;
+    try {
+      await api.post(GAS_URL, { action: "updateDeliveryTime", logId, newTime });
+      alert("配信予定を変更しました");
+      setEditingLog(null);
+      onRefresh();
+    } catch (e) { alert("更新エラー"); }
   };
+
+  const getStatusStyle = (status) => {
+    if (status === "配信済み") return { color: THEME.success, bg: "#ECFDF5", border: THEME.success };
+    if (status === "エラー") return { color: THEME.danger, bg: "#FEF2F2", border: THEME.danger };
+    return { color: THEME.textMuted, bg: "#F8FAFC", border: THEME.border };
+  };
+
   return (
-    <Page title="配信スケジュール" subtitle={`${c[Object.keys(c)[1]] || "顧客"} 様へのスケジュール`}>
-      <Link to="/" style={{ display: "block", marginBottom: "24px", color: THEME.primary, fontWeight: "700", textDecoration: "none" }}>← 一覧へ戻る</Link>
-      <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
-        {mySteps.length > 0 ? mySteps.map((st, i) => (
-          <div key={i} style={{ ...s.card, borderLeft: `6px solid ${THEME.primary}`, display: "flex", gap: "40px" }}>
-            <div style={{ minWidth: "180px" }}>
-              <div style={{ fontSize: "12px", color: THEME.textMuted, fontWeight: "700" }}>配信予定日</div>
-              <div style={{ fontSize: "18px", fontWeight: "800" }}>{calcDate(c.登録日, st.経過日数)}</div>
-              <div style={{ fontSize: "13px", color: THEME.primary, marginTop: "4px", fontWeight: "600" }}>登録から {st.経過日数} 日後</div>
+    <Page title="配信スケジュール管理" subtitle={`${c[Object.keys(c)[1]]} 様へのSMS送信設定`}>
+      <Link to="/" style={{ display: "block", marginBottom: "24px", color: THEME.primary, fontWeight: "700", textDecoration: "none" }}>← 顧客一覧へ戻る</Link>
+      
+      <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+        {myLogs.length > 0 ? myLogs.map((log, i) => {
+          const style = getStatusStyle(log.ステータス);
+          return (
+            <div key={i} style={{ ...s.card, borderLeft: `6px solid ${style.border}`, padding: "24px" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                <div>
+                  <div style={{ display: "flex", gap: "8px", alignItems: "center", marginBottom: "8px" }}>
+                    <span style={{ ...s.badge, backgroundColor: style.bg, color: style.color }}>{log.ステータス}</span>
+                    <span style={{ fontSize: "12px", color: THEME.textMuted }}>{log.ステップ名}</span>
+                  </div>
+                  <div style={{ fontSize: "20px", fontWeight: "800" }}>
+                    {new Date(log.配信予定日時).toLocaleString('ja-JP', { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                  </div>
+                </div>
+                {log.ステータス === "配信待ち" && (
+                  <button onClick={() => setEditingLog(log)} style={{ ...s.actionLink, border: `1px solid ${THEME.primary}`, padding: "6px 12px", borderRadius: "6px" }}>日時を変更</button>
+                )}
+              </div>
+
+              <div style={{ marginTop: "16px", padding: "16px", background: THEME.bg, borderRadius: "10px", fontSize: "14px", lineHeight: "1.6", whiteSpace: "pre-wrap" }}>
+                {log.内容}
+              </div>
+
+              {log.ステータス === "エラー" && (
+                <div style={{ marginTop: "12px", color: THEME.danger, fontSize: "13px", fontWeight: "700" }}>⚠️ 配信エラー: {log.エラー内容}</div>
+              )}
             </div>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: "12px", color: THEME.textMuted, fontWeight: "700", marginBottom: "8px" }}>STEP {st.ステップ数} メッセージ</div>
-              <div style={{ whiteSpace: "pre-wrap", fontSize: "15px", lineHeight: "1.6", color: THEME.textMain }}>{st.message}</div>
+          );
+        }) : <div style={s.card}>配信予定がありません。</div>}
+      </div>
+
+      {/* 日時変更モーダル */}
+      {editingLog && (
+        <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 2000 }}>
+          <div style={{ ...s.card, width: "400px" }}>
+            <h3 style={{ marginTop: 0 }}>送信日時の調整</h3>
+            <p style={{ fontSize: "13px", color: THEME.textMuted }}>このステップの配信日時を個別に設定します</p>
+            <input 
+              type="datetime-local" 
+              style={{ ...s.input, marginTop: "16px" }}
+              onChange={(e) => setEditingLog({ ...editingLog, tempTime: e.target.value })}
+            />
+            <div style={{ display: "flex", gap: "12px" }}>
+              <button onClick={() => handleTimeUpdate(editingLog.ログID, editingLog.tempTime)} style={{ ...s.btn, flex: 1 }}>保存する</button>
+              <button onClick={() => setEditingLog(null)} style={{ ...s.btn, flex: 1, background: THEME.bg, color: THEME.textMain }}>キャンセル</button>
             </div>
           </div>
-        )) : <div style={s.card}>シナリオ設定が見つかりません。</div>}
-      </div>
+        </div>
+      )}
     </Page>
   );
 }
