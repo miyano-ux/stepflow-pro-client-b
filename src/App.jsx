@@ -380,27 +380,97 @@ function ScenarioList({ scenarios, onRefresh }) {
   );
 }
 
+// --- 画面：シナリオ管理 (保存時アラート機能付き) ---
 function ScenarioForm({ scenarios, onRefresh }) {
-  const { id: editId } = useParams(); const navigate = useNavigate();
-  const [id, setId] = useState(""); const [steps, setSteps] = useState([{ elapsedDays: 1, message: "" }]);
-  useEffect(() => { if (editId) { setId(editId); const ex = scenarios.filter(s => s.シナリオID === editId).sort((a,b) => a.ステップ数 - b.ステップ数); if (ex.length) setSteps(ex.map(s => ({ elapsedDays: s.経過日数, message: s.message }))); } }, [editId, scenarios]);
-  const save = async () => { if(!id) return alert("名前を入力してください"); try { await api.post(GAS_URL, { action: "saveScenario", scenarioID: id, steps }); onRefresh(); navigate("/scenarios"); } catch(e) { alert("失敗"); } };
+  const { id: editId } = useParams();
+  const navigate = useNavigate();
+  const [id, setId] = useState("");
+  const [steps, setSteps] = useState([{ elapsedDays: 1, message: "" }]);
+  const [isSaving, setIsSaving] = useState(false);
+
+  useEffect(() => {
+    if (editId) {
+      setId(editId);
+      const ex = scenarios.filter(s => s.シナリオID === editId).sort((a,b) => a.ステップ数 - b.ステップ数);
+      if (ex.length) setSteps(ex.map(s => ({ elapsedDays: s.経過日数, message: s.message })));
+    }
+  }, [editId, scenarios]);
+
+  const handleSave = async () => {
+    if(!id) return alert("シナリオ名を入力してください");
+    setIsSaving(true);
+
+    try {
+      // 1. 影響人数をサーバーに問い合わせ
+      const countRes = await axios.get(`${GAS_URL}?mode=countAffected&scenarioID=${id}`);
+      const affectedCount = countRes.data.count;
+
+      // 2. アラートを表示
+      const confirmMsg = editId 
+        ? `このシナリオは現在 ${affectedCount} 名の顧客に適用されています。\nシナリオを更新すると、これらの顧客の「配信待ち」スケジュールもすべて最新版に再構築されます（過去の配信済みログは維持されます）。\n\n更新してもよろしいですか？`
+        : "新しいシナリオを保存しますか？";
+
+      if (window.confirm(confirmMsg)) {
+        await api.post(GAS_URL, { action: "saveScenario", scenarioID: id, steps });
+        alert("シナリオと顧客スケジュールを更新しました");
+        onRefresh();
+        navigate("/scenarios");
+      }
+    } catch(e) {
+      alert("保存中にエラーが発生しました");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   return (
-    <Page title="シナリオの構成">
+    <Page title={editId ? "シナリオ構成の変更" : "新規シナリオ作成"} subtitle="ステップの追加・削除や配信タイミングを調整します">
       <div style={s.card}>
-        <label style={{fontWeight: "800"}}>シナリオ名</label>
-        <input style={s.input} value={id} onChange={e=>setId(e.target.value)} disabled={!!editId} placeholder="例: 予約リマインド" />
+        <div style={{ marginBottom: "32px" }}>
+          <label style={{ fontWeight: "800", display: "block", marginBottom: "8px" }}>シナリオ名</label>
+          <input style={s.input} value={id} onChange={e=>setId(e.target.value)} disabled={!!editId} placeholder="例: 初回購入フォロー" />
+        </div>
+
         {steps.map((x, i) => (
-          <div key={i} style={{ padding: "20px", background: "#F8FAFC", marginBottom: "15px", borderRadius: "12px", border: `1px solid ${THEME.border}` }}>
-            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "8px" }}><span style={{ fontWeight: "900", color: THEME.primary }}>STEP {i+1}</span>{steps.length > 1 && <button onClick={() => setSteps(steps.filter((_, idx) => idx !== i))} style={{ color: THEME.danger, background: "none", border: "none" }}>削除</button>}</div>
-            <label style={{fontSize: "12px"}}>経過日数 (登録日を0とする)</label>
-            <input type="number" style={s.input} value={x.elapsedDays} onChange={e=>{ const n=[...steps]; n[i].elapsedDays=e.target.value; setSteps(n); }} />
-            <label style={{fontSize: "12px"}}>送信メッセージ</label>
-            <textarea style={{ ...s.input, height: "100px", resize: "none" }} value={x.message} onChange={e=>{ const n=[...steps]; n[i].message=e.target.value; setSteps(n); }} />
+          <div key={i} style={{ padding: "24px", background: "#F8FAFC", marginBottom: "20px", borderRadius: "16px", border: `1px solid ${THEME.border}`, position: "relative" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
+              <span style={{ fontWeight: "900", color: THEME.primary, fontSize: "15px", background: "white", padding: "4px 12px", borderRadius: "20px", border: `1px solid ${THEME.primary}` }}>
+                STEP {i + 1}
+              </span>
+              {steps.length > 1 && (
+                <button onClick={() => setSteps(steps.filter((_, idx) => idx !== i))} style={{ color: THEME.danger, background: "none", border: "none", cursor: "pointer", display: "flex", alignItems: "center", gap: "4px", fontSize: "13px", fontWeight: "700" }}>
+                  <Trash2 size={16} /> このステップを削除
+                </button>
+              )}
+            </div>
+            
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr", gap: "20px" }}>
+              <div>
+                <label style={{ fontSize: "12px", fontWeight: "800", color: THEME.textMuted, display: "block", marginBottom: "8px" }}>配信タイミング</label>
+                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                  <input type="number" style={{ ...s.input, marginBottom: 0, width: "80px" }} value={x.elapsedDays} onChange={e=>{ const n=[...steps]; n[i].elapsedDays=e.target.value; setSteps(n); }} />
+                  <span style={{ fontSize: "14px", fontWeight: "700" }}>日後</span>
+                </div>
+              </div>
+              <div>
+                <label style={{ fontSize: "12px", fontWeight: "800", color: THEME.textMuted, display: "block", marginBottom: "8px" }}>送信メッセージ</label>
+                <textarea style={{ ...s.input, height: "100px", marginBottom: 0, resize: "none" }} value={x.message} onChange={e=>{ const n=[...steps]; n[i].message=e.target.value; setSteps(n); }} placeholder="お客様へのメッセージを入力..." />
+              </div>
+            </div>
           </div>
         ))}
-        <button onClick={() => setSteps([...steps, { elapsedDays: 1, message: "" }])} style={{ ...s.btn, background: "none", color: THEME.primary, border: `1px solid ${THEME.primary}`, width: "100%", marginBottom: "12px" }}>+ ステップを追加</button>
-        <button onClick={save} style={{ ...s.btn, width: "100%" }}>保存</button>
+
+        <button onClick={() => setSteps([...steps, { elapsedDays: 1, message: "" }])} style={{ ...s.btn, background: "white", color: THEME.primary, border: `2px dashed ${THEME.primary}`, width: "100%", marginBottom: "24px", height: "50px" }}>
+          <Plus size={20} /> 新しいステップを追加
+        </button>
+
+        <div style={{ display: "flex", gap: "16px" }}>
+          <button onClick={handleSave} disabled={isSaving} style={{ ...s.btn, flex: 2, height: "56px", fontSize: "16px" }}>
+            {isSaving ? <Loader2 className="animate-spin" /> : <Save size={20} />} 
+            {editId ? "変更を全顧客に反映して保存" : "シナリオを保存"}
+          </button>
+          <button onClick={() => navigate("/scenarios")} style={{ ...s.btn, flex: 1, background: THEME.bg, color: THEME.textMain }}>キャンセル</button>
+        </div>
       </div>
     </Page>
   );
