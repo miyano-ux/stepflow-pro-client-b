@@ -1,9 +1,9 @@
-import React, { useState, useEffect, useCallback, useMemo } from "react";
+import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { BrowserRouter as Router, Routes, Route, Link, useParams, useNavigate, useLocation } from "react-router-dom";
 import axios from "axios";
 import { 
   LayoutDashboard, UserPlus, Settings, MessageSquare, Trash2, 
-  Plus, Loader2, LogOut, Users, GripVertical, ListFilter, Edit3, Lock, Save, Search, Clock, ArrowUpDown, ArrowUp, ArrowDown
+  Plus, Loader2, LogOut, Users, GripVertical, ListFilter, Edit3, Lock, Save, Search, Clock, ArrowUpDown, ArrowUp, ArrowDown, Download, Upload, FileSpreadsheet
 } from "lucide-react";
 import { GoogleOAuthProvider, GoogleLogin } from '@react-oauth/google';
 import { jwtDecode } from "jwt-decode";
@@ -34,12 +34,11 @@ const s = {
   badge: { padding: "4px 10px", borderRadius: "6px", fontSize: "11px", fontWeight: "700", backgroundColor: "#EEF2FF", color: THEME.primary }
 };
 
-// 共通フォーマット
-const formatDate = (dStr) => {
-  if (!dStr || dStr === "-" || dStr === "undefined") return "-";
-  const d = new Date(dStr);
-  if (isNaN(d.getTime())) return dStr;
-  return `${d.getFullYear()}/${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getDate()).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+const formatDate = (dateStr) => {
+  if (!dateStr || dateStr === "-" || dateStr === "undefined") return "-";
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return dateStr;
+  return `${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
 };
 
 const parseLocalDate = (dateStr, isEnd = false) => {
@@ -60,6 +59,14 @@ const api = {
 
 const cleanPhone = (v) => String(v || "").replace(/[^\d]/g, "");
 
+// --- CSVユーティリティ ---
+const downloadCSV = (rows, filename) => {
+  const content = rows.map(row => row.map(cell => `"${(cell || "").toString().replace(/"/g, '""')}"`).join(",")).join("\n");
+  const blob = new Blob([new Uint8Array([0xEF, 0xBB, 0xBF]), content], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a"); link.href = url; link.download = filename; link.click();
+};
+
 // --- レイアウト ---
 function Sidebar({ onLogout, user }) {
   const l = useLocation();
@@ -73,11 +80,11 @@ function Sidebar({ onLogout, user }) {
   );
 }
 
-function Page({ title, children, topButton }) {
-  return (<div style={s.main}><div style={{ padding: "40px 60px", maxWidth: "1400px", margin: "0 auto" }}><div style={{ marginBottom: "32px", display: "flex", justifyContent: "space-between", alignItems: "flex-end" }}><div><h1 style={{ fontSize: "28px", fontWeight: "800" }}>{title}</h1></div>{topButton}</div>{children}</div></div>);
+function Page({ title, subtitle, children, topButton }) {
+  return (<div style={s.main}><div style={{ padding: "40px 60px", maxWidth: "1400px", margin: "0 auto" }}><div style={{ marginBottom: "32px", display: "flex", justifyContent: "space-between", alignItems: "flex-end" }}><div><h1 style={{ fontSize: "28px", fontWeight: "800" }}>{title}</h1>{subtitle && <p style={{ color: THEME.textMuted, fontSize: "14px", marginTop: "4px" }}>{subtitle}</p>}</div>{topButton}</div>{children}</div></div>);
 }
 
-// --- 顧客リスト (ソート・レンジフィルタ) ---
+// --- 顧客リスト (ソート・フィルタ・CSVエクスポート) ---
 function CustomerList({ customers = [], displaySettings = [], formSettings = [], onRefresh }) {
   const navigate = useNavigate();
   const [search, setSearch] = useState({});
@@ -93,25 +100,19 @@ function CustomerList({ customers = [], displaySettings = [], formSettings = [],
     return ["姓", "電話番号", "登録日"];
   }, [displaySettings]);
 
-  const requestSort = (key) => {
-    let dir = 'asc';
-    if (sortConfig.key === key && sortConfig.direction === 'asc') dir = 'desc';
-    setSortConfig({ key, direction: dir });
-  };
-
   const filteredAndSorted = useMemo(() => {
     let res = [...customers].filter(c => {
       return Object.keys(search).every(key => {
         const query = search[key]; if (!query) return true;
-        const f = formSettings.find(x => x.name === key);
+        const f = formSettings?.find(x => x.name === key);
         const val = c[key];
         if (f?.type === "date" || key === "登録日") {
           if (!val || val === "-") return false;
           const target = new Date(val).getTime();
-          const sT = parseLocalDate(query.start);
-          const eT = parseLocalDate(query.end, true);
-          if (sT && target < sT) return false;
-          if (eT && target > eT) return false;
+          const start = parseLocalDate(query.start);
+          const end = parseLocalDate(query.end, true);
+          if (start && target < start) return false;
+          if (end && target > end) return false;
           return true;
         }
         return String(val || "").toLowerCase().includes(String(query).toLowerCase());
@@ -120,7 +121,7 @@ function CustomerList({ customers = [], displaySettings = [], formSettings = [],
     if (sortConfig.key) {
       res.sort((a, b) => {
         let aVal = a[sortConfig.key], bVal = b[sortConfig.key];
-        const f = formSettings.find(x => x.name === sortConfig.key);
+        const f = formSettings?.find(x => x.name === sortConfig.key);
         if (f?.type === "date" || sortConfig.key === "登録日") {
           const aT = (aVal && aVal !== "-") ? new Date(aVal).getTime() : 0;
           const bT = (bVal && bVal !== "-") ? new Date(bVal).getTime() : 0;
@@ -135,12 +136,28 @@ function CustomerList({ customers = [], displaySettings = [], formSettings = [],
     return res;
   }, [customers, search, formSettings, sortConfig]);
 
+  const requestSort = (key) => {
+    let dir = 'asc'; if (sortConfig.key === key && sortConfig.direction === 'asc') dir = 'desc';
+    setSortConfig({ key, direction: dir });
+  };
+
+  const handleExport = () => {
+    const header = visibleCols;
+    const rows = filteredAndSorted.map(c => visibleCols.map(col => c[col] || ""));
+    downloadCSV([header, ...rows], `customer_list_${new Date().toISOString().slice(0,10)}.csv`);
+  };
+
   return (
-    <Page title="顧客ダッシュボード" topButton={<button onClick={() => navigate("/column-settings")} style={{ ...s.btn, ...s.btnSecondary }}><ListFilter size={18} /> 表示・検索設定</button>}>
+    <Page title="顧客ダッシュボード" topButton={
+      <div style={{ display: "flex", gap: "10px" }}>
+        <button onClick={handleExport} style={{ ...s.btn, ...s.btnSecondary }}><Download size={18} /> CSVエクスポート</button>
+        <button onClick={() => navigate("/column-settings")} style={{ ...s.btn, ...s.btnSecondary }}><ListFilter size={18} /> 表示・検索設定</button>
+      </div>
+    }>
       <div style={{ ...s.card, padding: "20px", marginBottom: "24px", background: "#F1F5F9", border: "none", display: "flex", gap: "15px", flexWrap: "wrap", alignItems: "flex-end" }}>
         <Search size={18} color={THEME.textMuted} />
         {searchableCols.map(col => {
-          const f = formSettings.find(x => x.name === col);
+          const f = formSettings?.find(x => x.name === col);
           if (f?.type === "date" || col === "登録日") return (
             <div key={col} style={{ display: "flex", flexDirection: "column", gap: 4 }}>
               <label style={{ fontSize: "11px", fontWeight: "800" }}>{col}</label>
@@ -151,13 +168,19 @@ function CustomerList({ customers = [], displaySettings = [], formSettings = [],
               </div>
             </div>
           );
-          return <div key={col} style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-            <label style={{ fontSize: "11px", fontWeight: "800" }}>{col}</label>
-            <input placeholder={`${col}...`} style={{ ...s.input, width: "130px", marginBottom: 0 }} onChange={e => setSearch({...search, [col]: e.target.value})} />
-          </div>;
+          if (f?.type === "dropdown") return (
+            <div key={col} style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              <label style={{ fontSize: "11px", fontWeight: "800" }}>{col}</label>
+              <select style={{ ...s.input, width: "150px", marginBottom: 0 }} onChange={e => setSearch({...search, [col]: e.target.value})}>
+                <option value="">全て</option>{f.options?.split(",").map(o => <option key={o} value={o}>{o}</option>)}
+              </select>
+            </div>
+          );
+          return <div key={col} style={{ display: "flex", flexDirection: "column", gap: 4 }}><label style={{ fontSize: "11px", fontWeight: "800" }}>{col}</label><input placeholder={`${col}...`} style={{ ...s.input, width: "130px", marginBottom: 0 }} onChange={e => setSearch({...search, [col]: e.target.value})} /></div>;
         })}
-        <button onClick={() => setSearch({})} style={{ fontSize: "12px", color: THEME.primary, background: "none", border: "none", cursor: "pointer", fontWeight: "700" }}>リセット</button>
+        <button onClick={() => setSearch({})} style={{ fontSize: "12px", color: THEME.primary, background: "none", border: "none", cursor: "pointer", fontWeight: "700" }}>クリア</button>
       </div>
+
       <div style={{ ...s.card, padding: 0, overflowX: "auto" }}>
         <table style={{ width: "100%", borderCollapse: "collapse" }}>
           <thead><tr>
@@ -171,7 +194,7 @@ function CustomerList({ customers = [], displaySettings = [], formSettings = [],
           <tbody>{filteredAndSorted.map(c => (
             <tr key={c.id}>
               {visibleCols.map(col => {
-                const f = formSettings.find(x => x.name === col);
+                const f = formSettings?.find(x => x.name === col);
                 const isD = f?.type === "date" || col === "登録日";
                 return <td key={col} style={s.tableTd}>{col === "シナリオID" ? <span style={s.badge}>{c[col]}</span> : (isD ? formatDate(c[col]) : (c[col] || "-"))}</td>;
               })}
@@ -183,6 +206,73 @@ function CustomerList({ customers = [], displaySettings = [], formSettings = [],
             </tr>
           ))}</tbody>
         </table>
+      </div>
+    </Page>
+  );
+}
+
+// --- 顧客登録 (テンプレート発行・CSVアップロード統合) ---
+function CustomerForm({ formSettings = [], scenarios = [], onRefresh }) {
+  const navigate = useNavigate();
+  const fileInputRef = useRef(null);
+  const [lastName, setLastName] = useState(""); const [firstName, setFirstName] = useState(""); const [phone, setPhone] = useState("");
+  const [formData, setFormData] = useState({}); const [scenarioID, setScenarioID] = useState("");
+
+  useEffect(() => { if(scenarios?.length > 0) setScenarioID(scenarios[0].シナリオID); }, [scenarios]);
+
+  const handleTemplateDownload = () => {
+    const header = ["姓", "名", "電話番号", "シナリオID", ...formSettings.map(f => f.name)];
+    downloadCSV([header], "stepflow_template.csv");
+  };
+
+  const handleFileUpload = (e) => {
+    const file = e.target.files[0]; if (!file) return;
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      const text = event.target.result;
+      const rows = text.split("\n").map(r => r.split(",").map(c => c.replace(/^"|"$/g, "").trim()));
+      const header = rows[0];
+      const customers = rows.slice(1).filter(r => r.length > 1).map(row => {
+        const obj = { lastName: "", firstName: "", phone: "", scenarioID: "", data: {} };
+        header.forEach((h, i) => {
+          if (h === "姓") obj.lastName = row[i];
+          else if (h === "名") obj.firstName = row[i];
+          else if (h === "電話番号") obj.phone = row[i];
+          else if (h === "シナリオID") obj.scenarioID = row[i];
+          else obj.data[h] = row[i];
+        });
+        return obj;
+      });
+      if (window.confirm(`${customers.length}件の顧客を一括登録しますか？`)) {
+        await api.post(GAS_URL, { action: "bulkAdd", customers });
+        alert("一括登録完了"); onRefresh(); navigate("/");
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  return (
+    <Page title="新規顧客登録" topButton={
+      <div style={{ display: "flex", gap: "10px" }}>
+        <button onClick={handleTemplateDownload} style={{ ...s.btn, ...s.btnSecondary }}><FileSpreadsheet size={18} /> テンプレート</button>
+        <button onClick={() => fileInputRef.current.click()} style={{ ...s.btn, ...s.btnPrimary }}><Upload size={18} /> CSVアップロード</button>
+        <input type="file" ref={fileInputRef} hidden accept=".csv" onChange={handleFileUpload} />
+      </div>
+    }>
+      <div style={{ ...s.card, maxWidth: "650px", margin: "0 auto" }}>
+        <form onSubmit={async (e) => { e.preventDefault(); await api.post(GAS_URL, { action: "add", lastName, firstName, phone, data: formData, scenarioID }); onRefresh(); navigate("/"); }}>
+          <div style={{ display: "flex", gap: "20px", marginBottom: "20px" }}><div style={{ flex: 1 }}><label style={{fontWeight:"700", display:"block", marginBottom:"8px"}}>姓 *</label><input style={s.input} required onChange={e => setLastName(e.target.value)} /></div><div style={{ flex: 1 }}><label style={{fontWeight:"700", display:"block", marginBottom:"8px"}}>名 *</label><input style={s.input} required onChange={e => setFirstName(e.target.value)} /></div></div>
+          <div style={{ marginBottom: "20px" }}><label style={{fontWeight:"700", display:"block", marginBottom:"8px"}}>電話番号 *</label><input style={s.input} required onChange={e => setPhone(e.target.value)} /></div>
+          {formSettings.map(f => <div key={f.name} style={{marginBottom:"20px"}}><label style={{fontWeight:"700", display:"block", marginBottom:"8px"}}>{f.name}</label>
+            {f.type === "dropdown" ? (
+              <select style={s.input} value={formData[f.name] || ""} onChange={e => setFormData({...formData, [f.name]: e.target.value})}><option value="">選択してください</option>{f?.options?.split(",").map(o => <option key={o} value={o}>{o}</option>)}</select>
+            ) : <input type={f.type} style={s.input} value={formData[f.name] || ""} onChange={e => setFormData({...formData, [f.name]: e.target.value})} />}
+          </div>)}
+          <div style={{ marginBottom: "32px", borderTop: `1px solid ${THEME.border}`, paddingTop: "24px" }}><label style={{fontWeight:"700", display:"block", marginBottom:"8px"}}>適用シナリオ</label>
+            <select style={s.input} value={scenarioID} onChange={e => setScenarioID(e.target.value)}>{[...new Set(scenarios?.map(x => x.シナリオID))].map(id => <option key={id} value={id}>{id}</option>)}</select>
+          </div>
+          <button type="submit" style={{ ...s.btn, ...s.btnPrimary, width: "100%", padding: "14px" }}>個別登録を実行</button>
+        </form>
       </div>
     </Page>
   );
@@ -224,58 +314,17 @@ function ColumnSettings({ displaySettings = [], formSettings = [], onRefresh }) 
   );
 }
 
-// --- コンポーネント: 顧客登録 (シナリオ選択復活) ---
-function CustomerForm({ formSettings = [], scenarios = [], onRefresh }) {
-  const navigate = useNavigate();
-  const [lastName, setLastName] = useState(""); const [firstName, setFirstName] = useState(""); const [phone, setPhone] = useState("");
-  const [formData, setFormData] = useState({}); const [scenarioID, setScenarioID] = useState("");
-  useEffect(() => { if(scenarios?.length > 0) setScenarioID(scenarios[0].シナリオID); }, [scenarios]);
-  return (
-    <Page title="新規顧客登録" topButton={<button onClick={() => navigate("/form-settings")} style={{ ...s.btn, ...s.btnSecondary }}>項目調整</button>}>
-      <div style={{ ...s.card, maxWidth: "650px", margin: "0 auto" }}>
-        <form onSubmit={async (e) => { e.preventDefault(); await api.post(GAS_URL, { action: "add", lastName, firstName, phone, data: formData, scenarioID }); onRefresh(); navigate("/"); }}>
-          <div style={{ display: "flex", gap: "20px", marginBottom: "20px" }}><div style={{ flex: 1 }}><label style={{fontWeight:"700", display:"block", marginBottom:"8px"}}>姓 *</label><input style={s.input} required onChange={e => setLastName(e.target.value)} /></div><div style={{ flex: 1 }}><label style={{fontWeight:"700", display:"block", marginBottom:"8px"}}>名 *</label><input style={s.input} required onChange={e => setFirstName(e.target.value)} /></div></div>
-          <div style={{ marginBottom: "20px" }}><label style={{fontWeight:"700", display:"block", marginBottom:"8px"}}>電話番号 *</label><input style={s.input} required onChange={e => setPhone(e.target.value)} /></div>
-          {formSettings.map(f => <div key={f.name} style={{marginBottom:"20px"}}><label style={{fontWeight:"700", display:"block", marginBottom:"8px"}}>{f.name}</label>
-            {f.type === "dropdown" ? (
-              <select style={s.input} value={formData[f.name] || ""} onChange={e => setFormData({...formData, [f.name]: e.target.value})}><option value="">選択してください</option>{f?.options?.split(",").map(o => <option key={o} value={o}>{o}</option>)}</select>
-            ) : <input type={f.type} style={s.input} value={formData[f.name] || ""} onChange={e => setFormData({...formData, [f.name]: e.target.value})} />}
-          </div>)}
-          <div style={{ marginBottom: "32px", borderTop: `1px solid ${THEME.border}`, paddingTop: "24px" }}><label style={{fontWeight:"700", display:"block", marginBottom:"8px"}}>適用シナリオ</label>
-            <select style={s.input} value={scenarioID} onChange={e => setScenarioID(e.target.value)}>{[...new Set(scenarios?.map(x => x.シナリオID))].map(id => <option key={id} value={id}>{id}</option>)}</select>
-          </div>
-          <button type="submit" style={{ ...s.btn, ...s.btnPrimary, width: "100%", padding: "14px" }}>登録する</button>
-        </form>
-      </div>
-    </Page>
-  );
-}
-
-// --- ユーザー管理 (CRUD・モーダル完全復旧) ---
+// --- その他コンポーネント (UserManager, CustomerEdit, Scenario, etc.) ---
 function UserManager({ masterUrl }) {
   const [users, setUsers] = useState([]);
-  const [modal, setModal] = useState({ open: false, mode: "add", data: { name: "", email: "", oldEmail: "" } });
+  const [modal, setModal] = useState({ open: false, mode: "add", data: { name: "", email: "" } });
   const fetchUsers = useCallback(async () => { const res = await axios.get(`${masterUrl}?action=list&company=${CLIENT_COMPANY_NAME}`); setUsers(res?.data?.users || []); }, [masterUrl]);
   useEffect(() => { fetchUsers(); }, [fetchUsers]);
-  const sub = async (e) => { e.preventDefault(); await api.post(masterUrl, { action: modal.mode === "add" ? "addUser" : "editUser", company: CLIENT_COMPANY_NAME, ...modal.data }); setModal({ open: false }); fetchUsers(); };
   const del = async (email) => { if(window.confirm("削除？")) { await api.post(masterUrl, { action: "deleteUser", company: CLIENT_COMPANY_NAME, email }); fetchUsers(); } };
-  return (
-    <Page title="ユーザー管理" topButton={<button onClick={() => setModal({ open: true, mode: "add", data: { name: "", email: "" } })} style={{ ...s.btn, ...s.btnPrimary }}><Plus size={18} /> 追加</button>}>
-      <div style={{ ...s.card, padding: 0 }}><table style={{ width: "100%", borderCollapse: "collapse" }}><thead><tr><th style={s.tableTh}>名前</th><th style={s.tableTh}>メール</th><th style={{...s.tableTh, textAlign:"right"}}>操作</th></tr></thead>
-      <tbody>{users.map((u, i) => (<tr key={i}><td style={s.tableTd}>{u.name}</td><td style={s.tableTd}>{u.email}</td><td style={{...s.tableTd, textAlign:"right"}}>
-        <div style={{display:"flex", gap:"10px", justifyContent:"flex-end"}}>
-          <button onClick={() => setModal({ open: true, mode: "edit", data: { name: u.name, email: u.email, oldEmail: u.email } })} style={{background:"none", border:"none", color:THEME.primary, cursor:"pointer", fontWeight:"600"}}>編集</button>
-          <button onClick={()=>del(u.email)} style={{background:"none", border:"none", color:THEME.danger, cursor:"pointer"}}><Trash2 size={16}/></button>
-        </div>
-      </td></tr>))}</tbody></table></div>
-      {modal.open && (<div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(0,0,0,0.5)", display: "flex", justifyContent: "center", alignItems: "center", zIndex: 2000 }}>
-        <div style={{ ...s.card, width: "400px" }}><h3>{modal.mode === "add" ? "追加" : "編集"}</h3><form onSubmit={sub}><input style={{...s.input, marginBottom:"15px"}} value={modal.data.name} onChange={e=>setModal({...modal, data:{...modal.data, name: e.target.value}})} placeholder="名前" required /><input style={{...s.input, marginBottom:"15px"}} type="email" value={modal.data.email} onChange={e=>setModal({...modal, data:{...modal.data, email: e.target.value}})} placeholder="メール" required /><div style={{ display: "flex", gap: "10px" }}><button type="submit" style={{...s.btn, ...s.btnPrimary, flex:1}}>保存</button><button type="button" onClick={()=>setModal({open:false})} style={{...s.btn, ...s.btnSecondary, flex:1}}>閉じる</button></div></form></div>
-      </div>)}
-    </Page>
-  );
+  const sub = async (e) => { e.preventDefault(); await api.post(masterUrl, { action: modal.mode === "add" ? "addUser" : "editUser", company: CLIENT_COMPANY_NAME, ...modal.data }); setModal({ open: false }); fetchUsers(); };
+  return (<Page title="ユーザー管理" topButton={<button onClick={() => setModal({ open: true, mode: "add", data: { name: "", email: "" } })} style={{ ...s.btn, ...s.btnPrimary }}><Plus size={18} /> 追加</button>}><div style={{ ...s.card, padding: 0 }}><table style={{ width: "100%", borderCollapse: "collapse" }}><thead><tr><th style={s.tableTh}>名前</th><th style={s.tableTh}>メール</th><th style={{...s.tableTh, textAlign:"right"}}>操作</th></tr></thead><tbody>{users.map((u, i) => (<tr key={i}><td style={s.tableTd}>{u.name}</td><td style={s.tableTd}>{u.email}</td><td style={{...s.tableTd, textAlign:"right"}}><div style={{display:"flex", gap:"10px", justifyContent:"flex-end"}}><button onClick={() => setModal({ open: true, mode: "edit", data: { name: u.name, email: u.email, oldEmail: u.email } })} style={{background:"none", border:"none", color:THEME.primary, cursor:"pointer", fontWeight:"600"}}>編集</button><button onClick={()=>del(u.email)} style={{background:"none", border:"none", color:THEME.danger, cursor:"pointer"}}><Trash2 size={16}/></button></div></td></tr>))}</tbody></table></div>{modal.open && (<div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(0,0,0,0.5)", display: "flex", justifyContent: "center", alignItems: "center", zIndex: 2000 }}><div style={{ ...s.card, width: "400px", marginBottom: 0 }}><h3>追加・編集</h3><form onSubmit={sub}><input style={{...s.input, marginBottom:"15px"}} value={modal.data.name} onChange={e=>setModal({...modal, data:{...modal.data, name: e.target.value}})} placeholder="名前" required /><input style={{...s.input, marginBottom:"15px"}} type="email" value={modal.data.email} onChange={e=>setModal({...modal, data:{...modal.data, email: e.target.value}})} placeholder="メール" required /><div style={{ display: "flex", gap: "10px" }}><button type="submit" style={{...s.btn, ...s.btnPrimary, flex:1}}>保存</button><button type="button" onClick={()=>setModal({open:false})} style={{...s.btn, ...s.btnSecondary, flex:1}}>閉じる</button></div></form></div></div>)}</Page>);
 }
 
-// --- 他コンポーネント (指示通り既存機能維持) ---
 function CustomerEdit({ customers = [], scenarios = [], formSettings = [], onRefresh }) {
   const { id } = useParams(); const nav = useNavigate(); const c = customers?.find(x => x.id === Number(id));
   const [lastName, setL] = useState(""); const [firstName, setF] = useState(""); const [phone, setP] = useState("");
@@ -294,16 +343,15 @@ function CustomerSchedule({ customers = [], deliveryLogs = [], onRefresh }) {
   const [editLog, setEditLog] = useState(null);
   if(!c) return <Page title="Loading..."><Loader2 size={24} className="animate-spin" /></Page>;
   const myLogs = deliveryLogs.filter(log => cleanPhone(log.電話番号) === cleanPhone(c["電話番号"]));
-  const startEdit = (log) => { const d = new Date(log.配信予定日時); const tzO = d.getTimezoneOffset() * 60000; const localTime = new Date(d.getTime() - tzO).toISOString().slice(0, 16); setEditLog({ ...log, t: localTime, m: log.内容 }); };
-  return (<Page title="状況" subtitle={`${c["姓"]}${c["名"]} 様`}><Link to="/" style={{display:"block", marginBottom:"24px", color:THEME.primary, textDecoration:"none", fontWeight:"700"}}>← 戻る</Link><div style={{display:"flex", flexDirection:"column", gap:"16px"}}>{myLogs.map((log, i) => (<div key={i} style={{ ...s.card, borderLeft: `6px solid ${log.ステータス === "配信済み" ? THEME.success : THEME.primary}`, padding: "20px", marginBottom: 0 }}><div style={{display:"flex", justifyContent:"space-between"}}><div><span style={s.badge}>{log.ステータス}</span><div style={{fontWeight:"800", marginTop:"8px"}}>{formatDate(log.配信予定日時)}</div></div>{log.ステータス === "配信待ち" && <button onClick={()=>startEdit(log)} style={{color:THEME.primary, background:"none", border:"none", cursor:"pointer", fontWeight:"600"}}>編集</button>}</div><div style={{marginTop:"15px", whiteSpace:"pre-wrap", fontSize:"14px"}}>{log.内容}</div></div>))}</div>
-  {editLog && (<div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(0,0,0,0.6)", display: "flex", justifyContent: "center", alignItems: "center", zIndex: 2000 }}><div style={{ ...s.card, width: "500px" }}><h3>配信の調整</h3><div style={{marginBottom:"15px"}}><label style={{fontSize:"12px"}}>日時</label><input type="datetime-local" style={s.input} value={editLog.t} onChange={e=>setEditLog({...editLog, t:e.target.value})} /></div><div style={{marginBottom:"20px"}}><label style={{fontSize:"12px"}}>本文</label><textarea style={{...s.input, height:"150px", resize:"none"}} value={editLog.m} onChange={e=>setEditLog({...editLog, m:e.target.value})} /></div><div style={{display:"flex", gap:"10px"}}><button onClick={async()=>{await api.post(GAS_URL,{action:"updateDeliveryTime",logId:editLog.ログID,newTime:editLog.t, newMessage:editLog.m}); onRefresh(); setEditLog(null);}} style={{...s.btn, ...s.btnPrimary, flex:1}}>保存</button><button onClick={()=>setEditLog(null)} style={{...s.btn, ...s.btnSecondary, flex:1}}>閉じる</button></div></div></div>)}</Page>);
+  const startEdit = (log) => { const d = new Date(log.配信予定日時); const localTime = new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16); setEditLog({ ...log, t: localTime, m: log.内容 }); };
+  return (<Page title="状況" subtitle={`${c["姓"]}${c["名"]} 様`}><Link to="/" style={{display:"block", marginBottom:"24px", color:THEME.primary, textDecoration:"none", fontWeight:"700"}}>← 戻る</Link><div style={{display:"flex", flexDirection:"column", gap:"16px"}}>{myLogs.map((log, i) => (<div key={i} style={{ ...s.card, borderLeft: `6px solid ${log.ステータス === "配信済み" ? THEME.success : THEME.primary}`, padding: "20px" }}><div style={{display:"flex", justifyContent:"space-between"}}><div><span style={s.badge}>{log.ステータス}</span><div style={{fontWeight:"800", marginTop:"8px"}}>{formatDate(log.配信予定日時)}</div></div>{log.ステータス === "配信待ち" && <button onClick={()=>startEdit(log)} style={{color:THEME.primary, background:"none", border:"none", cursor:"pointer", fontWeight:"600"}}>編集</button>}</div><div style={{marginTop:"12px", whiteSpace:"pre-wrap", fontSize:"14px"}}>{log.内容}</div></div>))}</div>
+  {editLog && (<div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(0,0,0,0.6)", display: "flex", justifyContent: "center", alignItems: "center", zIndex: 2000 }}><div style={{ ...s.card, width: "500px", marginBottom: 0 }}><h3>配信の調整</h3><div style={{marginBottom:"15px"}}><label style={{fontSize:"12px"}}>日時</label><input type="datetime-local" style={s.input} value={editLog.t} onChange={e=>setEditLog({...editLog, t:e.target.value})} /></div><div style={{marginBottom:"20px"}}><label style={{fontSize:"12px"}}>本文</label><textarea style={{...s.input, height:"150px", resize:"none"}} value={editLog.m} onChange={e=>setEditLog({...editLog, m:e.target.value})} /></div><div style={{display:"flex", gap:"10px"}}><button onClick={async()=>{await api.post(GAS_URL,{action:"updateDeliveryTime",logId:editLog.ログID,newTime:editLog.t, newMessage:editLog.m}); onRefresh(); setEditLog(null);}} style={{...s.btn, ...s.btnPrimary, flex:1}}>保存</button><button onClick={()=>setEditLog(null)} style={{...s.btn, ...s.btnSecondary, flex:1}}>閉じる</button></div></div></div>)}</Page>);
 }
 
 function FormSettings({ formSettings = [], onRefresh }) {
   const [items, setItems] = useState(formSettings || []); const nav = useNavigate();
-  return (<Page title="項目の調整"><div style={{ maxWidth: "850px" }}>{["姓", "名", "電話番号"].map(f => (<div key={f} style={{ ...s.card, marginBottom: "8px", padding: "16px 24px", display: "flex", gap: "20px", alignItems: "center", backgroundColor: THEME.locked, opacity: 0.7 }}><Lock size={18} color={THEME.textMuted} /><div style={{ flex: 2 }}><label style={{fontSize:"11px"}}>項目名</label><div style={{fontWeight:"700"}}>{f}</div></div><div style={{ flex: 1.5 }}><label style={{fontSize:"11px"}}>形式</label><div>テキスト</div></div><div style={{ width: "100px", textAlign: "center" }}><label style={{fontSize:"11px"}}>必須</label><div style={{fontSize: "12px", color: THEME.success, fontWeight: "800"}}>固定</div></div></div>))}
-  <div style={{ marginTop: "30px", marginBottom: "15px", fontWeight: "800" }}>追加項目</div>{items.map((x, i) => (<div key={i} style={{ ...s.card, marginBottom: "12px", padding: "16px 24px", display: "flex", gap: "15px", alignItems: "center" }}><GripVertical size={20} color={THEME.border} /><div style={{ flex: 2 }}><input style={{...s.input, marginBottom: 0}} value={x.name} onChange={e => { const n=[...items]; n[i].name=e.target.value; setItems(n); }} /></div><div style={{ flex: 1.5 }}><select style={{...s.input, marginBottom: 0}} value={x.type} onChange={e => { const n=[...items]; n[i].type=e.target.value; setItems(n); }}><option value="text">テキスト</option><option value="tel">番号</option><option value="dropdown">プルダウン</option><option value="date">日付</option></select></div>
-  <button onClick={() => setItems(items.filter((_, idx) => idx !== i))} style={{ color: THEME.danger, background: "none", border: "none" }}><Trash2 size={20}/></button></div>))}
+  return (<Page title="項目の調整"><div style={{ maxWidth: "850px" }}>{["姓", "名", "電話番号"].map(f => (<div key={f} style={{ ...s.card, marginBottom: "8px", padding: "16px 24px", display: "flex", gap: "20px", alignItems: "center", backgroundColor: THEME.locked, opacity: 0.7 }}><Lock size={18} color={THEME.textMuted} /><div style={{ flex: 2 }}><label style={{fontSize:"11px"}}>項目名</label><div style={{fontWeight:"700"}}>{f}</div></div><div style={{ flex: 1.5 }}><label style={{fontSize:"11px"}}>形式</label><div>テキスト</div></div></div>))}
+  <div style={{ marginTop: "30px", marginBottom: "15px", fontWeight: "800" }}>追加項目</div>{items.map((x, i) => (<div key={i} style={{ ...s.card, marginBottom: "12px", padding: "16px 24px", display: "flex", gap: "15px", alignItems: "center" }}><GripVertical size={20} color={THEME.border} /><div style={{ flex: 2 }}><input style={{...s.input, marginBottom: 0}} value={x.name} onChange={e => { const n=[...items]; n[i].name=e.target.value; setItems(n); }} /></div><div style={{ flex: 1.5 }}><select style={{...s.input, marginBottom: 0}} value={x.type} onChange={e => { const n=[...items]; n[i].type=e.target.value; setItems(n); }}><option value="text">テキスト</option><option value="tel">番号</option><option value="dropdown">プルダウン</option><option value="date">日付</option></select></div><button onClick={() => setItems(items.filter((_, idx) => idx !== i))} style={{ color: THEME.danger, background: "none", border: "none" }}><Trash2 size={20}/></button></div>))}
   <button onClick={() => setItems([...items, { name: "", type: "text", required: true, options: "" }])} style={{ ...s.btn, ...s.btnSecondary, width: "100%" }}>+ 追加</button><button onClick={async () => { await api.post(GAS_URL, { action: "saveFormSettings", settings: items }); onRefresh(); nav("/add"); }} style={{ ...s.btn, ...s.btnPrimary, width: "100%", marginTop: "32px" }}>同期する</button></div></Page>);
 }
 
