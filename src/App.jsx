@@ -11,9 +11,10 @@ import { jwtDecode } from "jwt-decode";
 // ==========================================
 // ⚠️ 環境設定・テーマ
 // ==========================================
+// App.jsx
 const CLIENT_COMPANY_NAME = "B社"; 
-const GAS_URL = "https://script.google.com/macros/s/AKfycbwFVcroo9001k-6_yX6ccwemrIPbv0Da_OlA20gvLL23lXdSE6CPJJQidpQPN8cOCE/exec"; 
-const MASTER_WHITELIST_API = "https://script.google.com/macros/s/AKfycbyHgp0QFGMHBKOdohWQ4kLH-qM1khFwwESmpEveW-oXhtFg5Np85ZTDeXrpRXKnTNzm3g/exec";
+const GAS_URL = import.meta.env.VITE_GAS_URL; 
+const MASTER_WHITELIST_API = import.meta.env.VITE_MASTER_WHITELIST_API;
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID;
 
 const THEME = {
