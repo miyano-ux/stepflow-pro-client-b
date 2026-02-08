@@ -9,7 +9,8 @@ import { BrowserRouter as Router, Routes, Route, Link, useParams, useNavigate, u
 import axios from "axios";
 import { 
   LayoutDashboard, UserPlus, Settings, MessageSquare, Trash2, 
-  Plus, Loader2, LogOut, Users, GripVertical, ListFilter, Edit3, Lock, Save, Search, Clock, ArrowUpDown, ArrowUp, ArrowDown, Download, Upload, FileSpreadsheet, Eye, Send, Copy, Calendar, AlertCircle, ChevronRight, SlidersHorizontal
+  Plus, Loader2, LogOut, Users, GripVertical, ListFilter, Edit3, Lock, Save, Search, Clock, ArrowUpDown, ArrowUp, ArrowDown, Download, Upload, FileSpreadsheet, Eye, Send, Copy, Calendar, AlertCircle, ChevronRight, SlidersHorizontal, 
+  UserCheck
 } from "lucide-react";
 import { GoogleOAuthProvider, GoogleLogin } from '@react-oauth/google';
 import { jwtDecode } from "jwt-decode";
@@ -337,12 +338,13 @@ function DirectSms({ customers = [], templates = [], onRefresh, masterUrl }) {
         if (list.length > 0) setSelectedStaff(list[0]);
       } catch(e) { console.error("担当者取得エラー", e); }
     };
-    fetchStaff();
+    if (masterUrl) fetchStaff(); // masterUrlが存在する場合のみ実行
   }, [masterUrl]);
 
-  if (!c) return <Page title="読込中..."><Loader2 className="animate-spin"/></Page>;
+  // 顧客データが見つからない場合の表示
+  if (!c) return <Page title="読込中..."><div style={{display:"flex", justifyContent:"center", padding:40}}><Loader2 className="animate-spin" size={32} color={THEME.primary}/></div></Page>;
 
-  return (<Page title="個別メッセージ送信" subtitle={`${c["姓"]} ${c["名"]} 様`}>
+  return (<Page title="個別メッセージ送信" subtitle={`${c?.["姓"] || ""} ${c?.["名"] || ""} 様`}>
     <div style={{ display: "grid", gridTemplateColumns: "1fr 350px", gap: "32px" }}>
       <div>
         <div style={{...styles.card, marginBottom: 24, backgroundColor: "#EEF2FF", border: "none", padding: "20px"}}>
@@ -350,7 +352,11 @@ function DirectSms({ customers = [], templates = [], onRefresh, masterUrl }) {
             <UserCheck size={16}/> 1. 送信担当者を選択
           </label>
           <select style={styles.input} value={selectedStaff?.email || ""} onChange={e => setSelectedStaff(staffList.find(s => s.email === e.target.value))}>
-            {staffList.map(s => <option key={s.email} value={s.email}>{s.lastName} {s.firstName} ({s.phone || '番号未登録'})</option>)}
+            {staffList.length > 0 ? (
+              staffList.map(s => <option key={s.email} value={s.email}>{s.lastName || ""} {s.firstName || ""} ({s.email})</option>)
+            ) : (
+              <option value="">担当者が登録されていません</option>
+            )}
           </select>
         </div>
 
@@ -364,7 +370,7 @@ function DirectSms({ customers = [], templates = [], onRefresh, masterUrl }) {
         <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
           {templates.map(t => (<div key={t.id} onClick={() => setMsg(replaceVariables(t.content, c, selectedStaff))} style={{ ...styles.card, padding: "16px", cursor: "pointer", border: `1px solid ${THEME.border}`, transition:"0.2s" }} onMouseEnter={e=>e.currentTarget.style.borderColor=THEME.primary} onMouseLeave={e=>e.currentTarget.style.borderColor=THEME.border}>
             <div style={{ fontWeight: "700", fontSize: "14px" }}>{t.name}</div>
-            <div style={{ fontSize: "12px", color: THEME.textMuted }}>{t.content.slice(0, 50)}...</div>
+            <div style={{ fontSize: "12px", color: THEME.textMuted }}>{t.content?.slice(0, 50)}...</div>
           </div>))}
         </div>
       </div>
@@ -509,7 +515,25 @@ function UserManager({ masterUrl }) {
   return (<Page title="ユーザー管理" topButton={<button onClick={() => setModal({ open: true, mode: "add", data: { lastName: "", firstName: "", email: "", phone: "" } })} style={{ ...styles.btn, ...styles.btnPrimary }}><Plus size={18} /> 新規登録</button>}>
     <div style={{ ...styles.card, padding: 0 }}><table style={{ width: "100%", borderCollapse: "collapse" }}>
       <thead><tr><th style={styles.tableTh}>名前</th><th style={styles.tableTh}>メール</th><th style={styles.tableTh}>電話番号</th><th style={{...styles.tableTh, textAlign:"right"}}>操作</th></tr></thead>
-      <tbody>{users.map((u, i) => (<tr key={i}><td style={styles.tableTd}>{u.lastName} {u.firstName}</td><td style={styles.tableTd}>{u.email}</td><td style={styles.tableTd}>{u.phone}</td><td style={{...styles.tableTd, textAlign:"right"}}><button onClick={async()=>{if(window.confirm("削除？")){await apiCall.post(masterUrl,{action:"deleteUser",company:CLIENT_COMPANY_NAME,email:u.email});f();}}} style={{background:"none", border:"none", color:THEME.danger, cursor:"pointer"}}><Trash2 size={16}/></button></td></tr>))}</tbody>
+      <tbody>
+  {users && users.length > 0 ? (
+    users.map((u, i) => (
+      <tr key={i}>
+        {/* 姓と名を結合して表示 */}
+        <td style={styles.tableTd}>{u.lastName || ""} {u.firstName || ""}</td>
+        <td style={styles.tableTd}>{u.email}</td>
+        <td style={styles.tableTd}>{u.phone || "-"}</td>
+        <td style={{...styles.tableTd, textAlign:"right"}}>
+          <button onClick={async()=>{if(window.confirm("削除？")){await apiCall.post(masterUrl,{action:"deleteUser",company:CLIENT_COMPANY_NAME,email:u.email});f();}}} style={{background:"none", border:"none", color:THEME.danger, cursor:"pointer"}}>
+            <Trash2 size={16}/>
+          </button>
+        </td>
+      </tr>
+    ))
+  ) : (
+    <tr><td colSpan="4" style={{...styles.tableTd, textAlign:"center", padding:40, color:THEME.textMuted}}>ユーザーが登録されていません</td></tr>
+  )}
+</tbody>
     </table></div>
     {modal.open && (<div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(0,0,0,0.5)", display: "flex", justifyContent: "center", alignItems: "center", zIndex: 2000 }}>
       <div style={{ ...styles.card, width: "500px" }}>
