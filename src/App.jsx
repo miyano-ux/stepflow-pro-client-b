@@ -81,10 +81,17 @@ const apiCall = {
   }
 };
 
-const replaceVariables = (text, customer) => {
+const replaceVariables = (text, customer, staff = null) => {
   if (!text) return "";
   let res = text;
+  // 顧客変数の置換
   Object.keys(customer || {}).forEach(key => { res = res.replaceAll(`{{${key}}}`, customer[key] || ""); });
+  // 担当者変数の置換
+  if (staff) {
+    res = res.replaceAll(`{{担当者姓}}`, staff.lastName || "");
+    res = res.replaceAll(`{{担当者メール}}`, staff.email || "");
+    res = res.replaceAll(`{{担当者電話}}`, staff.phone || "");
+  }
   return res;
 };
 
@@ -312,13 +319,61 @@ function CustomerSchedule({ customers = [], deliveryLogs = [], onRefresh }) {
 }
 
 // --- (6) 個別SMS送信 ---
-function DirectSms({ customers = [], templates = [], onRefresh }) {
-  const { id } = useParams(); const navigate = useNavigate(); const c = customers?.find(x => x.id === Number(id));
-  const [msg, setMsg] = useState(""); const [time, setTime] = useState(new Date(new Date().getTime() + 10 * 60000).toISOString().slice(0, 16));
-  if (!customers.length || !c) return <Page title="読込中..."><Loader2 className="animate-spin"/></Page>;
-  return (<Page title="個別メッセージ送信" subtitle={`${c["姓"]} ${c["名"]} 様へ`}><Link to="/" style={{ display: "block", marginBottom: "24px", color: THEME.primary, textDecoration: "none", fontWeight: "700" }}>← 戻る</Link>
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 350px", gap: "32px" }}><div><label style={{ fontWeight: "700", display: "block", marginBottom: "8px" }}>予約日時</label><SmartDateTimePicker value={time} onChange={setTime} /><textarea style={{ ...styles.input, height: "300px", resize: "none", marginTop: "24px" }} value={msg} onChange={e => setMsg(e.target.value)} placeholder="SMS本文..." /><button onClick={async()=>{ await apiCall.post(GAS_URL,{action:"sendDirectSms",phone:c["電話番号"],customerName:`${c["姓"]} ${c["名"]}`,scheduledTime:time,message:msg}); alert("送信を予約しました"); navigate("/"); }} style={{ ...styles.btn, ...styles.btnPrimary, width: "100%", marginTop: "24px" }}>配信予約を確定</button></div>
-        <div><h3 style={{ margin: "0 0 16px 0", fontSize: "16px" }}>定型テンプレート</h3><div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>{templates.map(t => (<div key={t.id} onClick={() => setMsg(replaceVariables(t.content, c))} style={{ ...styles.card, padding: "16px", cursor: "pointer", border: `1px solid ${THEME.border}`, transition:"0.2s" }} onMouseEnter={e=>e.currentTarget.style.borderColor=THEME.primary} onMouseLeave={e=>e.currentTarget.style.borderColor=THEME.border}><div style={{ fontWeight: "700", fontSize: "14px" }}>{t.name}</div><div style={{ fontSize: "12px", color: THEME.textMuted, marginTop:"4px" }}>{t.content.slice(0, 50)}...</div></div>))}</div></div></div></Page>);
+function DirectSms({ customers = [], templates = [], onRefresh, masterUrl }) {
+  const { id } = useParams(); const navigate = useNavigate(); 
+  const c = customers?.find(x => x.id === Number(id));
+  const [msg, setMsg] = useState(""); 
+  const [time, setTime] = useState(new Date(new Date().getTime() + 10 * 60000).toISOString().slice(0, 16));
+  const [staffList, setStaffList] = useState([]);
+  const [selectedStaff, setSelectedStaff] = useState(null);
+
+  useEffect(() => {
+    const fetchStaff = async () => {
+      try {
+        const res = await axios.get(`${masterUrl}?action=list&company=${CLIENT_COMPANY_NAME}`);
+        setStaffList(res?.data?.users || []);
+        if (res?.data?.users?.length > 0) setSelectedStaff(res.data.users[0]);
+      } catch(e) { console.error("Staff fetch error", e); }
+    };
+    fetchStaff();
+  }, [masterUrl]);
+
+  if (!c) return <Page title="読込中..."><Loader2 className="animate-spin"/></Page>;
+
+  return (<Page title="個別メッセージ送信" subtitle={`${c["姓"]} ${c["名"]} 様`}>
+    <div style={{ display: "grid", gridTemplateColumns: "1fr 350px", gap: "32px" }}>
+      <div>
+        <div style={{...styles.card, marginBottom: 24, backgroundColor: "#EEF2FF", border: "none", padding: "20px"}}>
+          <label style={{ fontWeight: "800", fontSize: 12, color: THEME.primary, display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+            <UserCheck size={16}/> 1. 送信元担当者を選択
+          </label>
+          <select style={styles.input} value={selectedStaff?.email || ""} onChange={e => setSelectedStaff(staffList.find(s => s.email === e.target.value))}>
+            {staffList.map(s => <option key={s.email} value={s.email}>{s.lastName} {s.firstName} ({s.phone})</option>)}
+          </select>
+        </div>
+
+        <label style={{ fontWeight: "700", display: "block", marginBottom: "8px" }}>2. 配信日時と本文</label>
+        <SmartDateTimePicker value={time} onChange={setTime} />
+        <textarea style={{ ...styles.input, height: "300px", resize: "none", marginTop: "24px" }} value={msg} onChange={e => setMsg(e.target.value)} placeholder="本文を入力..." />
+        <button onClick={async()=>{ await apiCall.post(GAS_URL,{action:"sendDirectSms",phone:c["電話番号"],customerName:`${c["姓"]} ${c["名"]}`,scheduledTime:time,message:msg}); alert("予約完了"); navigate("/"); }} style={{ ...styles.btn, ...styles.btnPrimary, width: "100%", marginTop: "24px" }}>配信予約を確定</button>
+      </div>
+      <div>
+        <h3 style={{ margin: "0 0 16px 0", fontSize: "16px" }}>テンプレート</h3>
+        <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+          {templates.map(t => (
+            <div key={t.id} 
+              onClick={() => setMsg(replaceVariables(t.content, c, selectedStaff))} 
+              style={{ ...styles.card, padding: "16px", cursor: "pointer", border: `1px solid ${THEME.border}`, transition:"0.2s" }}
+              onMouseEnter={e=>e.currentTarget.style.borderColor=THEME.primary}
+              onMouseLeave={e=>e.currentTarget.style.borderColor=THEME.border}
+            >
+              <div style={{ fontWeight: "700", fontSize: "14px" }}>{t.name}</div>
+              <div style={{ fontSize: "12px", color: THEME.textMuted }}>{t.content.slice(0, 50)}...</div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div></Page>);
 }
 
 // --- (7) テンプレート管理 ---
@@ -444,10 +499,44 @@ function FormSettings({ formSettings = [], onRefresh }) {
 
 // --- (12) ユーザー管理 ---
 function UserManager({ masterUrl }) {
-  const [users, setUsers] = useState([]); const [modal, setModal] = useState({ open: false, mode: "add", data: { name: "", email: "" } });
+  const [users, setUsers] = useState([]); 
+  // dataの構造を拡張
+  const [modal, setModal] = useState({ open: false, mode: "add", data: { lastName: "", firstName: "", email: "", phone: "" } });
+  
   const f = useCallback(async () => { try{ const res = await axios.get(`${masterUrl}?action=list&company=${CLIENT_COMPANY_NAME}`); setUsers(res?.data?.users || []); }catch(e){console.error(e)} }, [masterUrl]);
   useEffect(() => { f(); }, [f]);
-  return (<Page title="権限ユーザー管理" topButton={<button onClick={() => setModal({ open: true, mode: "add", data: { name: "", email: "" } })} style={{ ...styles.btn, ...styles.btnPrimary }}><Plus size={18} /> 新規ユーザー</button>}><div style={{ ...styles.card, padding: 0 }}><table style={{ width: "100%", borderCollapse: "collapse" }}><thead><tr><th style={styles.tableTh}>名前</th><th style={styles.tableTh}>メール</th><th style={{...styles.tableTh, textAlign:"right"}}>操作</th></tr></thead><tbody>{users.map((u, i) => (<tr key={i}><td style={styles.tableTd}>{u.name}</td><td style={styles.tableTd}>{u.email}</td><td style={{...styles.tableTd, textAlign:"right"}}><button onClick={async()=>{if(window.confirm("削除？")){await apiCall.post(masterUrl,{action:"deleteUser",company:CLIENT_COMPANY_NAME,email:u.email});f();}}} style={{background:"none", border:"none", color:THEME.danger, cursor:"pointer"}}><Trash2 size={16}/></button></td></tr>))}</tbody></table></div>{modal.open && (<div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(0,0,0,0.5)", display: "flex", justifyContent: "center", alignItems: "center", zIndex: 2000 }}><div style={{ ...styles.card, width: "400px" }}><h3>ユーザー追加</h3><form onSubmit={async(e)=>{e.preventDefault(); await apiCall.post(masterUrl,{action:"addUser",company:CLIENT_COMPANY_NAME,...modal.data}); setModal({open:false}); f();}}><input style={{...styles.input, marginBottom:15}} value={modal.data.name} onChange={e=>setModal({...modal, data:{...modal.data, name: e.target.value}})} placeholder="名前" required /><input style={{...styles.input, marginBottom:15}} type="email" value={modal.data.email} onChange={e=>setModal({...modal, data:{...modal.data, email: e.target.value}})} placeholder="メール" required /><div style={{ display: "flex", gap: 10 }}><button type="submit" style={{ ...styles.btn, ...styles.btnPrimary, flex: 1 }}>保存</button><button type="button" onClick={() => setModal({ open: false })} style={{ ...styles.btn, ...styles.btnSecondary, flex: 1 }}>閉じる</button></div></form></div></div>)}</Page>);
+
+  const sub = async (e) => {
+    e.preventDefault();
+    // 送信パラメータに詳細情報を追加
+    await apiCall.post(masterUrl, { 
+      action: modal.mode === "add" ? "addUser" : "editUser", 
+      company: CLIENT_COMPANY_NAME, 
+      ...modal.data 
+    });
+    setModal({ open: false });
+    f();
+  };
+
+  return (<Page title="ユーザー管理" topButton={<button onClick={() => setModal({ open: true, mode: "add", data: { lastName: "", firstName: "", email: "", phone: "" } })} style={{ ...styles.btn, ...styles.btnPrimary }}><Plus size={18} /> 新規登録</button>}>
+    <div style={{ ...styles.card, padding: 0 }}><table style={{ width: "100%", borderCollapse: "collapse" }}>
+      <thead><tr><th style={styles.tableTh}>名前</th><th style={styles.tableTh}>メール</th><th style={styles.tableTh}>電話番号</th><th style={{...styles.tableTh, textAlign:"right"}}>操作</th></tr></thead>
+      <tbody>{users.map((u, i) => (<tr key={i}><td style={styles.tableTd}>{u.lastName} {u.firstName}</td><td style={styles.tableTd}>{u.email}</td><td style={styles.tableTd}>{u.phone}</td><td style={{...styles.tableTd, textAlign:"right"}}><button onClick={async()=>{if(window.confirm("削除？")){await apiCall.post(masterUrl,{action:"deleteUser",company:CLIENT_COMPANY_NAME,email:u.email});f();}}} style={{background:"none", border:"none", color:THEME.danger, cursor:"pointer"}}><Trash2 size={16}/></button></td></tr>))}</tbody>
+    </table></div>
+    {modal.open && (<div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(0,0,0,0.5)", display: "flex", justifyContent: "center", alignItems: "center", zIndex: 2000 }}>
+      <div style={{ ...styles.card, width: "500px" }}>
+        <h3>担当者情報の登録</h3>
+        <form onSubmit={sub}>
+          <div style={{display:"flex", gap: 12, marginBottom: 15}}>
+            <input style={styles.input} value={modal.data.lastName} onChange={e=>setModal({...modal, data:{...modal.data, lastName: e.target.value}})} placeholder="姓" required />
+            <input style={styles.input} value={modal.data.firstName} onChange={e=>setModal({...modal, data:{...modal.data, firstName: e.target.value}})} placeholder="名" required />
+          </div>
+          <input style={{...styles.input, marginBottom:15}} type="email" value={modal.data.email} onChange={e=>setModal({...modal, data:{...modal.data, email: e.target.value}})} placeholder="メールアドレス" required />
+          <input style={{...styles.input, marginBottom:20}} value={modal.data.phone} onChange={e=>setModal({...modal, data:{...modal.data, phone: e.target.value}})} placeholder="担当者直通電話番号" required />
+          <div style={{ display: "flex", gap: 10 }}><button type="submit" style={{ ...styles.btn, ...styles.btnPrimary, flex: 1 }}>保存</button><button type="button" onClick={() => setModal({ open: false })} style={{ ...styles.btn, ...styles.btnSecondary, flex: 1 }}>閉じる</button></div>
+        </form>
+      </div>
+    </div>)}</Page>);
 }
 
 // --- (13) Appメイン [認証 & ルーティング] ---
@@ -465,7 +554,7 @@ function App() {
     <Route path="/edit/:id" element={<CustomerEdit customers={d?.customers} scenarios={d?.scenarios} formSettings={d?.formSettings} onRefresh={refresh} />} />
     <Route path="/schedule/:id" element={<CustomerSchedule customers={d?.customers} deliveryLogs={d?.deliveryLogs} onRefresh={refresh} />} />
     <Route path="/detail/:id" element={<CustomerDetail customers={d?.customers} />} />
-    <Route path="/direct-sms/:id" element={<DirectSms customers={d?.customers} templates={d?.templates} onRefresh={refresh} />} />
+    <Route path="/direct-sms/:id" element={<DirectSms customers={d?.customers} templates={d?.templates} onRefresh={refresh} masterUrl={MASTER_WHITELIST_API} />} />
     <Route path="/templates" element={<TemplateManager templates={d?.templates} onRefresh={refresh} />} />
     <Route path="/form-settings" element={<FormSettings formSettings={d?.formSettings} onRefresh={refresh} />} />
     <Route path="/scenarios" element={<ScenarioList scenarios={d?.scenarios} onRefresh={refresh} />} />
