@@ -84,11 +84,12 @@ const apiCall = {
 const replaceVariables = (text, customer, staff = null) => {
   if (!text) return "";
   let res = text;
-  // 顧客変数の置換
+  // 顧客変数の置換 ({{姓}} など)
   Object.keys(customer || {}).forEach(key => { res = res.replaceAll(`{{${key}}}`, customer[key] || ""); });
-  // 担当者変数の置換
+  // 担当者変数の置換 ({{担当者姓}} など)
   if (staff) {
     res = res.replaceAll(`{{担当者姓}}`, staff.lastName || "");
+    res = res.replaceAll(`{{担当者名}}`, staff.firstName || "");
     res = res.replaceAll(`{{担当者メール}}`, staff.email || "");
     res = res.replaceAll(`{{担当者電話}}`, staff.phone || "");
   }
@@ -331,9 +332,10 @@ function DirectSms({ customers = [], templates = [], onRefresh, masterUrl }) {
     const fetchStaff = async () => {
       try {
         const res = await axios.get(`${masterUrl}?action=list&company=${CLIENT_COMPANY_NAME}`);
-        setStaffList(res?.data?.users || []);
-        if (res?.data?.users?.length > 0) setSelectedStaff(res.data.users[0]);
-      } catch(e) { console.error("Staff fetch error", e); }
+        const list = res?.data?.users || [];
+        setStaffList(list);
+        if (list.length > 0) setSelectedStaff(list[0]);
+      } catch(e) { console.error("担当者取得エラー", e); }
     };
     fetchStaff();
   }, [masterUrl]);
@@ -345,10 +347,10 @@ function DirectSms({ customers = [], templates = [], onRefresh, masterUrl }) {
       <div>
         <div style={{...styles.card, marginBottom: 24, backgroundColor: "#EEF2FF", border: "none", padding: "20px"}}>
           <label style={{ fontWeight: "800", fontSize: 12, color: THEME.primary, display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
-            <UserCheck size={16}/> 1. 送信元担当者を選択
+            <UserCheck size={16}/> 1. 送信担当者を選択
           </label>
           <select style={styles.input} value={selectedStaff?.email || ""} onChange={e => setSelectedStaff(staffList.find(s => s.email === e.target.value))}>
-            {staffList.map(s => <option key={s.email} value={s.email}>{s.lastName} {s.firstName} ({s.phone})</option>)}
+            {staffList.map(s => <option key={s.email} value={s.email}>{s.lastName} {s.firstName} ({s.phone || '番号未登録'})</option>)}
           </select>
         </div>
 
@@ -360,17 +362,10 @@ function DirectSms({ customers = [], templates = [], onRefresh, masterUrl }) {
       <div>
         <h3 style={{ margin: "0 0 16px 0", fontSize: "16px" }}>テンプレート</h3>
         <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-          {templates.map(t => (
-            <div key={t.id} 
-              onClick={() => setMsg(replaceVariables(t.content, c, selectedStaff))} 
-              style={{ ...styles.card, padding: "16px", cursor: "pointer", border: `1px solid ${THEME.border}`, transition:"0.2s" }}
-              onMouseEnter={e=>e.currentTarget.style.borderColor=THEME.primary}
-              onMouseLeave={e=>e.currentTarget.style.borderColor=THEME.border}
-            >
-              <div style={{ fontWeight: "700", fontSize: "14px" }}>{t.name}</div>
-              <div style={{ fontSize: "12px", color: THEME.textMuted }}>{t.content.slice(0, 50)}...</div>
-            </div>
-          ))}
+          {templates.map(t => (<div key={t.id} onClick={() => setMsg(replaceVariables(t.content, c, selectedStaff))} style={{ ...styles.card, padding: "16px", cursor: "pointer", border: `1px solid ${THEME.border}`, transition:"0.2s" }} onMouseEnter={e=>e.currentTarget.style.borderColor=THEME.primary} onMouseLeave={e=>e.currentTarget.style.borderColor=THEME.border}>
+            <div style={{ fontWeight: "700", fontSize: "14px" }}>{t.name}</div>
+            <div style={{ fontSize: "12px", color: THEME.textMuted }}>{t.content.slice(0, 50)}...</div>
+          </div>))}
         </div>
       </div>
     </div></Page>);
@@ -500,23 +495,16 @@ function FormSettings({ formSettings = [], onRefresh }) {
 // --- (12) ユーザー管理 ---
 function UserManager({ masterUrl }) {
   const [users, setUsers] = useState([]); 
-  // dataの構造を拡張
   const [modal, setModal] = useState({ open: false, mode: "add", data: { lastName: "", firstName: "", email: "", phone: "" } });
   
-  const f = useCallback(async () => { try{ const res = await axios.get(`${masterUrl}?action=list&company=${CLIENT_COMPANY_NAME}`); setUsers(res?.data?.users || []); }catch(e){console.error(e)} }, [masterUrl]);
+  const f = useCallback(async () => { 
+    try { 
+      const res = await axios.get(`${masterUrl}?action=list&company=${CLIENT_COMPANY_NAME}`); 
+      setUsers(res?.data?.users || []); 
+    } catch(e) { console.error(e); } 
+  }, [masterUrl]);
+  
   useEffect(() => { f(); }, [f]);
-
-  const sub = async (e) => {
-    e.preventDefault();
-    // 送信パラメータに詳細情報を追加
-    await apiCall.post(masterUrl, { 
-      action: modal.mode === "add" ? "addUser" : "editUser", 
-      company: CLIENT_COMPANY_NAME, 
-      ...modal.data 
-    });
-    setModal({ open: false });
-    f();
-  };
 
   return (<Page title="ユーザー管理" topButton={<button onClick={() => setModal({ open: true, mode: "add", data: { lastName: "", firstName: "", email: "", phone: "" } })} style={{ ...styles.btn, ...styles.btnPrimary }}><Plus size={18} /> 新規登録</button>}>
     <div style={{ ...styles.card, padding: 0 }}><table style={{ width: "100%", borderCollapse: "collapse" }}>
@@ -525,14 +513,14 @@ function UserManager({ masterUrl }) {
     </table></div>
     {modal.open && (<div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(0,0,0,0.5)", display: "flex", justifyContent: "center", alignItems: "center", zIndex: 2000 }}>
       <div style={{ ...styles.card, width: "500px" }}>
-        <h3>担当者情報の登録</h3>
-        <form onSubmit={sub}>
-          <div style={{display:"flex", gap: 12, marginBottom: 15}}>
-            <input style={styles.input} value={modal.data.lastName} onChange={e=>setModal({...modal, data:{...modal.data, lastName: e.target.value}})} placeholder="姓" required />
-            <input style={styles.input} value={modal.data.firstName} onChange={e=>setModal({...modal, data:{...modal.data, firstName: e.target.value}})} placeholder="名" required />
+        <h3>担当者登録</h3>
+        <form onSubmit={async(e)=>{e.preventDefault(); await apiCall.post(masterUrl,{action:modal.mode==="add"?"addUser":"editUser",company:CLIENT_COMPANY_NAME,...modal.data}); setModal({open:false}); f();}}>
+          <div style={{display:"flex", gap:12, marginBottom:15}}>
+            <input style={styles.input} value={modal.data.lastName} onChange={e=>setModal({...modal, data:{...modal.data, lastName:e.target.value}})} placeholder="姓" required />
+            <input style={styles.input} value={modal.data.firstName} onChange={e=>setModal({...modal, data:{...modal.data, firstName:e.target.value}})} placeholder="名" required />
           </div>
-          <input style={{...styles.input, marginBottom:15}} type="email" value={modal.data.email} onChange={e=>setModal({...modal, data:{...modal.data, email: e.target.value}})} placeholder="メールアドレス" required />
-          <input style={{...styles.input, marginBottom:20}} value={modal.data.phone} onChange={e=>setModal({...modal, data:{...modal.data, phone: e.target.value}})} placeholder="担当者直通電話番号" required />
+          <input style={{...styles.input, marginBottom:15}} type="email" value={modal.data.email} onChange={e=>setModal({...modal, data:{...modal.data, email:e.target.value}})} placeholder="Googleメール" required />
+          <input style={{...styles.input, marginBottom:20}} value={modal.data.phone} onChange={e=>setModal({...modal, data:{...modal.data, phone:e.target.value}})} placeholder="直通電話番号" required />
           <div style={{ display: "flex", gap: 10 }}><button type="submit" style={{ ...styles.btn, ...styles.btnPrimary, flex: 1 }}>保存</button><button type="button" onClick={() => setModal({ open: false })} style={{ ...styles.btn, ...styles.btnSecondary, flex: 1 }}>閉じる</button></div>
         </form>
       </div>
