@@ -336,14 +336,14 @@ function DirectSms({ customers = [], templates = [], onRefresh, masterUrl, curre
         const list = res?.data?.users || [];
         setStaffList(list);
         
-        // 🆕 ログイン中のメールアドレスと一致するスタッフがいれば優先選択
-        const myStaff = list.find(s => s.email === currentUserEmail);
-        if (myStaff) {
-          setSelectedStaff(myStaff);
+        // 🆕 ログインユーザーと一致するスタッフを自動選択
+        const myProfile = list.find(s => String(s.email).toLowerCase() === String(currentUserEmail).toLowerCase());
+        if (myProfile) {
+          setSelectedStaff(myProfile);
         } else if (list.length > 0) {
           setSelectedStaff(list[0]);
         }
-      } catch(e) { console.error("担当者取得エラー", e); }
+      } catch(e) { console.error("担当者リスト取得エラー", e); }
     };
     if (masterUrl) fetchStaff();
   }, [masterUrl, currentUserEmail]);
@@ -354,8 +354,8 @@ function DirectSms({ customers = [], templates = [], onRefresh, masterUrl, curre
     <div style={{ display: "grid", gridTemplateColumns: "1fr 350px", gap: "32px" }}>
       <div>
         <div style={{...styles.card, marginBottom: 24, backgroundColor: "#EEF2FF", border: "none", padding: "20px"}}>
-          <label style={{ fontWeight: "800", fontSize: 12, color: THEME.primary, display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
-            <UserCheck size={16}/> 1. 送信担当者を選択
+          <label style={{ fontWeight: "800", fontSize: 11, color: THEME.primary, display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+            <UserCheck size={16}/> 送信担当者
           </label>
           <select style={styles.input} value={selectedStaff?.email || ""} onChange={e => setSelectedStaff(staffList.find(s => s.email === e.target.value))}>
             {staffList.length > 0 ? (
@@ -369,17 +369,17 @@ function DirectSms({ customers = [], templates = [], onRefresh, masterUrl, curre
           )}
         </div>
 
-        <label style={{ fontWeight: "700", display: "block", marginBottom: "8px" }}>2. 配信日時と本文</label>
+        <label style={{ fontWeight: "700", display: "block", marginBottom: "8px", fontSize: "14px" }}>配信日時とメッセージ本文</label>
         <SmartDateTimePicker value={time} onChange={setTime} />
-        <textarea style={{ ...styles.input, height: "300px", resize: "none", marginTop: "24px" }} value={msg} onChange={e => setMsg(e.target.value)} placeholder="本文を入力..." />
-        <button onClick={async()=>{ await apiCall.post(GAS_URL,{action:"sendDirectSms",phone:c["電話番号"],customerName:`${c["姓"]} ${c["名"]}`,scheduledTime:time,message:msg}); alert("予約完了"); navigate("/"); }} style={{ ...styles.btn, ...styles.btnPrimary, width: "100%", marginTop: "24px" }}>配信予約を確定</button>
+        <textarea style={{ ...styles.input, height: "300px", resize: "none", marginTop: "24px", lineHeight: "1.5" }} value={msg} onChange={e => setMsg(e.target.value)} placeholder="メッセージ本文を入力してください。{{姓}}などの変数も利用可能です。" />
+        <button onClick={async()=>{ if(!msg) return alert("本文を入力してください"); await apiCall.post(GAS_URL,{action:"sendDirectSms",phone:c["電話番号"],customerName:`${c["姓"]} ${c["名"]}`,scheduledTime:time,message:msg}); alert("配信予約が完了しました"); navigate("/"); }} style={{ ...styles.btn, ...styles.btnPrimary, width: "100%", marginTop: "24px", padding: "16px" }}>配信予約を確定する</button>
       </div>
       <div>
-        <h3 style={{ margin: "0 0 16px 0", fontSize: "16px" }}>テンプレート</h3>
+        <h3 style={{ margin: "0 0 16px 0", fontSize: "15px", fontWeight: "800" }}>テンプレートから引用</h3>
         <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
           {templates.map(t => (<div key={t.id} onClick={() => setMsg(replaceVariables(t.content, c, selectedStaff))} style={{ ...styles.card, padding: "16px", cursor: "pointer", border: `1px solid ${THEME.border}`, transition:"0.2s" }} onMouseEnter={e=>e.currentTarget.style.borderColor=THEME.primary} onMouseLeave={e=>e.currentTarget.style.borderColor=THEME.border}>
-            <div style={{ fontWeight: "700", fontSize: "14px" }}>{t.name}</div>
-            <div style={{ fontSize: "12px", color: THEME.textMuted }}>{t.content?.slice(0, 50)}...</div>
+            <div style={{ fontWeight: "700", fontSize: "14px", marginBottom: "4px" }}>{t.name}</div>
+            <div style={{ fontSize: "12px", color: THEME.textMuted, overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>{t.content}</div>
           </div>))}
         </div>
       </div>
@@ -390,26 +390,29 @@ function DirectSms({ customers = [], templates = [], onRefresh, masterUrl, curre
 function TemplateManager({ templates = [], onRefresh }) {
   const [modal, setModal] = useState({ open: false, data: { id: "", name: "", content: "" } });
   
+  // 🆕 プリセットテキストをプロ仕様に拡充
   const PRESET_CONTENT = 
-    "{{姓}} {{名}} 様\n\n[ここに本文を入力してください]\n\n" +
+    "{{姓}} {{名}} 様\n\n[ここにメッセージ本文を入力してください]\n\n" +
     "--------------------------\n" +
     "担当：{{担当者姓}}\n" +
     "電話：{{担当者電話}}\n" +
     "メール：{{担当者メール}}";
 
   return (<Page title="テンプレート管理" topButton={<button onClick={() => setModal({ open: true, data: { id: "", name: "", content: PRESET_CONTENT } })} style={{ ...styles.btn, ...styles.btnPrimary }}><Plus size={18}/> 新規追加</button>}>
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(350px, 1fr))", gap: "24px" }}>{templates.map(t => (<div key={t.id} style={styles.card}><div style={{ display: "flex", justifyContent: "space-between", marginBottom: "12px" }}><h3 style={{ margin: 0, fontSize: "16px" }}>{t.name}</h3><div style={{ display: "flex", gap: "8px" }}><button onClick={() => setModal({ open: true, data: t })} style={{ background: "none", border: "none", color: THEME.textMuted, cursor: "pointer" }}><Edit3 size={16}/></button><button onClick={async() => { if(window.confirm("削除？")){ await apiCall.post(GAS_URL, { action: "deleteTemplate", id: t.id }); onRefresh(); }}} style={{ background: "none", border: "none", color: THEME.danger, cursor: "pointer" }}><Trash2 size={16}/></button></div></div><pre style={{ fontSize: "13px", color: THEME.textMuted, whiteSpace: "pre-wrap", background: "#F8FAFC", padding: "12px", borderRadius: "8px" }}>{t.content}</pre></div>))}</div>
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(350px, 1fr))", gap: "24px" }}>{templates.map(t => (<div key={t.id} style={styles.card}><div style={{ display: "flex", justifyContent: "space-between", marginBottom: "12px" }}><h3 style={{ margin: 0, fontSize: "16px" }}>{t.name}</h3><div style={{ display: "flex", gap: "8px" }}><button onClick={() => setModal({ open: true, data: t })} style={{ background: "none", border: "none", color: THEME.textMuted, cursor: "pointer" }}><Edit3 size={16}/></button><button onClick={async() => { if(window.confirm("削除？")){ await apiCall.post(GAS_URL, { action: "deleteTemplate", id: t.id }); onRefresh(); }}} style={{ background: "none", border: "none", color: THEME.danger, cursor: "pointer" }}><Trash2 size={16}/></button></div></div><pre style={{ fontSize: "13px", color: THEME.textMuted, whiteSpace: "pre-wrap", background: "#F8FAFC", padding: "12px", borderRadius: "8px", lineHeight: "1.6" }}>{t.content}</pre></div>))}</div>
     {modal.open && (<div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(0,0,0,0.5)", display: "flex", justifyContent: "center", alignItems: "center", zIndex: 2000 }}>
       <div style={{ ...styles.card, width: "600px" }}>
-        <h3>テンプレート編集</h3>
+        <h3>テンプレートの編集</h3>
         <form onSubmit={async(e)=>{e.preventDefault(); await apiCall.post(GAS_URL,{action:"saveTemplate",...modal.data}); setModal({open:false}); onRefresh();}}>
-          <label style={{fontSize:11, fontWeight:800, color:THEME.textMuted, marginBottom:6, display:"block"}}>テンプレート名</label>
-          <input style={{ ...styles.input, marginBottom: "16px" }} value={modal.data.name} onChange={e => setModal({...modal, data: {...modal.data, name: e.target.value}})} placeholder="例：査定完了のお知らせ" required />
-          <label style={{fontSize:11, fontWeight:800, color:THEME.textMuted, marginBottom:6, display:"block"}}>本文（変数は送信時に置換されます）</label>
-          <textarea style={{ ...styles.input, height: "250px", resize: "none", marginBottom: "20px", lineHeight: "1.6" }} value={modal.data.content} onChange={e => setModal({...modal, data: {...modal.data, content: e.target.value}})} required />
+          <label style={{fontSize: 11, fontWeight: 800, color: THEME.textMuted, marginBottom: 6, display: "block"}}>テンプレート名</label>
+          <input style={{ ...styles.input, marginBottom: "16px" }} value={modal.data.name} onChange={e => setModal({...modal, data: {...modal.data, name: e.target.value}})} placeholder="例：反響御礼" required />
+          
+          <label style={{fontSize: 11, fontWeight: 800, color: THEME.textMuted, marginBottom: 6, display: "block"}}>本文（[...] の部分を書き換えてください）</label>
+          <textarea style={{ ...styles.input, height: "300px", resize: "none", marginBottom: "20px", lineHeight: "1.6" }} value={modal.data.content} onChange={e => setModal({...modal, data: {...modal.data, content: e.target.value}})} required />
+          
           <div style={{ display: "flex", gap: "12px" }}>
-            <button type="submit" style={{ ...styles.btn, ...styles.btnPrimary, flex: 1 }}>保存</button>
-            <button type="button" onClick={() => setModal({ open: false })} style={{ ...styles.btn, ...styles.btnSecondary, flex: 1 }}>閉じる</button>
+            <button type="submit" style={{ ...styles.btn, ...styles.btnPrimary, flex: 1 }}>テンプレートを保存</button>
+            <button type="button" onClick={() => setModal({ open: false })} style={{ ...styles.btn, ...styles.btnSecondary, flex: 1 }}>キャンセル</button>
           </div>
         </form>
       </div>
@@ -533,62 +536,77 @@ function FormSettings({ formSettings = [], onRefresh }) {
 function UserManager({ masterUrl }) {
   const [users, setUsers] = useState([]); 
   const [modal, setModal] = useState({ open: false, mode: "add", data: { lastName: "", firstName: "", email: "", phone: "" } });
+  const [loading, setLoading] = useState(true);
   
   const f = useCallback(async () => { 
+    setLoading(true);
     try { 
       const res = await axios.get(`${masterUrl}?action=list&company=${CLIENT_COMPANY_NAME}`); 
       setUsers(res?.data?.users || []); 
-    } catch(e) { console.error(e); } 
+    } catch(e) { console.error("データ取得エラー:", e); } 
+    finally { setLoading(false); }
   }, [masterUrl]);
   
   useEffect(() => { f(); }, [f]);
 
   const sub = async (e) => {
     e.preventDefault();
-    // 送信時にシングルクォートを付加して数値自動変換（ゼロ落ち）を防止
+    // 🆕 ゼロ落ち防止: 確実に文字列に変換してからシングルクォートを付加
+    const targetPhone = String(modal.data.phone || "");
     const submissionData = {
       ...modal.data,
-      phone: modal.data.phone.startsWith("'") ? modal.data.phone : "'" + modal.data.phone
+      phone: targetPhone.startsWith("'") ? targetPhone : "'" + targetPhone
     };
-    await apiCall.post(masterUrl, { action: modal.mode === "add" ? "addUser" : "editUser", company: CLIENT_COMPANY_NAME, ...submissionData });
-    setModal({ open: false });
-    f();
+    
+    try {
+      await apiCall.post(masterUrl, { 
+        action: modal.mode === "add" ? "addUser" : "editUser", 
+        company: CLIENT_COMPANY_NAME, 
+        ...submissionData 
+      });
+      setModal({ open: false });
+      f();
+    } catch(err) {
+      alert("保存に失敗しました: " + err.message);
+    }
   };
 
   return (<Page title="ユーザー管理" topButton={<button onClick={() => setModal({ open: true, mode: "add", data: { lastName: "", firstName: "", email: "", phone: "" } })} style={{ ...styles.btn, ...styles.btnPrimary }}><Plus size={18} /> 新規登録</button>}>
-    <div style={{ ...styles.card, padding: 0 }}><table style={{ width: "100%", borderCollapse: "collapse" }}>
-      <thead><tr><th style={styles.tableTh}>名前</th><th style={styles.tableTh}>メール</th><th style={styles.tableTh}>電話番号</th><th style={{...styles.tableTh, textAlign:"right"}}>操作</th></tr></thead>
-      <tbody>
-        {users && users.length > 0 ? (
-          users.map((u, i) => (
-            <tr key={i}>
-              <td style={styles.tableTd}>{u.lastName || ""} {u.firstName || ""}</td>
-              <td style={styles.tableTd}>{u.email}</td>
-              {/* 表示の際はシングルクォートを除去 */}
-              <td style={styles.tableTd}>{u.phone?.replace(/^'/, "") || "-"}</td>
-              <td style={{...styles.tableTd, textAlign:"right"}}>
-                <button onClick={async()=>{if(window.confirm("削除？")){await apiCall.post(masterUrl,{action:"deleteUser",company:CLIENT_COMPANY_NAME,email:u.email});f();}}} style={{background:"none", border:"none", color:THEME.danger, cursor:"pointer"}}>
-                  <Trash2 size={16}/>
-                </button>
-              </td>
-            </tr>
-          ))
-        ) : (
-          <tr><td colSpan="4" style={{...styles.tableTd, textAlign:"center", padding:40, color:THEME.textMuted}}>ユーザーが登録されていません</td></tr>
-        )}
-      </tbody>
-    </table></div>
+    <div style={{ ...styles.card, padding: 0 }}>
+      {loading ? (
+        <div style={{padding: 40, textAlign: "center"}}><Loader2 className="animate-spin" size={32} color={THEME.primary} /></div>
+      ) : (
+        <table style={{ width: "100%", borderCollapse: "collapse" }}>
+          <thead><tr><th style={styles.tableTh}>名前</th><th style={styles.tableTh}>メール</th><th style={styles.tableTh}>電話番号</th><th style={{...styles.tableTh, textAlign:"right"}}>操作</th></tr></thead>
+          <tbody>
+            {users && users.length > 0 ? (
+              users.map((u, i) => (
+                <tr key={i}>
+                  <td style={styles.tableTd}>{u.lastName || ""} {u.firstName || ""}</td>
+                  <td style={styles.tableTd}>{u.email || ""}</td>
+                  {/* 🆕 ホワイトアウト対策: 確実に String() に変換してから replace を実行 */}
+                  <td style={styles.tableTd}>{String(u.phone || "").replace(/^'/, "")}</td>
+                  <td style={{...styles.tableTd, textAlign:"right"}}><button onClick={async()=>{if(window.confirm("このユーザーを削除しますか？")){await apiCall.post(masterUrl,{action:"deleteUser",company:CLIENT_COMPANY_NAME,email:u.email});f();}}} style={{background:"none", border:"none", color:THEME.danger, cursor:"pointer"}}><Trash2 size={16}/></button></td>
+                </tr>
+              ))
+            ) : (
+              <tr><td colSpan="4" style={{...styles.tableTd, textAlign:"center", padding:40, color:THEME.textMuted, fontSize: "14px"}}>登録済みのユーザーはいません</td></tr>
+            )}
+          </tbody>
+        </table>
+      )}
+    </div>
     {modal.open && (<div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(0,0,0,0.5)", display: "flex", justifyContent: "center", alignItems: "center", zIndex: 2000 }}>
       <div style={{ ...styles.card, width: "500px" }}>
-        <h3>担当者登録</h3>
+        <h3 style={{marginBottom: 20}}>担当者情報の登録</h3>
         <form onSubmit={sub}>
-          <div style={{display:"flex", gap:12, marginBottom:15}}>
-            <input style={styles.input} value={modal.data.lastName} onChange={e=>setModal({...modal, data:{...modal.data, lastName:e.target.value}})} placeholder="姓" required />
-            <input style={styles.input} value={modal.data.firstName} onChange={e=>setModal({...modal, data:{...modal.data, firstName:e.target.value}})} placeholder="名" required />
+          <div style={{display:"flex", gap: 12, marginBottom: 15}}>
+            <div style={{flex: 1}}><label style={{fontSize: 11, fontWeight: 800, color: THEME.textMuted}}>姓</label><input style={styles.input} value={modal.data.lastName} onChange={e=>setModal({...modal, data:{...modal.data, lastName:e.target.value}})} placeholder="宮野" required /></div>
+            <div style={{flex: 1}}><label style={{fontSize: 11, fontWeight: 800, color: THEME.textMuted}}>名</label><input style={styles.input} value={modal.data.firstName} onChange={e=>setModal({...modal, data:{...modal.data, firstName:e.target.value}})} placeholder="太郎" required /></div>
           </div>
-          <input style={{...styles.input, marginBottom:15}} type="email" value={modal.data.email} onChange={e=>setModal({...modal, data:{...modal.data, email:e.target.value}})} placeholder="Googleメール" required />
-          <input style={{...styles.input, marginBottom:20}} value={modal.data.phone} onChange={e=>setModal({...modal, data:{...modal.data, phone:e.target.value}})} placeholder="直通電話番号（090...）" required />
-          <div style={{ display: "flex", gap: 10 }}><button type="submit" style={{ ...styles.btn, ...styles.btnPrimary, flex: 1 }}>保存</button><button type="button" onClick={() => setModal({ open: false })} style={{ ...styles.btn, ...styles.btnSecondary, flex: 1 }}>閉じる</button></div>
+          <div style={{marginBottom: 15}}><label style={{fontSize: 11, fontWeight: 800, color: THEME.textMuted}}>Googleメールアドレス</label><input style={styles.input} type="email" value={modal.data.email} onChange={e=>setModal({...modal, data:{...modal.data, email:e.target.value}})} placeholder="example@gmail.com" required /></div>
+          <div style={{marginBottom: 20}}><label style={{fontSize: 11, fontWeight: 800, color: THEME.textMuted}}>直通電話番号（0から入力）</label><input style={styles.input} value={modal.data.phone} onChange={e=>setModal({...modal, data:{...modal.data, phone:e.target.value}})} placeholder="09012345678" required /></div>
+          <div style={{ display: "flex", gap: 10 }}><button type="submit" style={{ ...styles.btn, ...styles.btnPrimary, flex: 1 }}>この内容で保存</button><button type="button" onClick={() => setModal({ open: false })} style={{ ...styles.btn, ...styles.btnSecondary, flex: 1 }}>キャンセル</button></div>
         </form>
       </div>
     </div>)}</Page>);
