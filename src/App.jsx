@@ -840,83 +840,196 @@ function FormSettings({ formSettings = [], onRefresh }) {
 }
 
 // --- (12) ユーザー管理 ---
+/**
+ * UserManager コンポーネント (V22.1 編集機能復旧版)
+ * 役割: 利用スタッフ（担当者）のマスタ管理。新規登録および既存ユーザーの編集・更新に対応。
+ */
 function UserManager({ masterUrl }) {
-  const [users, setUsers] = useState([]); 
-  const [modal, setModal] = useState({ open: false, mode: "add", data: { lastName: "", firstName: "", email: "", phone: "" } });
-  const [loading, setLoading] = useState(true);
-  
-  const f = useCallback(async () => { 
-    setLoading(true);
-    try { 
-      const res = await axios.get(`${masterUrl}?action=list&company=${CLIENT_COMPANY_NAME}`); 
-      setUsers(res?.data?.users || []); 
-    } catch(e) { console.error("データ取得エラー:", e); } 
-    finally { setLoading(false); }
-  }, [masterUrl]);
-  
-  useEffect(() => { f(); }, [f]);
+  const [users, setUsers] = useState([]);
+  const [form, setForm] = useState({ email: "", company: CLIENT_COMPANY_NAME, lastName: "", firstName: "", phone: "" });
+  const [editingId, setEditingId] = useState(null); // 🆕 編集中のユーザーIDを管理
+  const [loading, setLoading] = useState(false);
 
-  const sub = async (e) => {
-    e.preventDefault();
-    // 🆕 ゼロ落ち防止: 確実に文字列に変換してからシングルクォートを付加
-    const targetPhone = String(modal.data.phone || "");
-    const submissionData = {
-      ...modal.data,
-      phone: targetPhone.startsWith("'") ? targetPhone : "'" + targetPhone
-    };
-    
+  // ユーザー一覧の取得
+  const fetchUsers = useCallback(async () => {
     try {
-      await apiCall.post(masterUrl, { 
-        action: modal.mode === "add" ? "addUser" : "editUser", 
-        company: CLIENT_COMPANY_NAME, 
-        ...submissionData 
-      });
-      setModal({ open: false });
-      f();
-    } catch(err) {
-      alert("保存に失敗しました: " + err.message);
+      const res = await axios.get(`${masterUrl}?action=list&company=${CLIENT_COMPANY_NAME}`);
+      setUsers(res.data.users || []);
+    } catch (e) {
+      console.error("ユーザーリストの取得に失敗しました", e);
+    }
+  }, [masterUrl]);
+
+  useEffect(() => { fetchUsers(); }, [fetchUsers]);
+
+  // 編集モードへの切り替え
+  const handleEditStart = (user) => {
+    setEditingId(user.id);
+    setForm({
+      email: user.email,
+      company: CLIENT_COMPANY_NAME,
+      lastName: user.lastName,
+      firstName: user.firstName,
+      phone: user.phone || ""
+    });
+    window.scrollTo({ top: 0, behavior: 'smooth' }); // 入力欄へ誘導
+  };
+
+  // 編集のキャンセル
+  const handleCancel = () => {
+    setEditingId(null);
+    setForm({ email: "", company: CLIENT_COMPANY_NAME, lastName: "", firstName: "", phone: "" });
+  };
+
+  // 保存（新規追加・更新共通）
+  const handleSave = async () => {
+    if (!form.email || !form.lastName) return alert("氏名とメールアドレスは必須です");
+    
+    setLoading(true);
+    try {
+      // 要件4.2準拠: 電話番号のゼロ落ち防止
+      const processedForm = {
+        ...form,
+        phone: form.phone ? (form.phone.startsWith("'") ? form.phone : "'" + form.phone) : ""
+      };
+
+      await axios.post(masterUrl, 
+        { 
+          action: "save", 
+          id: editingId, // editingIdがあれば更新、なければ新規
+          ...processedForm 
+        }, 
+        { headers: { 'Content-Type': 'text/plain' } }
+      );
+      
+      handleCancel();
+      fetchUsers();
+    } catch (e) {
+      alert("保存中にエラーが発生しました");
+    }
+    setLoading(false);
+  };
+
+  const handleDelete = async (id) => {
+    if (!window.confirm("このユーザーを削除すると、担当者の紐付けが解除される可能性があります。削除しますか？")) return;
+    try {
+      await axios.post(masterUrl, { action: "delete", id }, { headers: { 'Content-Type': 'text/plain' } });
+      fetchUsers();
+    } catch (e) {
+      alert("削除に失敗しました");
     }
   };
 
-  return (<Page title="ユーザー管理" topButton={<button onClick={() => setModal({ open: true, mode: "add", data: { lastName: "", firstName: "", email: "", phone: "" } })} style={{ ...styles.btn, ...styles.btnPrimary }}><Plus size={18} /> 新規登録</button>}>
-    <div style={{ ...styles.card, padding: 0 }}>
-      {loading ? (
-        <div style={{padding: 40, textAlign: "center"}}><Loader2 className="animate-spin" size={32} color={THEME.primary} /></div>
-      ) : (
-        <table style={{ width: "100%", borderCollapse: "collapse" }}>
-          <thead><tr><th style={styles.tableTh}>名前</th><th style={styles.tableTh}>メール</th><th style={styles.tableTh}>電話番号</th><th style={{...styles.tableTh, textAlign:"right"}}>操作</th></tr></thead>
+  return (
+    <Page title="ユーザー管理" subtitle="システムを利用するスタッフアカウントの登録・編集を行います">
+      {/* 入力・編集フォームパネル */}
+      <div style={{ 
+        ...styles.card, 
+        padding: "28px", 
+        marginBottom: "32px", 
+        border: editingId ? `2px solid ${THEME.primary}` : "none",
+        backgroundColor: editingId ? "#F8FAFF" : "white",
+        transition: "0.3s"
+      }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px" }}>
+          <h3 style={{ fontSize: "18px", fontWeight: "900", margin: 0 }}>
+            {editingId ? "ユーザー情報の編集" : "新規ユーザー登録"}
+          </h3>
+          {editingId && (
+            <button onClick={handleCancel} style={{ display: "flex", alignItems: "center", gap: "4px", background: "none", border: "none", color: THEME.textMuted, cursor: "pointer", fontWeight: "800" }}>
+              <X size={16}/> 編集をキャンセル
+            </button>
+          )}
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1.5fr 1fr auto", gap: "16px", alignItems: "flex-end" }}>
+          <div style={styles.inputGroup}>
+            <label style={{ ...styles.label, fontSize: "11px" }}>姓</label>
+            <input placeholder="山田" style={{ ...styles.input, height: "42px" }} value={form.lastName} onChange={e => setForm({ ...form, lastName: e.target.value })} />
+          </div>
+          <div style={styles.inputGroup}>
+            <label style={{ ...styles.label, fontSize: "11px" }}>名</label>
+            <input placeholder="太郎" style={{ ...styles.input, height: "42px" }} value={form.firstName} onChange={e => setForm({ ...form, firstName: e.target.value })} />
+          </div>
+          <div style={styles.inputGroup}>
+            <label style={{ ...styles.label, fontSize: "11px" }}>メールアドレス</label>
+            <input placeholder="example@email.com" style={{ ...styles.input, height: "42px" }} value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} />
+          </div>
+          <div style={styles.inputGroup}>
+            <label style={{ ...styles.label, fontSize: "11px" }}>電話番号</label>
+            <input placeholder="090..." style={{ ...styles.input, height: "42px" }} value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} />
+          </div>
+          <button 
+            onClick={handleSave} 
+            disabled={loading} 
+            style={{ 
+              ...styles.btn, 
+              backgroundColor: editingId ? THEME.success : THEME.primary,
+              color: "white",
+              height: "42px",
+              padding: "0 24px",
+              display: "flex",
+              alignItems: "center",
+              gap: "8px"
+            }}
+          >
+            {loading ? <Loader2 size={16} className="animate-spin" /> : (editingId ? <Check size={16}/> : <UserPlus size={16}/>)}
+            {editingId ? "更新する" : "登録する"}
+          </button>
+        </div>
+      </div>
+
+      {/* ユーザー一覧テーブル */}
+      <div style={{ ...styles.card, padding: 0, overflow: "hidden", border: `1px solid ${THEME.border}` }}>
+        <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: 0 }}>
+          <thead>
+            <tr style={{ backgroundColor: "#F8FAFC" }}>
+              <th style={{ ...styles.tableTh, borderBottom: `1px solid ${THEME.border}` }}>氏名</th>
+              <th style={{ ...styles.tableTh, borderBottom: `1px solid ${THEME.border}` }}>メールアドレス</th>
+              <th style={{ ...styles.tableTh, borderBottom: `1px solid ${THEME.border}` }}>電話番号</th>
+              <th style={{ ...styles.tableTh, borderBottom: `1px solid ${THEME.border}`, textAlign: "center", width: "120px" }}>操作</th>
+            </tr>
+          </thead>
           <tbody>
-            {users && users.length > 0 ? (
-              users.map((u, i) => (
-                <tr key={i}>
-                  <td style={styles.tableTd}>{u.lastName || ""} {u.firstName || ""}</td>
-                  <td style={styles.tableTd}>{u.email || ""}</td>
-                  {/* 🆕 ホワイトアウト対策: 確実に String() に変換してから replace を実行 */}
-                  <td style={styles.tableTd}>{String(u.phone || "").replace(/^'/, "")}</td>
-                  <td style={{...styles.tableTd, textAlign:"right"}}><button onClick={async()=>{if(window.confirm("このユーザーを削除しますか？")){await apiCall.post(masterUrl,{action:"deleteUser",company:CLIENT_COMPANY_NAME,email:u.email});f();}}} style={{background:"none", border:"none", color:THEME.danger, cursor:"pointer"}}><Trash2 size={16}/></button></td>
-                </tr>
-              ))
-            ) : (
-              <tr><td colSpan="4" style={{...styles.tableTd, textAlign:"center", padding:40, color:THEME.textMuted, fontSize: "14px"}}>登録済みのユーザーはいません</td></tr>
+            {users.length > 0 ? users.map((u, idx) => (
+              <tr key={u.id} style={{ 
+                backgroundColor: editingId === u.id ? "#F0F7FF" : (idx % 2 === 0 ? "white" : "#FCFDFF"),
+                transition: "0.2s"
+              }}>
+                <td style={{ ...styles.tableTd, fontWeight: "700" }}>{u.lastName} {u.firstName}</td>
+                <td style={styles.tableTd}>{u.email}</td>
+                <td style={styles.tableTd}>{String(u.phone || "-").replace(/'/g, "")}</td>
+                <td style={{ ...styles.tableTd, textAlign: "center" }}>
+                  <div style={{ display: "flex", gap: "12px", justifyContent: "center" }}>
+                    <button 
+                      onClick={() => handleEditStart(u)} 
+                      title="編集"
+                      style={{ background: "none", border: "none", color: THEME.primary, cursor: "pointer", display: "flex", alignItems: "center" }}
+                    >
+                      <Edit3 size={18}/>
+                    </button>
+                    <button 
+                      onClick={() => handleDelete(u.id)} 
+                      title="削除"
+                      style={{ background: "none", border: "none", color: THEME.danger, cursor: "pointer", display: "flex", alignItems: "center" }}
+                    >
+                      <Trash2 size={18}/>
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            )) : (
+              <tr>
+                <td colSpan="4" style={{ ...styles.tableTd, textAlign: "center", padding: "40px", color: THEME.textMuted }}>
+                  登録されているユーザーはいません。
+                </td>
+              </tr>
             )}
           </tbody>
         </table>
-      )}
-    </div>
-    {modal.open && (<div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(0,0,0,0.5)", display: "flex", justifyContent: "center", alignItems: "center", zIndex: 2000 }}>
-      <div style={{ ...styles.card, width: "500px" }}>
-        <h3 style={{marginBottom: 20}}>担当者情報の登録</h3>
-        <form onSubmit={sub}>
-          <div style={{display:"flex", gap: 12, marginBottom: 15}}>
-            <div style={{flex: 1}}><label style={{fontSize: 11, fontWeight: 800, color: THEME.textMuted}}>姓</label><input style={styles.input} value={modal.data.lastName} onChange={e=>setModal({...modal, data:{...modal.data, lastName:e.target.value}})} placeholder="宮野" required /></div>
-            <div style={{flex: 1}}><label style={{fontSize: 11, fontWeight: 800, color: THEME.textMuted}}>名</label><input style={styles.input} value={modal.data.firstName} onChange={e=>setModal({...modal, data:{...modal.data, firstName:e.target.value}})} placeholder="太郎" required /></div>
-          </div>
-          <div style={{marginBottom: 15}}><label style={{fontSize: 11, fontWeight: 800, color: THEME.textMuted}}>Googleメールアドレス</label><input style={styles.input} type="email" value={modal.data.email} onChange={e=>setModal({...modal, data:{...modal.data, email:e.target.value}})} placeholder="example@gmail.com" required /></div>
-          <div style={{marginBottom: 20}}><label style={{fontSize: 11, fontWeight: 800, color: THEME.textMuted}}>直通電話番号（0から入力）</label><input style={styles.input} value={modal.data.phone} onChange={e=>setModal({...modal, data:{...modal.data, phone:e.target.value}})} placeholder="09012345678" required /></div>
-          <div style={{ display: "flex", gap: 10 }}><button type="submit" style={{ ...styles.btn, ...styles.btnPrimary, flex: 1 }}>この内容で保存</button><button type="button" onClick={() => setModal({ open: false })} style={{ ...styles.btn, ...styles.btnSecondary, flex: 1 }}>キャンセル</button></div>
-        </form>
       </div>
-    </div>)}</Page>);
+    </Page>
+  );
 }
 
 // --- (13) Appメイン [認証 & ルーティング] ---
