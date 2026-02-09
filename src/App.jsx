@@ -159,6 +159,7 @@ function Sidebar({ onLogout }) {
     { n: "シナリオ管理", p: "/scenarios", i: <Settings size={18} /> },
     { n: "テンプレート管理", p: "/templates", i: <Copy size={18} /> },
     { n: "Gmail連携設定", p: "/gmail-settings", i: <Mail size={18} /> },
+    { n: "取り込みエラー", p: "/import-errors", i: <AlertCircle size={18} /> },
     { n: "ユーザー管理", p: "/users", i: <Users size={18} /> }
   ];
   return (
@@ -706,14 +707,8 @@ function App() {
     <Route path="/detail/:id" element={<CustomerDetail customers={d?.customers} />} />
     <Route path="/direct-sms/:id" element={<DirectSms customers={d?.customers} templates={d?.templates} onRefresh={refresh} masterUrl={MASTER_WHITELIST_API} currentUserEmail={user?.email} />} />
     <Route path="/templates" element={<TemplateManager templates={d?.templates} onRefresh={refresh} />} />
-    <Route path="/gmail-settings" element={
-  <GmailSettings 
-    gmailSettings={d?.gmailSettings} 
-    scenarios={d?.scenarios} 
-    formSettings={d?.formSettings} // 🆕 カスタム項目定義を渡す
-    onRefresh={refresh} 
-  />
-} />
+    <Route path="/gmail-settings" element={<GmailSettings gmailSettings={d?.gmailSettings} scenarios={d?.scenarios} formSettings={d?.formSettings} onRefresh={refresh} />} />
+    <Route path="/import-errors" element={<ImportErrorList errors={d?.importErrors} onRefresh={refresh} />} />
     <Route path="/form-settings" element={<FormSettings formSettings={d?.formSettings} onRefresh={refresh} />} />
     <Route path="/scenarios" element={<ScenarioList scenarios={d?.scenarios} onRefresh={refresh} />} />
     <Route path="/scenarios/new" element={<ScenarioForm scenarios={d?.scenarios} onRefresh={refresh} />} />
@@ -901,6 +896,74 @@ function GmailSettings({ gmailSettings = [], scenarios = [], formSettings = [], 
       </div>
     )}
   </Page>);
+}
+
+/**
+ * (15) ImportErrorList コンポーネント
+ * 役割: Gmailからの取り込みに失敗したメールを一覧表示し、原因特定を補助する
+ */
+function ImportErrorList({ errors = [], onRefresh }) {
+  const [selected, setSelected] = useState(null);
+
+  return (
+    <Page title="取り込みエラーログ" subtitle="抽出に失敗したメールがここに表示されます。キーワード設定の修正に役立ててください。">
+      <div style={{ display: "flex", gap: "20px", marginBottom: "20px" }}>
+        <button onClick={async () => { if(window.confirm("全てのログを削除しますか？")){ await apiCall.post(GAS_URL, { action: "clearErrorLogs" }); onRefresh(); } }} style={{ ...styles.btn, ...styles.btnSecondary, color: THEME.danger }}>
+          <Trash2 size={16} /> ログを全削除
+        </button>
+      </div>
+
+      <div style={{ ...styles.card, padding: 0, overflow: "hidden" }}>
+        <table style={{ width: "100%", borderCollapse: "collapse" }}>
+          <thead>
+            <tr>
+              <th style={styles.tableTh}>日時</th>
+              <th style={styles.tableTh}>件名 / 送信元</th>
+              <th style={styles.tableTh}>エラー原因</th>
+              <th style={{ ...styles.tableTh, textAlign: "right" }}>詳細</th>
+            </tr>
+          </thead>
+          <tbody>
+            {errors && errors.length > 0 ? (
+              errors.sort((a,b) => new Date(b["日時"]) - new Date(a["日時"])).map((e, i) => (
+                <tr key={i} style={{ transition: "0.2s" }} onMouseEnter={el => el.currentTarget.style.backgroundColor = THEME.bg} onMouseLeave={el => el.currentTarget.style.backgroundColor = "transparent"}>
+                  <td style={styles.tableTd}>{formatDate(e["日時"])}</td>
+                  <td style={styles.tableTd}>
+                    <div style={{ fontWeight: 700 }}>{e["件名"]}</div>
+                    <div style={{ fontSize: "12px", color: THEME.textMuted }}>{e["送信元"]}</div>
+                  </td>
+                  <td style={styles.tableTd}>
+                    <span style={{ color: THEME.danger, fontWeight: 800 }}>{e["エラー原因"]}</span>
+                  </td>
+                  <td style={{ ...styles.tableTd, textAlign: "right" }}>
+                    <button onClick={() => setSelected(e)} style={{ background: "none", border: "none", color: THEME.primary, cursor: "pointer" }}>
+                      <Eye size={18} />
+                    </button>
+                  </td>
+                </tr>
+              ))
+            ) : (
+              <tr><td colSpan="4" style={{ ...styles.tableTd, textAlign: "center", padding: 40, color: THEME.textMuted }}>現在、エラーログはありません。</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {selected && (
+        <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(0,0,0,0.6)", display: "flex", justifyContent: "center", alignItems: "center", zIndex: 2100 }}>
+          <div style={{ ...styles.card, width: "800px", maxHeight: "80vh", overflow: "hidden", display: "flex", flexDirection: "column" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "20px" }}>
+              <h3>メール本文の詳細確認</h3>
+              <button onClick={() => setSelected(null)} style={{ background: "none", border: "none", cursor: "pointer" }}>✕ 閉じる</button>
+            </div>
+            <div style={{ flex: 1, overflowY: "auto", background: "#F8FAFC", padding: "20px", borderRadius: "10px", whiteSpace: "pre-wrap", fontSize: "13px", color: THEME.textMain }}>
+              {selected["内容"]}
+            </div>
+          </div>
+        </div>
+      )}
+    </Page>
+  );
 }
 
 export default App;
