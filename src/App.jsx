@@ -486,25 +486,69 @@ function CustomerEdit({ customers = [], scenarios = [], formSettings = [], statu
 }
 
 // --- (5) 配信状況/履歴 [2階層表示] ---
+// --- (5) 配信状況/履歴 [エラー再送機能追加版] ---
 function CustomerSchedule({ customers = [], deliveryLogs = [], onRefresh }) {
+  const navigate = useNavigate();
   const { id } = useParams(); const c = customers?.find(x => x.id === Number(id)); const [edit, setEdit] = useState(null);
   if (!customers.length || !c) return <Page title="読込中..."><Loader2 size={24} className="animate-spin"/></Page>;
   const cP = smartNormalizePhone(c["電話番号"]);
   const sL = (deliveryLogs || []).filter(l => smartNormalizePhone(l["電話番号"]) === cP && l["ステップ名"] !== "個別SMS");
   const dL = (deliveryLogs || []).filter(l => smartNormalizePhone(l["電話番号"]) === cP && l["ステップ名"] === "個別SMS");
+
+  // 再送画面へメッセージを引き継いで遷移する関数
+  const handleResend = (messageContent) => {
+    navigate(`/direct-sms/${id}`, { state: { prefilledMessage: messageContent } });
+  };
+
   return (<Page title="配信スケジュール" subtitle={`${c["姓"]}${c["名"]} 様`}><Link to="/" style={{display:"block", marginBottom:"24px", color:THEME.primary, textDecoration:"none", fontWeight:"700"}}>← 戻る</Link>
     <div style={{marginBottom:"40px"}}><h3 style={{fontSize:"18px", marginBottom:"16px", borderLeft:`4px solid ${THEME.primary}`, paddingLeft:"12px"}}>ステップ配信ログ</h3>
-      <div style={{display:"flex", flexDirection:"column", gap:"12px"}}>{sL.map((l, i) => (<div key={i} style={{ ...styles.card, padding: "16px", borderLeft: `6px solid ${l["ステータス"] === "配信済み" ? THEME.success : THEME.primary}` }}><div style={{display:"flex", justifyContent:"space-between"}}><div><span style={styles.badge}>{l["ステータス"]}</span><span style={{fontWeight:"800", marginLeft:"12px"}}>{formatDate(l["配信予定日時"])}</span><span style={{marginLeft:"12px", color:THEME.textMuted, fontSize:"12px"}}>{l["ステップ名"]}</span></div>{l["ステータス"] === "配信待ち" && <button onClick={()=>setEdit({ id: l["ログID"], t: new Date(new Date(l["配信予定日時"]).getTime() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16), m: l["内容"] })} style={{color:THEME.primary, background:"none", border:"none", cursor:"pointer", fontWeight:"600"}}>編集</button>}</div><div style={{marginTop:"10px", fontSize:"14px"}}>{l["内容"]}</div></div>))}</div></div>
+      <div style={{display:"flex", flexDirection:"column", gap:"12px"}}>{sL.map((l, i) => (
+        <div key={i} style={{ ...styles.card, padding: "16px", borderLeft: `6px solid ${l["ステータス"] === "配信済み" ? THEME.success : (l["ステータス"] === "エラー" ? THEME.danger : THEME.primary)}` }}>
+          <div style={{display:"flex", justifyContent:"space-between"}}>
+            <div>
+              <span style={{...styles.badge, backgroundColor: l["ステータス"] === "エラー" ? "#FEE2E2" : "#EEF2FF", color: l["ステータス"] === "エラー" ? THEME.danger : THEME.primary}}>{l["ステータス"]}</span>
+              <span style={{fontWeight:"800", marginLeft:"12px"}}>{formatDate(l["配信予定日時"])}</span>
+              <span style={{marginLeft:"12px", color:THEME.textMuted, fontSize:"12px"}}>{l["ステップ名"]}</span>
+            </div>
+            <div style={{display:"flex", gap:12}}>
+              {l["ステータス"] === "配信待ち" && <button onClick={()=>setEdit({ id: l["ログID"], t: new Date(new Date(l["配信予定日時"]).getTime() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16), m: l["内容"] })} style={{color:THEME.primary, background:"none", border:"none", cursor:"pointer", fontWeight:"600"}}>編集</button>}
+              {l["ステータス"] === "エラー" && <button onClick={() => handleResend(l["内容"])} style={{...styles.badge, backgroundColor: THEME.danger, color: "white", border: "none", cursor: "pointer", display: "flex", alignItems: "center", gap: 4}}><Send size={12}/> 再送画面へ</button>}
+            </div>
+          </div>
+          <div style={{marginTop:"10px", fontSize:"14px"}}>{l["内容"]}</div>
+        </div>
+      ))}</div>
+    </div>
     <div><h3 style={{fontSize:"18px", marginBottom:"16px", borderLeft:`4px solid ${THEME.primary}`, paddingLeft:"12px"}}>個別送信ログ</h3>
-      <div style={{display:"flex", flexDirection:"column", gap:"12px"}}>{dL.map((l, i) => (<div key={i} style={{ ...styles.card, padding: "16px", background:"#F8FAFC" }}><div style={{display:"flex", justifyContent:"space-between"}}><div><span style={styles.badge}>{l["ステータス"]}</span><span style={{fontWeight:"800", marginLeft:"12px"}}>{formatDate(l["配信予定日時"])}</span></div>{l["ステータス"] === "配信待ち" && <button onClick={()=>setEdit({ id: l["ログID"], t: new Date(new Date(l["配信予定日時"]).getTime() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16), m: l["内容"] })} style={{color:THEME.primary, background:"none", border:"none", cursor:"pointer", fontWeight:"600"}}>編集</button>}</div><div style={{marginTop:"10px", fontSize:"14px"}}>{l["内容"]}</div></div>))}</div></div>
+      <div style={{display:"flex", flexDirection:"column", gap:"12px"}}>{dL.map((l, i) => (
+        <div key={i} style={{ ...styles.card, padding: "16px", background:"#F8FAFC", borderLeft: l["ステータス"] === "エラー" ? `6px solid ${THEME.danger}` : "none" }}>
+          <div style={{display:"flex", justifyContent:"space-between"}}>
+            <div>
+              <span style={{...styles.badge, backgroundColor: l["ステータス"] === "エラー" ? "#FEE2E2" : "#EEF2FF", color: l["ステータス"] === "エラー" ? THEME.danger : THEME.primary}}>{l["ステータス"]}</span>
+              <span style={{fontWeight:"800", marginLeft:"12px"}}>{formatDate(l["配信予定日時"])}</span>
+            </div>
+            <div style={{display:"flex", gap:12}}>
+              {l["ステータス"] === "配信待ち" && <button onClick={()=>setEdit({ id: l["ログID"], t: new Date(new Date(l["配信予定日時"]).getTime() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16), m: l["内容"] })} style={{color:THEME.primary, background:"none", border:"none", cursor:"pointer", fontWeight:"600"}}>編集</button>}
+              {l["ステータス"] === "エラー" && <button onClick={() => handleResend(l["内容"])} style={{...styles.badge, backgroundColor: THEME.danger, color: "white", border: "none", cursor: "pointer", display: "flex", alignItems: "center", gap: 4}}><Send size={12}/> 再送画面へ</button>}
+            </div>
+          </div>
+          <div style={{marginTop:"10px", fontSize:"14px"}}>{l["内容"]}</div>
+        </div>
+      ))}</div>
+    </div>
     {edit && (<div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(0,0,0,0.6)", display: "flex", justifyContent: "center", alignItems: "center", zIndex: 2000 }}><div style={{ ...styles.card, width: "500px", padding: "32px" }}><h3>日時の再設定</h3><SmartDateTimePicker value={edit.t} onChange={t=>setEdit({...edit, t})} /><textarea style={{...styles.input, height:"150px", marginTop:"15px", resize:"none"}} value={edit.m} onChange={e=>setEdit({...edit, m:e.target.value})} /><div style={{display:"flex", gap:"12px", marginTop:"24px"}}><button onClick={async()=>{ await apiCall.post(GAS_URL,{action:"updateDeliveryTime",logId:edit.id,newTime:edit.t, newMessage:edit.m}); onRefresh(); setEdit(null); }} style={{...styles.btn, ...styles.btnPrimary, flex:1}}>保存</button><button onClick={()=>setEdit(null)} style={{...styles.btn, ...styles.btnSecondary, flex:1}}>閉じる</button></div></div></div>)}</Page>);
 }
 
-// --- (6) 個別SMS送信 ---
+// --- (6) 個別SMS送信 [再送本文の受け取り機能追加版] ---
 function DirectSms({ customers = [], templates = [], onRefresh, masterUrl, currentUserEmail }) {
-  const { id } = useParams(); const navigate = useNavigate(); 
+  const { id } = useParams(); 
+  const navigate = useNavigate(); 
+  const location = useLocation(); // 🆕 遷移時の state を取得するため追加
   const c = customers?.find(x => x.id === Number(id));
-  const [msg, setMsg] = useState(""); 
+  
+  // 🆕 遷移元から再送用メッセージが渡されていればそれを初期値にする
+  const [msg, setMsg] = useState(location.state?.prefilledMessage || ""); 
+  
   const [time, setTime] = useState(new Date(new Date().getTime() + 10 * 60000).toISOString().slice(0, 16));
   const [staffList, setStaffList] = useState([]);
   const [selectedStaff, setSelectedStaff] = useState(null);
@@ -516,7 +560,6 @@ function DirectSms({ customers = [], templates = [], onRefresh, masterUrl, curre
         const list = res?.data?.users || [];
         setStaffList(list);
         
-        // 🆕 ログインユーザーと一致するスタッフを自動選択
         const myProfile = list.find(s => String(s.email).toLowerCase() === String(currentUserEmail).toLowerCase());
         if (myProfile) {
           setSelectedStaff(myProfile);
@@ -531,6 +574,14 @@ function DirectSms({ customers = [], templates = [], onRefresh, masterUrl, curre
   if (!c) return <Page title="読込中..."><div style={{display:"flex", justifyContent:"center", padding:40}}><Loader2 className="animate-spin" size={32} color={THEME.primary}/></div></Page>;
 
   return (<Page title="個別メッセージ送信" subtitle={`${c?.["姓"] || ""} ${c?.["名"] || ""} 様`}>
+    {/* 🆕 再送モードの場合のアラート表示 */}
+    {location.state?.prefilledMessage && (
+      <div style={{...styles.card, backgroundColor: "#FEF2F2", border: `1px solid ${THEME.danger}`, marginBottom: 24, display: "flex", alignItems: "center", gap: 12}}>
+        <AlertCircle size={20} color={THEME.danger} />
+        <span style={{fontSize: 14, fontWeight: 800, color: THEME.danger}}>エラーとなったメッセージの再送モードです。内容を確認して送信してください。</span>
+      </div>
+    )}
+
     <div style={{ display: "grid", gridTemplateColumns: "1fr 350px", gap: "32px" }}>
       <div>
         <div style={{...styles.card, marginBottom: 24, backgroundColor: "#EEF2FF", border: "none", padding: "20px"}}>
