@@ -153,15 +153,14 @@ function DateRangePicker({ label, value = {}, onChange }) {
 
 function Sidebar({ onLogout }) {
   const l = useLocation();
+  // 🆕 メニューを統合・整理
   const m = [
     { n: "ダッシュボード", p: "/", i: <LayoutDashboard size={18} /> },
-    { n: "案件カンバン", p: "/kanban", i: <Columns size={18} /> }, // カンバンを上位に
+    { n: "案件カンバン", p: "/kanban", i: <Columns size={18} /> },
+    { n: "反響取り込み", p: "/response-import", i: <Mail size={18} /> }, // Gmail設定とエラーを統合
     { n: "新規顧客登録", p: "/add", i: <UserPlus size={18} /> },
     { n: "シナリオ管理", p: "/scenarios", i: <Settings size={18} /> },
     { n: "テンプレート管理", p: "/templates", i: <Copy size={18} /> },
-    { n: "Gmail連携設定", p: "/gmail-settings", i: <Mail size={18} /> },
-    { n: "ステータス管理", p: "/status-settings", i: <ListTodo size={18} /> }, // ステータス設定を追加
-    { n: "取り込みエラー", p: "/import-errors", i: <AlertCircle size={18} /> },
     { n: "ユーザー管理", p: "/users", i: <Users size={18} /> }
   ];
   return (
@@ -799,20 +798,11 @@ function App() {
   const [load, setLoad] = useState(true); const [user, setUser] = useState(() => { const sUser = localStorage.getItem("sf_user"); return sUser ? JSON.parse(sUser) : null; });
   const refresh = useCallback(async () => { if(!user) return; try { const res = await axios.get(`${GAS_URL}`); setD(res?.data || {}); } finally { setLoad(false); } }, [user]);
   useEffect(() => { refresh(); }, [refresh]);
-  if (!user) return (<div style={{ height: "100vh", display: "flex", alignItems: "center", justifyContent: "center", backgroundColor: THEME.bg }}><style>{globalStyle}</style><div style={{ ...styles.card, textAlign: "center", width: "400px", padding: "48px" }}><div style={{ backgroundColor: THEME.primary, width: "64px", height: "64px", borderRadius: "18px", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 32px", boxShadow: "0 10px 25px -5px rgba(79, 70, 229, 0.4)" }}><MessageSquare color="white" size={32} /></div><h1 style={{fontSize:28, fontWeight:900, marginBottom:10}}>StepFlow</h1><p style={{fontSize:14, color:THEME.textMuted, marginBottom:40}}>マーケティングSMS・配信管理 [V18.1]</p><GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID}><GoogleLogin onSuccess={(res) => { const dec = jwtDecode(res.credential); setUser(dec); localStorage.setItem("sf_user", JSON.stringify(dec)); }} /></GoogleOAuthProvider></div></div>);
+  if (!user) return (<div style={{ height: "100vh", display: "flex", alignItems: "center", justifyContent: "center", backgroundColor: THEME.bg }}><style>{globalStyle}</style><div style={{ ...styles.card, textAlign: "center", width: "400px", padding: "48px" }}><div style={{ backgroundColor: THEME.primary, width: "64px", height: "64px", borderRadius: "18px", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 32px", boxShadow: "0 10px 25px -5px rgba(79, 70, 229, 0.4)" }}><MessageSquare color="white" size={32} /></div><h1 style={{fontSize:28, fontWeight:900, marginBottom:10}}>StepFlow</h1><p style={{fontSize:14, color:THEME.textMuted, marginBottom:40}}>マーケティングSMS・配信管理 [V19.1]</p><GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID}><GoogleLogin onSuccess={(res) => { const dec = jwtDecode(res.credential); setUser(dec); localStorage.setItem("sf_user", JSON.stringify(dec)); }} /></GoogleOAuthProvider></div></div>);
   if(load) return <div style={{ height: "100vh", display: "flex", alignItems: "center", justifyContent: "center", backgroundColor: THEME.bg }}><Loader2 size={48} className="animate-spin" color={THEME.primary} /></div>;
+  
   return (<GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID}><style>{globalStyle}</style><Router><div style={{ display: "flex" }}><Sidebar onLogout={() => { setUser(null); localStorage.removeItem("sf_user"); }} /><Routes>
-    <Route path="/" element={
-  <CustomerList 
-    customers={d?.customers} 
-    displaySettings={d?.displaySettings} 
-    formSettings={d?.formSettings} 
-    scenarios={d?.scenarios} 
-    statuses={d?.statuses}           // 🆕 ステータスデータを渡す
-    masterUrl={MASTER_WHITELIST_API} // 🆕 担当者取得URLを渡す
-    onRefresh={refresh} 
-  />
-} />
+    <Route path="/" element={<CustomerList customers={d?.customers} displaySettings={d?.displaySettings} formSettings={d?.formSettings} scenarios={d?.scenarios} statuses={d?.statuses} masterUrl={MASTER_WHITELIST_API} onRefresh={refresh} />} />
     <Route path="/kanban" element={<KanbanBoard customers={d?.customers} statuses={d?.statuses} onRefresh={refresh} masterUrl={MASTER_WHITELIST_API} />} /> 
     <Route path="/status-settings" element={<StatusSettings statuses={d?.statuses} onRefresh={refresh} />} />
     <Route path="/column-settings" element={<ColumnSettings displaySettings={d?.displaySettings} formSettings={d?.formSettings} onRefresh={refresh} />} />
@@ -822,8 +812,12 @@ function App() {
     <Route path="/detail/:id" element={<CustomerDetail customers={d?.customers} />} />
     <Route path="/direct-sms/:id" element={<DirectSms customers={d?.customers} templates={d?.templates} onRefresh={refresh} masterUrl={MASTER_WHITELIST_API} currentUserEmail={user?.email} />} />
     <Route path="/templates" element={<TemplateManager templates={d?.templates} onRefresh={refresh} />} />
+    
+    {/* 🆕 統合された反響取り込みポータル */}
+    <Route path="/response-import" element={<ResponseImportPortal />} />
     <Route path="/gmail-settings" element={<GmailSettings gmailSettings={d?.gmailSettings} scenarios={d?.scenarios} formSettings={d?.formSettings} onRefresh={refresh} />} />
     <Route path="/import-errors" element={<ImportErrorList errors={d?.importErrors} onRefresh={refresh} />} />
+    
     <Route path="/form-settings" element={<FormSettings formSettings={d?.formSettings} onRefresh={refresh} />} />
     <Route path="/scenarios" element={<ScenarioList scenarios={d?.scenarios} onRefresh={refresh} />} />
     <Route path="/scenarios/new" element={<ScenarioForm scenarios={d?.scenarios} onRefresh={refresh} />} />
@@ -1086,16 +1080,12 @@ function ImportErrorList({ errors = [], onRefresh }) {
  * 役割: 営業進捗を視覚的に管理。ドロップと同時にUIを即時反映し、バックグラウンドでGAS同期を行う。
  */
 function KanbanBoard({ customers = [], statuses = [], onRefresh, masterUrl }) {
+  const navigate = useNavigate(); // 🆕 遷移用
   const [filterStaff, setFilterStaff] = useState("");
   const [staffList, setStaffList] = useState([]);
-  // 🆕 画面表示用のローカルデータ（楽観的更新のため）
   const [localCustomers, setLocalCustomers] = useState(customers);
 
-  // 親のデータ(customers)が更新されたらローカルも同期
-  useEffect(() => {
-    setLocalCustomers(customers);
-  }, [customers]);
-
+  useEffect(() => { setLocalCustomers(customers); }, [customers]);
   useEffect(() => {
     const fetchStaff = async () => {
       try {
@@ -1108,34 +1098,28 @@ function KanbanBoard({ customers = [], statuses = [], onRefresh, masterUrl }) {
 
   const onDragStart = (e, customerId) => e.dataTransfer.setData("customerId", customerId);
   const onDragOver = (e) => e.preventDefault();
-
-  // 🆕 ドロップ時の処理（楽観的更新）
   const onDrop = async (e, newStatus) => {
     const cid = e.dataTransfer.getData("customerId");
-    
-    // 1. まずUIだけを即座に書き換える（体感速度を上げる）
-    const updated = localCustomers.map(c => 
-      String(c.id) === String(cid) ? { ...c, "対応ステータス": newStatus } : c
-    );
+    const updated = localCustomers.map(c => String(c.id) === String(cid) ? { ...c, "対応ステータス": newStatus } : c);
     setLocalCustomers(updated);
-
-    // 2. その後、バックグラウンドでGASに通知
     try {
       await apiCall.post(GAS_URL, { action: "updateStatus", id: cid, status: newStatus });
-      // 3. サーバー側と完全に同期するために再取得を呼ぶ（サイレントに行う）
       onRefresh();
-    } catch (err) {
-      alert("通信エラーが発生しました。最新のデータにリセットします。");
-      onRefresh(); // エラー時は正しいデータに戻す
-    }
+    } catch (err) { alert("通信エラー"); onRefresh(); }
   };
 
-  // 🆕 localCustomers を使ってフィルタリングと表示を行う
   const filtered = localCustomers.filter(c => !filterStaff || c["担当者メール"] === filterStaff);
 
   return (
     <Page title="案件管理カンバン" topButton={
-      <div style={{display:"flex", gap:12, alignItems:"center"}}>
+      <div style={{display:"flex", gap:16, alignItems:"center"}}>
+        {/* 🆕 ステータス管理への導線ボタン */}
+        <button onClick={() => navigate("/status-settings")} style={{ ...styles.btn, ...styles.btnSecondary }}>
+          <ListTodo size={18} /> ステータス項目の調整
+        </button>
+        
+        <div style={{ width: "1px", height: "24px", backgroundColor: THEME.border }}></div>
+
         <span style={{fontSize:12, fontWeight:800, color:THEME.textMuted}}>担当で絞り込み:</span>
         <select style={{...styles.input, width:200}} value={filterStaff} onChange={e=>setFilterStaff(e.target.value)}>
           <option value="">全ての担当者</option>
@@ -1143,36 +1127,24 @@ function KanbanBoard({ customers = [], statuses = [], onRefresh, masterUrl }) {
         </select>
       </div>
     }>
-      <div style={{ display: "flex", gap: "20px", overflowX: "auto", paddingBottom: "24px", alignItems: "flex-start", minHeight: "calc(100vh - 250px)" }}>
+      <div style={{ display: "flex", gap: "20px", overflowX: "auto", paddingBottom: "20px", alignItems: "flex-start" }}>
         {statuses.map(st => {
           const colCustomers = filtered.filter(c => (c["対応ステータス"] || "未対応") === st.name);
           return (
-            <div 
-              key={st.name} 
-              onDragOver={onDragOver} 
-              onDrop={(e) => onDrop(e, st.name)} 
-              style={{ minWidth: "300px", width: "300px", backgroundColor: "#F1F5F9", borderRadius: "16px", padding: "16px", minHeight: "500px" }}
-            >
+            <div key={st.name} onDragOver={onDragOver} onDrop={(e) => onDrop(e, st.name)} style={{ minWidth: "320px", backgroundColor: "#F1F5F9", borderRadius: "16px", padding: "16px", minHeight: "70vh" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px", padding: "0 8px" }}>
-                <h3 style={{ fontSize: "14px", fontWeight: "900", margin: 0, color: THEME.textMain }}>{st.name}</h3>
-                <span style={{ ...styles.badge, backgroundColor: "white", border: `1px solid ${THEME.border}` }}>{colCustomers.length}</span>
+                <h3 style={{ fontSize: "15px", fontWeight: "900", margin: 0 }}>{st.name}</h3>
+                <span style={styles.badge}>{colCustomers.length}</span>
               </div>
               <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
                 {colCustomers.map(c => (
-                  <div 
-                    key={c.id} 
-                    draggable 
-                    onDragStart={(e) => onDragStart(e, c.id)} 
-                    style={{ ...styles.card, padding: "16px", cursor: "grab", border: "1px solid transparent", transition: "0.2s" }} 
-                    onMouseEnter={e=>e.currentTarget.style.borderColor=THEME.primary} 
-                    onMouseLeave={e=>e.currentTarget.style.borderColor="transparent"}
-                  >
-                    <div style={{ fontWeight: "800", marginBottom: "10px", fontSize: "14px" }}>{c["姓"]} {c["名"]} 様</div>
+                  <div key={c.id} draggable onDragStart={(e) => onDragStart(e, c.id)} style={{ ...styles.card, padding: "16px", cursor: "grab", border: "1px solid transparent" }} onMouseEnter={e=>e.currentTarget.style.borderColor=THEME.primary} onMouseLeave={e=>e.currentTarget.style.borderColor="transparent"}>
+                    <div style={{ fontWeight: "800", marginBottom: "8px", fontSize: "14px" }}>{c["姓"]} {c["名"]} 様</div>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                       <div style={{ fontSize: "11px", color: THEME.textMuted, display: "flex", alignItems: "center", gap: 4 }}>
-                        <UserCircle size={14} color={THEME.primary}/> {staffList.find(s => s.email === c["担当者メール"])?.lastName || "担当未設定"}
+                        <UserCircle size={12}/> {staffList.find(s => s.email === c["担当者メール"])?.lastName || "未割当"}
                       </div>
-                      <Link to={`/direct-sms/${c.id}`} style={{ color: THEME.primary, display: "flex" }}><MessageSquare size={16}/></Link>
+                      <Link to={`/direct-sms/${c.id}`} style={{ color: THEME.primary }}><MessageSquare size={14}/></Link>
                     </div>
                   </div>
                 ))}
@@ -1270,6 +1242,73 @@ function StatusSettings({ statuses = [], onRefresh }) {
         >
           設定を保存して反映
         </button>
+      </div>
+    </Page>
+  );
+}
+
+/**
+ * (18) ResponseImportPortal コンポーネント (🆕 新設)
+ * 役割: 反響取り込みに関する機能を統合。ユーザーが「設定」か「エラー確認」かを選択する。
+ */
+function ResponseImportPortal() {
+  const navigate = useNavigate();
+  const menuItems = [
+    {
+      title: "Gmail自動取り込み設定",
+      desc: "メールからの顧客自動登録ルールを作成・編集します",
+      path: "/gmail-settings",
+      icon: <Settings size={32} color={THEME.primary} />,
+      color: "#EEF2FF"
+    },
+    {
+      title: "取り込みエラーログ",
+      desc: "キーワード不一致等で取り込めなかったメールを確認します",
+      path: "/import-errors",
+      icon: <AlertCircle size={32} color={THEME.danger} />,
+      color: "#FEF2F2"
+    }
+  ];
+
+  return (
+    <Page title="反響取り込み管理" subtitle="自動取り込みの設定およびエラーの監視を行います">
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "32px", maxWidth: "900px", marginTop: "24px" }}>
+        {menuItems.map(item => (
+          <div 
+            key={item.path} 
+            onClick={() => navigate(item.path)}
+            style={{ 
+              ...styles.card, 
+              padding: "40px", 
+              cursor: "pointer", 
+              textAlign: "center",
+              transition: "0.2s",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              gap: "20px"
+            }}
+            onMouseEnter={e => {
+              e.currentTarget.style.borderColor = THEME.primary;
+              e.currentTarget.style.transform = "translateY(-4px)";
+            }}
+            onMouseLeave={e => {
+              e.currentTarget.style.borderColor = THEME.border;
+              e.currentTarget.style.transform = "translateY(0)";
+            }}
+          >
+            <div style={{ width: "80px", height: "80px", borderRadius: "20px", backgroundColor: item.color, display: "flex", alignItems: "center", justifyContent: "center" }}>
+              {item.icon}
+            </div>
+            <div>
+              <h3 style={{ fontSize: "20px", fontWeight: "900", marginBottom: "12px" }}>{item.title}</h3>
+              <p style={{ color: THEME.textMuted, fontSize: "14px", lineHeight: 1.6 }}>{item.desc}</p>
+            </div>
+            <div style={{ marginTop: "12px", color: THEME.primary, fontWeight: "800", fontSize: "14px", display: "flex", alignItems: "center", gap: 4 }}>
+              管理画面を開く <ChevronRight size={16} />
+            </div>
+          </div>
+        ))}
       </div>
     </Page>
   );
