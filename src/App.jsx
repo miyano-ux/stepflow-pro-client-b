@@ -640,50 +640,73 @@ function App() {
 }
 
 
-/** 
- * (14)GmailSettings コンポーネント (V15 拡張案)
- * 役割: 受信メールのパースルールをUIから設定する
+/** * (14) GmailSettings コンポーネント (V15.3 編集・表示強化版)
+ * 役割: 受信メールのパースルールをUIから設定・編集する
  */
 function GmailSettings({ gmailSettings = [], scenarios = [], onRefresh }) {
-  const [modal, setModal] = useState({ open: false, data: { to: "", from: "", subject: "", nameKey: "氏名：", phoneKey: "電話番号：", scenarioID: "" } });
+  // modal.mode を追加して「追加」と「編集」を切り替え
+  const [modal, setModal] = useState({ 
+    open: false, 
+    mode: "add", 
+    id: null, 
+    data: { from: "", subject: "", nameKey: "氏名：", phoneKey: "電話番号：", scenarioID: "" } 
+  });
   const [testBody, setTestBody] = useState("");
   const [parsePreview, setParsePreview] = useState(null);
+
+  // 編集モードでモーダルを開く
+  const handleEdit = (s, index) => {
+    setModal({
+      open: true,
+      mode: "edit",
+      id: index,
+      data: { ...s }
+    });
+  };
 
   // 抽出テスト実行
   const testParse = () => {
     if (!testBody) return alert("テスト用の本文を入力してください");
-    // ユーザーが指定したキーに基づいて正規表現を作成
-    const nameRegex = new RegExp(modal.data.nameKey + "\\s*(.+)");
-    const phoneRegex = new RegExp(modal.data.phoneKey + "\\s*([\\d-]+)");
-    const nameMatch = testBody.match(nameRegex);
-    const phoneMatch = testBody.match(phoneRegex);
-    setParsePreview({
-      name: nameMatch ? nameMatch[1].trim() : "抽出失敗",
-      phone: phoneMatch ? phoneMatch[1].trim() : "抽出失敗"
-    });
+    try {
+      const nameRegex = new RegExp(modal.data.nameKey + "\\s*(.+)");
+      const phoneRegex = new RegExp(modal.data.phoneKey + "\\s*([\\d-]+)");
+      const nameMatch = testBody.match(nameRegex);
+      const phoneMatch = testBody.match(phoneRegex);
+      setParsePreview({
+        name: nameMatch ? nameMatch[1].trim() : "抽出失敗",
+        phone: phoneMatch ? phoneMatch[1].trim() : "抽出失敗"
+      });
+    } catch (e) {
+      alert("キーワードの形式が正しくありません");
+    }
   };
 
-  return (<Page title="Gmail自動取り込み設定" subtitle="通知メールの形式に合わせて抽出ルールを定義します">
+  return (<Page title="Gmail自動取り込み設定" subtitle="通知メールの形式に合わせて抽出ルールを定義・編集します">
     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(400px, 1fr))", gap: "24px", marginBottom: "32px" }}>
       {gmailSettings.map((s, i) => (
         <div key={i} style={styles.card}>
           <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "16px" }}>
             <span style={{ ...styles.badge, backgroundColor: THEME.primary, color: "white" }}>設定 {i + 1}</span>
-            <button onClick={async () => { if(window.confirm("この設定を削除しますか？")){ await apiCall.post(GAS_URL, { action: "deleteGmailSetting", id: i }); onRefresh(); } }} style={{ background: "none", border: "none", color: THEME.danger, cursor: "pointer" }}><Trash2 size={18}/></button>
+            <div style={{ display: "flex", gap: "8px" }}>
+              {/* 編集ボタンを追加 */}
+              <button onClick={() => handleEdit(s, i)} style={{ background: "none", border: "none", color: THEME.textMuted, cursor: "pointer" }}><Edit3 size={18}/></button>
+              <button onClick={async () => { if(window.confirm("この設定を削除しますか？")){ await apiCall.post(GAS_URL, { action: "deleteGmailSetting", id: i }); onRefresh(); } }} style={{ background: "none", border: "none", color: THEME.danger, cursor: "pointer" }}><Trash2 size={18}/></button>
+            </div>
           </div>
           <div style={{ fontSize: "14px", display: "grid", gap: "8px" }}>
-            <div style={{display:"flex", justifyContent:"space-between"}}><span style={{color:THEME.textMuted}}>送信元(from):</span><span style={{fontWeight:700}}>{s.from}</span></div>
-            <div style={{display:"flex", justifyContent:"space-between"}}><span style={{color:THEME.textMuted}}>件名キーワード:</span><span style={{fontWeight:700}}>{s.subject}</span></div>
+            {/* 🆕 実際のデータを表示 */}
+            <div style={{display:"flex", justifyContent:"space-between"}}><span style={{color:THEME.textMuted}}>送信元(from):</span><span style={{fontWeight:700}}>{s.from || "未設定"}</span></div>
+            <div style={{display:"flex", justifyContent:"space-between"}}><span style={{color:THEME.textMuted}}>件名キーワード:</span><span style={{fontWeight:700}}>{s.subject || "未設定"}</span></div>
             <div style={{ marginTop: "12px", padding: "12px", background: "#F8FAFC", borderRadius: "10px", border: `1px solid ${THEME.border}` }}>
-              <div style={{fontSize:11, fontWeight:800, color:THEME.primary, marginBottom:8}}>抽出キーワード</div>
+              <div style={{fontSize:11, fontWeight:800, color:THEME.primary, marginBottom:8}}>抽出キーワード設定</div>
               <div>氏名： <strong>{s.nameKey}</strong> の後ろ</div>
               <div>電話： <strong>{s.phoneKey}</strong> の後ろ</div>
             </div>
-            <div style={{marginTop:8, textAlign:"right"}}><span style={styles.badge}>適用：シナリオ {s.scenarioID}</span></div>
+            <div style={{marginTop:8, textAlign:"right"}}><span style={{ ...styles.badge, backgroundColor: "#F1F5F9", color: THEME.primary }}>適用：シナリオ {s.scenarioID}</span></div>
           </div>
         </div>
       ))}
-      <button onClick={() => setModal({ ...modal, open: true })} style={{ ...styles.card, border: `2px dashed ${THEME.border}`, minHeight: "200px", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "12px", cursor: "pointer", color: THEME.textMuted, transition: "0.2s" }} onMouseEnter={e=>e.currentTarget.style.borderColor=THEME.primary} onMouseLeave={e=>e.currentTarget.style.borderColor=THEME.border}>
+      <button onClick={() => setModal({ open: true, mode: "add", id: null, data: { from: "", subject: "", nameKey: "氏名：", phoneKey: "電話番号：", scenarioID: "" } })} style={{ ...styles.card, border: `2px dashed ${THEME.border}`, minHeight: "220px", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: "12px", cursor: "pointer", color: THEME.textMuted, transition: "0.2s" }} onMouseEnter={e=>e.currentTarget.style.borderColor=THEME.primary} onMouseLeave={e=>e.currentTarget.style.borderColor=THEME.border}>
         <Plus size={40} /> <span style={{fontWeight:800}}>新しいルールを追加</span>
       </button>
     </div>
@@ -692,7 +715,7 @@ function GmailSettings({ gmailSettings = [], scenarios = [], onRefresh }) {
       <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(0,0,0,0.6)", display: "flex", justifyContent: "center", alignItems: "center", zIndex: 2000 }}>
         <div style={{ ...styles.card, width: "900px", display: "grid", gridTemplateColumns: "1fr 350px", gap: "32px", padding: "32px" }}>
           <div>
-            <h3 style={{marginTop: 0, marginBottom: 24}}>取り込みルールの作成</h3>
+            <h3 style={{marginTop: 0, marginBottom: 24}}>{modal.mode === "add" ? "取り込みルールの作成" : "ルールの編集"}</h3>
             <div style={{display:"grid", gap:16}}>
               <div><label style={{fontSize:11, fontWeight:800, color:THEME.textMuted}}>送信元アドレス (from)</label><input style={styles.input} value={modal.data.from} onChange={e => setModal({...modal, data: {...modal.data, from: e.target.value}})} placeholder="info@assessment-site.com" /></div>
               <div><label style={{fontSize:11, fontWeight:800, color:THEME.textMuted}}>件名のキーワード (この文字を含むメールを対象にする)</label><input style={styles.input} value={modal.data.subject} onChange={e => setModal({...modal, data: {...modal.data, subject: e.target.value}})} placeholder="反響通知" /></div>
@@ -712,17 +735,13 @@ function GmailSettings({ gmailSettings = [], scenarios = [], onRefresh }) {
             
             <div style={{display:"flex", gap:12, marginTop:32}}>
               <button onClick={async() => { 
-  if(!modal.data.from || !modal.data.scenarioID) return alert("送信元とシナリオは必須です"); 
-  try {
-    await apiCall.post(GAS_URL, { action: "saveGmailSetting", ...modal.data }); 
-    setModal({open: false}); 
-    onRefresh(); 
-    alert("設定をスプレッドシートに保存しました");
-  } catch(e) {
-    alert("保存に失敗しました。GAS側の更新を確認してください。");
-  }
-}} style={{ ...styles.btn, ...styles.btnPrimary, flex:1 }}>設定を保存する</button>
-              <button onClick={() => setModal({open: false})} style={{ ...styles.btn, ...styles.btnSecondary, width: "120px" }}>キャンセル</button>
+                if(!modal.data.from || !modal.data.scenarioID) return alert("送信元とシナリオは必須です"); 
+                // モード（新規/編集）に応じてIDを含めて送信
+                await apiCall.post(GAS_URL, { action: "saveGmailSetting", id: modal.id, ...modal.data }); 
+                setModal({ ...modal, open: false }); 
+                onRefresh(); 
+              }} style={{ ...styles.btn, ...styles.btnPrimary, flex:1 }}>{modal.mode === "add" ? "設定を保存" : "変更を保存"}</button>
+              <button onClick={() => setModal({ ...modal, open: false })} style={{ ...styles.btn, ...styles.btnSecondary, width: "120px" }}>キャンセル</button>
             </div>
           </div>
 
