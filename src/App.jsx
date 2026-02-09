@@ -198,17 +198,19 @@ function CustomerList({ customers = [], displaySettings = [], formSettings = [],
   const [staffList, setStaffList] = useState([]);
   const [confirmModal, setConfirmModal] = useState({ open: false, customer: null, field: "", newValue: "", oldValue: "" });
 
+  // 担当者一覧の取得
   useEffect(() => {
     const fetchStaff = async () => {
+      if (!masterUrl) return; // masterUrlがない場合は実行しない
       try {
         const res = await axios.get(`${masterUrl}?action=list&company=${CLIENT_COMPANY_NAME}`);
         setStaffList(res?.data?.users || []);
-      } catch(e) { console.error(e); }
+      } catch(e) { console.error("担当者取得失敗:", e); }
     };
-    if (masterUrl) fetchStaff();
+    fetchStaff();
   }, [masterUrl]);
 
-  // 表示列の定義：設定にない場合でも「対応ステータス」「担当者メール」を強制表示
+  // 表示列の定義
   const vCols = useMemo(() => {
     let cols = displaySettings?.length > 0 ? displaySettings.filter(i => i.visible).map(i => i.name) : ["姓", "名", "対応ステータス", "担当者メール", "シナリオID", "登録日"];
     if (!cols.includes("対応ステータス")) cols.splice(2, 0, "対応ステータス");
@@ -289,7 +291,7 @@ function CustomerList({ customers = [], displaySettings = [], formSettings = [],
           </div>
         );
       })}
-      <button onClick={() => setSearch({})} style={{ ...styles.btn, background: "none", color: THEME.primary, fontWeight: "800", padding: "10px" }}>リセット</button>
+      <button onClick={() => setSearch({})} style={{ ...styles.btn, background: "none", color: THEME.primary, fontWeight: "800", padding: "10px" }}>条件リセット</button>
     </div>
     
     <div style={{ ...styles.card, padding: 0, overflowX: "auto" }}>
@@ -324,14 +326,26 @@ function CustomerList({ customers = [], displaySettings = [], formSettings = [],
       </table>
     </div>
 
+    {/* ポップアップモーダル（中略なし） */}
     {confirmModal.open && (
       <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(0,0,0,0.6)", display: "flex", justifyContent: "center", alignItems: "center", zIndex: 3000 }}>
         <div style={{ ...styles.card, width: "450px", textAlign: "center", padding: "32px" }}>
           <div style={{ backgroundColor: "#F1F5F9", width: "56px", height: "56px", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 20px" }}><AlertCircle size={28} color={THEME.primary} /></div>
           <h3>変更の確認</h3>
-          <p style={{ fontSize: "14px", color: THEME.textMuted, lineHeight: 1.6, marginBottom: "24px" }}><strong>{confirmModal.customer?.["姓"]} {confirmModal.customer?.["名"]}</strong> 様の<br />「{confirmModal.field}」を変更しますか？</p>
-          <div style={{ background: "#F8FAFC", padding: "16px", borderRadius: "12px", marginBottom: "32px", display: "flex", justifyContent: "center", alignItems: "center", gap: "16px" }}><span style={{ fontSize: "13px", fontWeight: "700" }}>{confirmModal.oldValue || "未設定"}</span><ChevronRight size={16} color={THEME.textMuted} /><span style={{ fontSize: "13px", fontWeight: "700", color: THEME.primary }}>{confirmModal.field === "担当者メール" ? (staffList.find(s => s.email === confirmModal.newValue)?.lastName || "未割当") : confirmModal.newValue}</span></div>
-          <div style={{ display: "flex", gap: "12px" }}><button onClick={handleExecuteChange} style={{ ...styles.btn, ...styles.btnPrimary, flex: 1 }}>変更を実行する</button><button onClick={() => setConfirmModal({ open: false, customer: null, field: "", newValue: "", oldValue: "" })} style={{ ...styles.btn, ...styles.btnSecondary, flex: 1 }}>キャンセル</button></div>
+          <p style={{ fontSize: "14px", color: THEME.textMuted, lineHeight: 1.6, marginBottom: "24px" }}><strong>{confirmModal.customer?.["姓"]} {confirmModal.customer?.["名"]}</strong> 様の<br />「{confirmModal.field === "担当者メール" ? "担当者" : confirmModal.field}」を変更しますか？</p>
+          <div style={{ background: "#F8FAFC", padding: "16px", borderRadius: "12px", marginBottom: "32px", display: "flex", justifyContent: "center", alignItems: "center", gap: "16px" }}>
+            <span style={{ fontSize: "13px", fontWeight: "700" }}>{confirmModal.oldValue || "未設定"}</span>
+            <ChevronRight size={16} color={THEME.textMuted} />
+            <span style={{ fontSize: "13px", fontWeight: "700", color: THEME.primary }}>
+              {confirmModal.field === "担当者メール" 
+                ? (staffList.find(s => s.email === confirmModal.newValue)?.lastName || "未割当")
+                : confirmModal.newValue}
+            </span>
+          </div>
+          <div style={{ display: "flex", gap: "12px" }}>
+            <button onClick={handleExecuteChange} style={{ ...styles.btn, ...styles.btnPrimary, flex: 1 }}>変更を実行する</button>
+            <button onClick={() => setConfirmModal({ open: false, customer: null, field: "", newValue: "", oldValue: "" })} style={{ ...styles.btn, ...styles.btnSecondary, flex: 1 }}>キャンセル</button>
+          </div>
         </div>
       </div>
     )}
@@ -769,7 +783,17 @@ function App() {
   if (!user) return (<div style={{ height: "100vh", display: "flex", alignItems: "center", justifyContent: "center", backgroundColor: THEME.bg }}><style>{globalStyle}</style><div style={{ ...styles.card, textAlign: "center", width: "400px", padding: "48px" }}><div style={{ backgroundColor: THEME.primary, width: "64px", height: "64px", borderRadius: "18px", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 32px", boxShadow: "0 10px 25px -5px rgba(79, 70, 229, 0.4)" }}><MessageSquare color="white" size={32} /></div><h1 style={{fontSize:28, fontWeight:900, marginBottom:10}}>StepFlow</h1><p style={{fontSize:14, color:THEME.textMuted, marginBottom:40}}>マーケティングSMS・配信管理 [V18.1]</p><GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID}><GoogleLogin onSuccess={(res) => { const dec = jwtDecode(res.credential); setUser(dec); localStorage.setItem("sf_user", JSON.stringify(dec)); }} /></GoogleOAuthProvider></div></div>);
   if(load) return <div style={{ height: "100vh", display: "flex", alignItems: "center", justifyContent: "center", backgroundColor: THEME.bg }}><Loader2 size={48} className="animate-spin" color={THEME.primary} /></div>;
   return (<GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID}><style>{globalStyle}</style><Router><div style={{ display: "flex" }}><Sidebar onLogout={() => { setUser(null); localStorage.removeItem("sf_user"); }} /><Routes>
-    <Route path="/" element={<CustomerList customers={d?.customers} displaySettings={d?.displaySettings} formSettings={d?.formSettings} scenarios={d?.scenarios} onRefresh={refresh} />} />
+    <Route path="/" element={
+  <CustomerList 
+    customers={d?.customers} 
+    displaySettings={d?.displaySettings} 
+    formSettings={d?.formSettings} 
+    scenarios={d?.scenarios} 
+    statuses={d?.statuses}           // 🆕 ステータスデータを渡す
+    masterUrl={MASTER_WHITELIST_API} // 🆕 担当者取得URLを渡す
+    onRefresh={refresh} 
+  />
+} />
     <Route path="/kanban" element={<KanbanBoard customers={d?.customers} statuses={d?.statuses} onRefresh={refresh} masterUrl={MASTER_WHITELIST_API} />} /> 
     <Route path="/status-settings" element={<StatusSettings statuses={d?.statuses} onRefresh={refresh} />} />
     <Route path="/column-settings" element={<ColumnSettings displaySettings={d?.displaySettings} formSettings={d?.formSettings} onRefresh={refresh} />} />
