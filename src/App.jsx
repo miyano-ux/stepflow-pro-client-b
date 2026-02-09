@@ -1010,12 +1010,19 @@ function ImportErrorList({ errors = [], onRefresh }) {
 }
 
 /**
- * (16) KanbanBoard コンポーネント
- * 役割: 営業進捗を視覚的に管理。ドラッグ＆ドロップでステータス変更。
+ * (16) KanbanBoard コンポーネント (V18.3 楽観的更新・リアルタイムUI版)
+ * 役割: 営業進捗を視覚的に管理。ドロップと同時にUIを即時反映し、バックグラウンドでGAS同期を行う。
  */
 function KanbanBoard({ customers = [], statuses = [], onRefresh, masterUrl }) {
   const [filterStaff, setFilterStaff] = useState("");
   const [staffList, setStaffList] = useState([]);
+  // 🆕 画面表示用のローカルデータ（楽観的更新のため）
+  const [localCustomers, setLocalCustomers] = useState(customers);
+
+  // 親のデータ(customers)が更新されたらローカルも同期
+  useEffect(() => {
+    setLocalCustomers(customers);
+  }, [customers]);
 
   useEffect(() => {
     const fetchStaff = async () => {
@@ -1029,19 +1036,35 @@ function KanbanBoard({ customers = [], statuses = [], onRefresh, masterUrl }) {
 
   const onDragStart = (e, customerId) => e.dataTransfer.setData("customerId", customerId);
   const onDragOver = (e) => e.preventDefault();
+
+  // 🆕 ドロップ時の処理（楽観的更新）
   const onDrop = async (e, newStatus) => {
     const cid = e.dataTransfer.getData("customerId");
-    // customerId は顧客リストの index (d.customers.id)
-    await apiCall.post(GAS_URL, { action: "updateStatus", id: cid, status: newStatus });
-    onRefresh();
+    
+    // 1. まずUIだけを即座に書き換える（体感速度を上げる）
+    const updated = localCustomers.map(c => 
+      String(c.id) === String(cid) ? { ...c, "対応ステータス": newStatus } : c
+    );
+    setLocalCustomers(updated);
+
+    // 2. その後、バックグラウンドでGASに通知
+    try {
+      await apiCall.post(GAS_URL, { action: "updateStatus", id: cid, status: newStatus });
+      // 3. サーバー側と完全に同期するために再取得を呼ぶ（サイレントに行う）
+      onRefresh();
+    } catch (err) {
+      alert("通信エラーが発生しました。最新のデータにリセットします。");
+      onRefresh(); // エラー時は正しいデータに戻す
+    }
   };
 
-  const filtered = customers.filter(c => !filterStaff || c["担当者メール"] === filterStaff);
+  // 🆕 localCustomers を使ってフィルタリングと表示を行う
+  const filtered = localCustomers.filter(c => !filterStaff || c["担当者メール"] === filterStaff);
 
   return (
-    <Page title="営業カンバン" topButton={
+    <Page title="案件管理カンバン" topButton={
       <div style={{display:"flex", gap:12, alignItems:"center"}}>
-        <span style={{fontSize:12, fontWeight:800, color:THEME.textMuted}}>担当絞り込み:</span>
+        <span style={{fontSize:12, fontWeight:800, color:THEME.textMuted}}>担当で絞り込み:</span>
         <select style={{...styles.input, width:200}} value={filterStaff} onChange={e=>setFilterStaff(e.target.value)}>
           <option value="">全ての担当者</option>
           {staffList.map(s => <option key={s.email} value={s.email}>{s.lastName} {s.firstName}</option>)}
@@ -1052,14 +1075,26 @@ function KanbanBoard({ customers = [], statuses = [], onRefresh, masterUrl }) {
         {statuses.map(st => {
           const colCustomers = filtered.filter(c => (c["対応ステータス"] || "未対応") === st.name);
           return (
-            <div key={st.name} onDragOver={onDragOver} onDrop={(e) => onDrop(e, st.name)} style={{ minWidth: "300px", width: "300px", backgroundColor: "#F1F5F9", borderRadius: "16px", padding: "16px", minHeight: "500px" }}>
+            <div 
+              key={st.name} 
+              onDragOver={onDragOver} 
+              onDrop={(e) => onDrop(e, st.name)} 
+              style={{ minWidth: "300px", width: "300px", backgroundColor: "#F1F5F9", borderRadius: "16px", padding: "16px", minHeight: "500px" }}
+            >
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px", padding: "0 8px" }}>
                 <h3 style={{ fontSize: "14px", fontWeight: "900", margin: 0, color: THEME.textMain }}>{st.name}</h3>
                 <span style={{ ...styles.badge, backgroundColor: "white", border: `1px solid ${THEME.border}` }}>{colCustomers.length}</span>
               </div>
               <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
                 {colCustomers.map(c => (
-                  <div key={c.id} draggable onDragStart={(e) => onDragStart(e, c.id)} style={{ ...styles.card, padding: "16px", cursor: "grab", border: "1px solid transparent", transition: "0.2s" }} onMouseEnter={e=>e.currentTarget.style.borderColor=THEME.primary} onMouseLeave={e=>e.currentTarget.style.borderColor="transparent"}>
+                  <div 
+                    key={c.id} 
+                    draggable 
+                    onDragStart={(e) => onDragStart(e, c.id)} 
+                    style={{ ...styles.card, padding: "16px", cursor: "grab", border: "1px solid transparent", transition: "0.2s" }} 
+                    onMouseEnter={e=>e.currentTarget.style.borderColor=THEME.primary} 
+                    onMouseLeave={e=>e.currentTarget.style.borderColor="transparent"}
+                  >
                     <div style={{ fontWeight: "800", marginBottom: "10px", fontSize: "14px" }}>{c["姓"]} {c["名"]} 様</div>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                       <div style={{ fontSize: "11px", color: THEME.textMuted, display: "flex", alignItems: "center", gap: 4 }}>
