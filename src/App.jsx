@@ -190,7 +190,7 @@ function Page({ title, subtitle, children, topButton }) {
 // ==========================================
 
 
-// --- (1) 顧客ダッシュボード [V22.0 デザイン版] ---
+// --- (1) 顧客ダッシュボード [V23.0 検索グリッド整理 & 操作列右固定版] ---
 function CustomerList({ customers = [], displaySettings = [], formSettings = [], scenarios = [], statuses = [], masterUrl, onRefresh }) {
   const navigate = useNavigate(); 
   const [search, setSearch] = useState({}); 
@@ -211,20 +211,22 @@ function CustomerList({ customers = [], displaySettings = [], formSettings = [],
     fetchStaff();
   }, [masterUrl]);
 
-  // 表示列の定義
   const vCols = useMemo(() => {
-    let cols = displaySettings?.length > 0 ? displaySettings.filter(i => i.visible).map(i => i.name) : ["姓", "名", "対応ステータス", "担当者メール", "シナリオID", "登録日"];
+    let cols = displaySettings?.length > 0 ? displaySettings.filter(i => i.visible).map(i => i.name) : ["姓", "名", "対応ステータス", "担当者メール", "電話番号", "シナリオID", "日付", "登録日"];
     if (!cols.includes("対応ステータス")) cols.splice(2, 0, "対応ステータス");
     if (!cols.includes("担当者メール")) cols.splice(3, 0, "担当者メール");
     return cols;
   }, [displaySettings]);
 
-  const sCols = useMemo(() => displaySettings?.length > 0 ? displaySettings.filter(i => i.searchable).map(i => i.name) : ["姓", "対応ステータス", "担当者メール", "登録日"], [displaySettings]);
+  const sCols = useMemo(() => {
+    const defaultSearch = ["姓", "シナリオID", "日付", "登録日"];
+    return displaySettings?.length > 0 ? displaySettings.filter(i => i.searchable).map(i => i.name) : defaultSearch;
+  }, [displaySettings]);
   
   const filtered = useMemo(() => {
     let res = [...(localCustomers || [])].filter(c => Object.keys(search).every(k => {
       const q = search[k]; if (!q || q === "") return true;
-      if (formSettings?.find(x => x.name === k)?.type === "date" || k === "登録日") {
+      if (formSettings?.find(x => x.name === k)?.type === "date" || k === "登録日" || k === "日付") {
         if (!q.start && !q.end) return true;
         if (!c[k] || c[k] === "-" || c[k] === "") return false;
         const targetTime = new Date(c[k]).getTime();
@@ -258,43 +260,45 @@ function CustomerList({ customers = [], displaySettings = [], formSettings = [],
     } catch (e) { alert("更新に失敗しました"); onRefresh(); }
   };
 
-  return (<Page title="顧客ダッシュボード" subtitle={`全 ${filtered.length} 件の顧客データを管理中`} topButton={
+  return (<Page title="顧客ダッシュボード" subtitle={`全 ${filtered.length} 名のリストを表示中`} topButton={
     <div style={{ display: "flex", gap: "12px" }}>
-      <button onClick={() => downloadCSV([vCols, ...filtered.map(c => vCols.map(col => c[col]))], "customers.csv")} style={{ ...styles.btn, ...styles.btnSecondary, height: 44 }}><Download size={18} /> エクスポート</button>
-      <button onClick={() => navigate("/column-settings")} style={{ ...styles.btn, ...styles.btnPrimary, height: 44 }}><SlidersHorizontal size={18} /> 表示設定</button>
+      <button onClick={() => downloadCSV([vCols, ...filtered.map(c => vCols.map(col => c[col]))], "customers.csv")} style={{ ...styles.btn, ...styles.btnSecondary, height: 40 }}><Download size={16} /> CSV出力</button>
+      <button onClick={() => navigate("/column-settings")} style={{ ...styles.btn, ...styles.btnPrimary, height: 40 }}><SlidersHorizontal size={16} /> 表示設定</button>
     </div>
   }>
-    {/* 🆕 整理された検索グリッド */}
-    <div style={{ ...styles.card, padding: "24px", marginBottom: "32px", border: "none", boxShadow: "0 1px 3px rgba(0,0,0,0.1)" }}>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: "20px", alignItems: "flex-end" }}>
+    {/* 🆕 4カラム固定の安定した検索パネル */}
+    <div style={{ ...styles.card, padding: "28px", marginBottom: "32px", backgroundColor: "white", border: "none", boxShadow: "0 2px 10px rgba(0,0,0,0.05)" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "24px", alignItems: "flex-end" }}>
         {sCols.map(col => (
           <div key={col} style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            <label style={{ fontSize: "12px", fontWeight: "700", color: THEME.textMuted }}>{col}</label>
-            {formSettings?.find(x => x.name === col)?.type === "date" || col === "登録日" ? (
-              <div style={{ display: "flex", gap: 4 }}><DateRangePicker value={search[col] || {}} onChange={v => setSearch({ ...search, [col]: v })} /></div>
-            ) : col === "対応ステータス" || col === "シナリオID" ? (
-              <select style={{ ...styles.input, height: 42 }} value={search[col] || ""} onChange={e => setSearch({...search, [col]: e.target.value})}>
+            <label style={{ fontSize: "12px", fontWeight: "800", color: THEME.textMuted }}>{col}</label>
+            {formSettings?.find(x => x.name === col)?.type === "date" || col === "登録日" || col === "日付" ? (
+              <DateRangePicker value={search[col] || {}} onChange={v => setSearch({ ...search, [col]: v })} />
+            ) : col === "シナリオID" ? (
+              <select style={{ ...styles.input, height: 42, width: "100%" }} value={search[col] || ""} onChange={e => setSearch({...search, [col]: e.target.value})}>
                 <option value="">すべて表示</option>
-                {col === "対応ステータス" ? statuses.map(st => <option key={st.name} value={st.name}>{st.name}</option>) 
-                : [...new Set(scenarios?.map(x => x["シナリオID"]))].map(id => <option key={id} value={id}>{id}</option>)}
+                {[...new Set(scenarios?.map(x => x["シナリオID"]))].map(id => <option key={id} value={id}>{id}</option>)}
               </select>
             ) : (
               <div style={{ position: "relative" }}>
-                <Search size={14} style={{ position: "absolute", left: 12, top: 14, color: THEME.textMuted }} />
-                <input placeholder="検索..." style={{ ...styles.input, paddingLeft: 36, height: 42 }} value={search[col] || ""} onChange={e => setSearch({...search, [col]: e.target.value})} />
+                <Search size={14} style={{ position: "absolute", left: 12, top: 14, color: "#94A3B8" }} />
+                <input placeholder={`${col}で検索...`} style={{ ...styles.input, paddingLeft: 38, height: 42, width: "100%" }} value={search[col] || ""} onChange={e => setSearch({...search, [col]: e.target.value})} />
               </div>
             )}
           </div>
         ))}
-        <div style={{ display: "flex", gap: 12 }}>
-          <button onClick={() => setSearch({})} style={{ ...styles.btn, ...styles.btnSecondary, flex: 1, height: 42 }}>条件クリア</button>
+        {/* リセットボタンを常に最後のグリッドに配置するか、空いたスペースに配置 */}
+        <div style={{ display: "flex", justifyContent: "flex-start" }}>
+          <button onClick={() => setSearch({})} style={{ background: "none", border: "none", color: THEME.primary, fontWeight: "900", fontSize: "14px", cursor: "pointer", padding: "10px 0" }}>
+            条件をクリア
+          </button>
         </div>
       </div>
     </div>
     
-    {/* 🆕 スティッキー・コンテナ */}
+    {/* 🆕 右側固定（操作列）対応テーブル */}
     <div style={{ ...styles.card, padding: 0, overflow: "hidden", border: `1px solid ${THEME.border}`, position: "relative" }}>
-      <div style={{ overflowX: "auto", maxHeight: "calc(100vh - 400px)" }} className="custom-scrollbar">
+      <div style={{ overflowX: "auto", maxHeight: "calc(100vh - 420px)" }} className="custom-scrollbar">
         <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: 0, tableLayout: "auto" }}>
           <thead>
             <tr>
@@ -304,24 +308,30 @@ function CustomerList({ customers = [], displaySettings = [], formSettings = [],
                   style={{ 
                     ...styles.tableTh, 
                     position: "sticky", top: 0, zIndex: 10, backgroundColor: "#F8FAFC", 
-                    cursor: "pointer", whiteSpace: "nowrap", minWidth: 120,
-                    borderBottom: `2px solid ${THEME.border}`
+                    cursor: "pointer", whiteSpace: "nowrap", minWidth: 140,
+                    borderBottom: `1px solid ${THEME.border}`
                   }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    {c} {sort.key === c ? (sort.dir === 'asc' ? <ArrowUp size={14}/> : <ArrowDown size={14}/>) : <ArrowUpDown size={14} opacity={0.2}/>}
+                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    {c} {sort.key === c ? (sort.dir === 'asc' ? <ArrowUp size={12}/> : <ArrowDown size={12}/>) : <ArrowUpDown size={12} opacity={0.2}/>}
                   </div>
                 </th>
               ))}
-              <th style={{ ...styles.tableTh, position: "sticky", top: 0, zIndex: 10, backgroundColor: "#F8FAFC", borderBottom: `2px solid ${THEME.border}`, textAlign: "center" }}>操作</th>
+              {/* 🆕 操作列のヘッダーも固定 */}
+              <th style={{ 
+                ...styles.tableTh, 
+                position: "sticky", top: 0, right: 0, zIndex: 20, 
+                backgroundColor: "#F8FAFC", borderLeft: `1px solid ${THEME.border}`, borderBottom: `1px solid ${THEME.border}`,
+                width: 160, textAlign: "center", fontWeight: "900"
+              }}>操作</th>
             </tr>
           </thead>
           <tbody>
             {filtered.map((c, idx) => (
-              <tr key={c.id} style={{ backgroundColor: idx % 2 === 0 ? "white" : "#FCFDFF" }} onMouseEnter={e => e.currentTarget.style.backgroundColor = "#F1F5F9"} onMouseLeave={e => e.currentTarget.style.backgroundColor = idx % 2 === 0 ? "white" : "#FCFDFF"}>
+              <tr key={c.id} style={{ backgroundColor: "white" }} onMouseEnter={e => e.currentTarget.style.backgroundColor = "#F8FAFC"} onMouseLeave={e => e.currentTarget.style.backgroundColor = "white"}>
                 {vCols.map(col => {
                   if (col === "対応ステータス") return (
                     <td key={col} style={styles.tableTd}>
-                      <select style={{ border: `1px solid transparent`, background: "#EEF2FF", padding: "6px 12px", borderRadius: 8, fontSize: 12, fontWeight: 700, color: THEME.primary, cursor: "pointer" }}
+                      <select style={{ background: "#EEF2FF", border: "none", padding: "6px 12px", borderRadius: 8, fontSize: 12, fontWeight: 800, color: THEME.primary, cursor: "pointer", outline: "none" }}
                         value={c[col] || "未対応"} onChange={e => setConfirmModal({ open: true, customer: c, field: col, newValue: e.target.value, oldValue: c[col] || "未対応" })}>
                         {statuses.map(st => <option key={st.name} value={st.name}>{st.name}</option>)}
                       </select>
@@ -329,7 +339,7 @@ function CustomerList({ customers = [], displaySettings = [], formSettings = [],
                   );
                   if (col === "担当者メール") return (
                     <td key={col} style={styles.tableTd}>
-                      <select style={{ border: `1px solid transparent`, background: "#F1F5F9", padding: "6px 12px", borderRadius: 8, fontSize: 12, fontWeight: 600, color: THEME.textMain, cursor: "pointer" }}
+                      <select style={{ background: "#F1F5F9", border: "none", padding: "6px 12px", borderRadius: 8, fontSize: 12, fontWeight: 600, color: THEME.textMain, cursor: "pointer", outline: "none" }}
                         value={c[col] || ""} onChange={e => setConfirmModal({ open: true, customer: c, field: col, newValue: e.target.value, oldValue: c[col] || "未設定" })}>
                         <option value="">未割当</option>
                         {staffList.map(s => <option key={s.email} value={s.email}>{s.lastName} {s.firstName}</option>)}
@@ -338,15 +348,21 @@ function CustomerList({ customers = [], displaySettings = [], formSettings = [],
                   );
                   return (
                     <td key={col} style={{ ...styles.tableTd, whiteSpace: "nowrap" }}>
-                      {col === "シナリオID" ? <span style={{ ...styles.badge, backgroundColor: "#F1F5F9", color: THEME.textMain }}>{c[col]}</span> : formatDate(c[col])}
+                      {col === "シナリオID" ? <span style={{ ...styles.badge, backgroundColor: "#EEF2FF", color: THEME.primary }}>{c[col]}</span> : (col === "登録日" || col === "日付" ? formatDate(c[col]) : c[col])}
                     </td>
                   );
                 })}
-                <td style={{ ...styles.tableTd, textAlign: "center" }}>
-                  <div style={{ display: "flex", gap: "8px", justifyContent: "center" }}>
-                    <Link to={`/direct-sms/${c.id}`} title="個別送信" style={{ ...styles.btn, padding: "8px", backgroundColor: THEME.primary, color: "white", borderRadius: 8 }}><Send size={14}/></Link>
-                    <Link to={`/schedule/${c.id}`} title="配信状況" style={{ ...styles.btn, padding: "8px", backgroundColor: "#F1F5F9", color: THEME.textMain, borderRadius: 8 }}><Clock size={14}/></Link>
-                    <button onClick={async () => { if(window.confirm("削除しますか？")) { await apiCall.post(GAS_URL, { action: "delete", id: c.id }); onRefresh(); } }} style={{ ...styles.btn, padding: "8px", backgroundColor: "#FEF2F2", color: THEME.danger, borderRadius: 8 }}><Trash2 size={14}/></button>
+                {/* 🆕 操作列のセルを固定（Sticky Right） */}
+                <td style={{ 
+                  ...styles.tableTd, 
+                  position: "sticky", right: 0, zIndex: 5, 
+                  backgroundColor: "inherit", borderLeft: `1px solid ${THEME.border}`,
+                  textAlign: "center", padding: "12px"
+                }}>
+                  <div style={{ display: "flex", gap: "10px", justifyContent: "center" }}>
+                    <Link to={`/direct-sms/${c.id}`} title="SMS送信" style={{ ...styles.btn, padding: "8px", backgroundColor: THEME.primary, color: "white", borderRadius: "10px", display: "flex", alignItems: "center", justifyContent: "center" }}><Send size={14}/></Link>
+                    <Link to={`/schedule/${c.id}`} title="配信状況" style={{ ...styles.btn, padding: "8px", backgroundColor: "white", color: THEME.primary, border: `1px solid ${THEME.primary}`, borderRadius: "10px", display: "flex", alignItems: "center", justifyContent: "center" }}><Clock size={14}/></Link>
+                    <button onClick={async () => { if(window.confirm("顧客情報を削除しますか？")) { await apiCall.post(GAS_URL, { action: "delete", id: c.id }); onRefresh(); } }} style={{ ...styles.btn, padding: "8px", backgroundColor: "transparent", color: THEME.danger, borderRadius: "10px" }}><Trash2 size={16}/></button>
                   </div>
                 </td>
               </tr>
@@ -355,9 +371,10 @@ function CustomerList({ customers = [], displaySettings = [], formSettings = [],
         </table>
       </div>
     </div>
-
-    {/* 🆕 中央確認モーダル（デザイン強化版） */}
+    
+    {/* 確認モーダルは既存のまま維持 */}
     {confirmModal.open && (
+      /* モーダルコード（前回の優れたデザインを継承） */
       <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(15, 23, 42, 0.6)", display: "flex", justifyContent: "center", alignItems: "center", zIndex: 3000, backdropFilter: "blur(4px)" }}>
         <div style={{ ...styles.card, width: "400px", textAlign: "center", padding: "40px", borderRadius: 24, border: "none" }}>
           <div style={{ backgroundColor: "#EEF2FF", width: "64px", height: "64px", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 24px" }}><AlertCircle size={32} color={THEME.primary} /></div>
