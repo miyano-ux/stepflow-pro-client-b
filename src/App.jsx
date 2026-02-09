@@ -640,11 +640,11 @@ function App() {
 }
 
 
-/** * (14) GmailSettings コンポーネント (V15.3 編集・表示強化版)
- * 役割: 受信メールのパースルールをUIから設定・編集する
+/**
+ * (14) GmailSettings コンポーネント (V15.4 整合性・プリセット完全版)
+ * 役割: スプレッドシートの日本語ヘッダーと同期し、表示と編集を正常化する
  */
 function GmailSettings({ gmailSettings = [], scenarios = [], onRefresh }) {
-  // modal.mode を追加して「追加」と「編集」を切り替え
   const [modal, setModal] = useState({ 
     open: false, 
     mode: "add", 
@@ -654,17 +654,23 @@ function GmailSettings({ gmailSettings = [], scenarios = [], onRefresh }) {
   const [testBody, setTestBody] = useState("");
   const [parsePreview, setParsePreview] = useState(null);
 
-  // 編集モードでモーダルを開く
+  // 🆕 編集モード：日本語キーを内部変数にマッピングしてプリセット
   const handleEdit = (s, index) => {
     setModal({
       open: true,
       mode: "edit",
       id: index,
-      data: { ...s }
+      data: {
+        from: s["送信元"] || "",
+        subject: s["件名"] || "",
+        nameKey: s["氏名キー"] || "氏名：",
+        phoneKey: s["電話キー"] || "電話番号：",
+        scenarioID: s["シナリオID"] || ""
+      }
     });
+    setParsePreview(null);
   };
 
-  // 抽出テスト実行
   const testParse = () => {
     if (!testBody) return alert("テスト用の本文を入力してください");
     try {
@@ -677,7 +683,7 @@ function GmailSettings({ gmailSettings = [], scenarios = [], onRefresh }) {
         phone: phoneMatch ? phoneMatch[1].trim() : "抽出失敗"
       });
     } catch (e) {
-      alert("キーワードの形式が正しくありません");
+      alert("抽出キーの形式が正しくありません");
     }
   };
 
@@ -688,21 +694,20 @@ function GmailSettings({ gmailSettings = [], scenarios = [], onRefresh }) {
           <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "16px" }}>
             <span style={{ ...styles.badge, backgroundColor: THEME.primary, color: "white" }}>設定 {i + 1}</span>
             <div style={{ display: "flex", gap: "8px" }}>
-              {/* 編集ボタンを追加 */}
               <button onClick={() => handleEdit(s, i)} style={{ background: "none", border: "none", color: THEME.textMuted, cursor: "pointer" }}><Edit3 size={18}/></button>
               <button onClick={async () => { if(window.confirm("この設定を削除しますか？")){ await apiCall.post(GAS_URL, { action: "deleteGmailSetting", id: i }); onRefresh(); } }} style={{ background: "none", border: "none", color: THEME.danger, cursor: "pointer" }}><Trash2 size={18}/></button>
             </div>
           </div>
           <div style={{ fontSize: "14px", display: "grid", gap: "8px" }}>
-            {/* 🆕 実際のデータを表示 */}
-            <div style={{display:"flex", justifyContent:"space-between"}}><span style={{color:THEME.textMuted}}>送信元(from):</span><span style={{fontWeight:700}}>{s.from || "未設定"}</span></div>
-            <div style={{display:"flex", justifyContent:"space-between"}}><span style={{color:THEME.textMuted}}>件名キーワード:</span><span style={{fontWeight:700}}>{s.subject || "未設定"}</span></div>
+            {/* 🆕 日本語キーを参照して正しく表示 */}
+            <div style={{display:"flex", justifyContent:"space-between"}}><span style={{color:THEME.textMuted}}>送信元(from):</span><span style={{fontWeight:700}}>{s["送信元"] || "未設定"}</span></div>
+            <div style={{display:"flex", justifyContent:"space-between"}}><span style={{color:THEME.textMuted}}>件名キーワード:</span><span style={{fontWeight:700}}>{s["件名"] || "未設定"}</span></div>
             <div style={{ marginTop: "12px", padding: "12px", background: "#F8FAFC", borderRadius: "10px", border: `1px solid ${THEME.border}` }}>
               <div style={{fontSize:11, fontWeight:800, color:THEME.primary, marginBottom:8}}>抽出キーワード設定</div>
-              <div>氏名： <strong>{s.nameKey}</strong> の後ろ</div>
-              <div>電話： <strong>{s.phoneKey}</strong> の後ろ</div>
+              <div>氏名： <strong>{s["氏名キー"]}</strong> の後ろ</div>
+              <div>電話： <strong>{s["電話キー"]}</strong> の後ろ</div>
             </div>
-            <div style={{marginTop:8, textAlign:"right"}}><span style={{ ...styles.badge, backgroundColor: "#F1F5F9", color: THEME.primary }}>適用：シナリオ {s.scenarioID}</span></div>
+            <div style={{marginTop:8, textAlign:"right"}}><span style={{ ...styles.badge, backgroundColor: "#F1F5F9", color: THEME.primary }}>適用：シナリオ {s["シナリオID"]}</span></div>
           </div>
         </div>
       ))}
@@ -718,7 +723,7 @@ function GmailSettings({ gmailSettings = [], scenarios = [], onRefresh }) {
             <h3 style={{marginTop: 0, marginBottom: 24}}>{modal.mode === "add" ? "取り込みルールの作成" : "ルールの編集"}</h3>
             <div style={{display:"grid", gap:16}}>
               <div><label style={{fontSize:11, fontWeight:800, color:THEME.textMuted}}>送信元アドレス (from)</label><input style={styles.input} value={modal.data.from} onChange={e => setModal({...modal, data: {...modal.data, from: e.target.value}})} placeholder="info@assessment-site.com" /></div>
-              <div><label style={{fontSize:11, fontWeight:800, color:THEME.textMuted}}>件名のキーワード (この文字を含むメールを対象にする)</label><input style={styles.input} value={modal.data.subject} onChange={e => setModal({...modal, data: {...modal.data, subject: e.target.value}})} placeholder="反響通知" /></div>
+              <div><label style={{fontSize:11, fontWeight:800, color:THEME.textMuted}}>件名のキーワード</label><input style={styles.input} value={modal.data.subject} onChange={e => setModal({...modal, data: {...modal.data, subject: e.target.value}})} placeholder="反響通知" /></div>
               
               <div style={{display: "flex", gap: 16, marginTop: 8}}>
                 <div style={{flex: 1}}><label style={{fontSize:11, fontWeight:800, color:THEME.textMuted}}>氏名の前の文字</label><input style={styles.input} value={modal.data.nameKey} onChange={e => setModal({...modal, data: {...modal.data, nameKey: e.target.value}})} /></div>
@@ -736,7 +741,6 @@ function GmailSettings({ gmailSettings = [], scenarios = [], onRefresh }) {
             <div style={{display:"flex", gap:12, marginTop:32}}>
               <button onClick={async() => { 
                 if(!modal.data.from || !modal.data.scenarioID) return alert("送信元とシナリオは必須です"); 
-                // モード（新規/編集）に応じてIDを含めて送信
                 await apiCall.post(GAS_URL, { action: "saveGmailSetting", id: modal.id, ...modal.data }); 
                 setModal({ ...modal, open: false }); 
                 onRefresh(); 
@@ -747,7 +751,7 @@ function GmailSettings({ gmailSettings = [], scenarios = [], onRefresh }) {
 
           <div style={{ borderLeft: `1px solid ${THEME.border}`, paddingLeft: "32px", backgroundColor: "#F8FAFC", margin: "-32px", padding: "32px" }}>
             <h4 style={{marginTop: 0, display:"flex", alignItems: "center", gap:8}}><AlertCircle size={18} color={THEME.primary}/> 抽出テスト</h4>
-            <p style={{fontSize: 12, color: THEME.textMuted, marginBottom: 16}}>実際のメール本文を貼り付けて、正しく抽出できるか確認してください。</p>
+            <p style={{fontSize: 12, color: THEME.textMuted, marginBottom: 16}}>実際の本文を貼り付けて、抽出できるか確認してください。</p>
             <textarea style={{ ...styles.input, height: "180px", resize: "none", fontSize: "12px" }} value={testBody} onChange={e => setTestBody(e.target.value)} placeholder="氏名：宮野 太郎&#13;&#10;電話番号：090-1234-5678" />
             <button onClick={testParse} style={{ ...styles.btn, ...styles.btnSecondary, width: "100%", marginTop: "12px", backgroundColor: "white" }}>テスト実行</button>
             
