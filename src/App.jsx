@@ -837,24 +837,25 @@ function GmailSettings({ gmailSettings = [], scenarios = [], formSettings = [], 
                   <div><label style={{fontSize:11}}>氏名</label><input style={styles.input} value={modal.data.nameKey} onChange={e => setModal({...modal, data: {...modal.data, nameKey: e.target.value}})} /></div>
                   <div><label style={{fontSize:11}}>電話番号</label><input style={styles.input} value={modal.data.phoneKey} onChange={e => setModal({...modal, data: {...modal.data, phoneKey: e.target.value}})} /></div>
                   
-                  {/* 🆕 フォーム設定にあるカスタム項目を動的にループ表示 */}
-                  {formSettings.map(f => (
-                    <div key={f.name}>
-                      <label style={{fontSize:11}}>{f.name}</label>
-                      <input 
-                        style={styles.input} 
-                        value={modal.data.customKeys[f.name] || ""} 
-                        onChange={e => setModal({
-                          ...modal, 
-                          data: {
-                            ...modal.data, 
-                            customKeys: { ...modal.data.customKeys, [f.name]: e.target.value }
-                          }
-                        })} 
-                        placeholder="（例）住所："
-                      />
-                    </div>
-                  ))}
+                  {/* フォーム設定にあるカスタム項目を動的にループ表示 */}
+{formSettings.map(f => (
+  <div key={f.name}>
+    <label style={{fontSize:11}}>{f.name}</label>
+    <input 
+      style={styles.input} 
+      value={modal.data.customKeys[f.name] || ""} 
+      onChange={e => setModal({
+        ...modal, 
+        data: {
+          ...modal.data, 
+          customKeys: { ...modal.data.customKeys, [f.name]: e.target.value }
+        }
+      })} 
+      /* 🆕 テンプレート文字列を使用して、項目名を自動挿入 */
+      placeholder={`（例）${f.name}：`} 
+    />
+  </div>
+))}
                 </div>
               </div>
 
