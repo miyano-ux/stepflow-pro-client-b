@@ -188,54 +188,122 @@ function Page({ title, subtitle, children, topButton }) {
 // ==========================================
 
 // --- (1) 顧客ダッシュボード [表示項目調整ボタン統合] ---
-function CustomerList({ customers = [], displaySettings = [], formSettings = [], onRefresh }) {
-  const navigate = useNavigate(); const [search, setSearch] = useState({}); const [sort, setSort] = useState({ key: null, dir: 'asc' });
+function CustomerList({ customers = [], displaySettings = [], formSettings = [], scenarios = [], onRefresh }) {
+  const navigate = useNavigate(); 
+  const [search, setSearch] = useState({}); 
+  const [sort, setSort] = useState({ key: null, dir: 'asc' });
+
   const vCols = useMemo(() => displaySettings?.length > 0 ? displaySettings.filter(i => i.visible).map(i => i.name) : ["姓", "名", "電話番号", "シナリオID", "登録日"], [displaySettings]);
   const sCols = useMemo(() => displaySettings?.length > 0 ? displaySettings.filter(i => i.searchable).map(i => i.name) : ["姓", "電話番号", "登録日"], [displaySettings]);
   
+  // 🆕 検索ロジックの修正：Gmailからの空データも考慮し、未入力時は常に表示
   const filtered = useMemo(() => {
     let res = [...(customers || [])].filter(c => Object.keys(search).every(k => {
-      const q = search[k]; if (!q) return true;
+      const q = search[k];
+      
+      // 検索条件が未入力なら表示
+      if (!q || q === "") return true;
+      if (typeof q === 'object' && Object.keys(q).length === 0) return true;
+
+      // 日付レンジ検索の処理
       if (formSettings?.find(x => x.name === k)?.type === "date" || k === "登録日") {
-        if (!c[k] || c[k] === "-") return false;
+        if (!q.start && !q.end) return true;
+        if (!c[k] || c[k] === "-" || c[k] === "") return false;
         const targetTime = new Date(c[k]).getTime();
         if (q.start && targetTime < parseLocalDate(q.start)) return false;
         if (q.end && targetTime > parseLocalDate(q.end, true)) return false;
         return true;
       }
+
+      // 🆕 通常のテキスト・プルダウン検索処理（前方一致/部分一致）
       return String(c[k] || "").toLowerCase().includes(String(q).toLowerCase());
     }));
-    if (sort.key) res.sort((a, b) => { const aV = a[sort.key], bV = b[sort.key]; return sort.dir === 'asc' ? String(aV).localeCompare(String(bV)) : String(bV).localeCompare(String(aV)); });
+
+    if (sort.key) {
+      res.sort((a, b) => { 
+        const aV = a[sort.key], bV = b[sort.key]; 
+        return sort.dir === 'asc' ? String(aV).localeCompare(String(bV)) : String(bV).localeCompare(String(aV)); 
+      });
+    }
     return res;
   }, [customers, search, formSettings, sort]);
 
   return (<Page title="顧客ダッシュボード" topButton={
     <div style={{ display: "flex", gap: "12px" }}>
       <button onClick={() => downloadCSV([vCols, ...filtered.map(c => vCols.map(col => c[col]))], "customers.csv")} style={{ ...styles.btn, ...styles.btnSecondary }}><Download size={18} /> CSV出力</button>
-      <button onClick={() => navigate("/column-settings")} style={{ ...styles.btn, ...styles.btnPrimary }}><SlidersHorizontal size={18} /> 表示項目・順序の調整</button>
+      <button onClick={() => navigate("/column-settings")} style={{ ...styles.btn, ...styles.btnPrimary }}><SlidersHorizontal size={18} /> 表示設定</button>
     </div>
   }>
     <div style={{ ...styles.card, padding: "24px", marginBottom: "32px", display: "flex", gap: "24px", flexWrap: "wrap", alignItems: "flex-end", backgroundColor: "white" }}>
       <div style={{ color: THEME.textMuted, paddingBottom: 10 }}><Search size={20} /></div>
-      {sCols.map(col => (formSettings?.find(x => x.name === col)?.type === "date" || col === "登録日") ? (
-        <DateRangePicker key={col} label={col} value={search[col] || {}} onChange={v => setSearch({ ...search, [col]: v })} />
-      ) : (
-        <div key={col} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-          <label style={{ fontSize: "11px", fontWeight: "800", color: THEME.textMuted }}>{col}</label>
-          <input placeholder={`${col}で検索...`} style={{ ...styles.input, width: "150px", padding: "10px" }} value={search[col] || ""} onChange={e => setSearch({...search, [col]: e.target.value})} />
-        </div>
-      ))}
+      
+      {sCols.map(col => {
+        // 🆕 日付判定
+        if (formSettings?.find(x => x.name === col)?.type === "date" || col === "登録日") {
+          return <DateRangePicker key={col} label={col} value={search[col] || {}} onChange={v => setSearch({ ...search, [col]: v })} />;
+        }
+        
+        // 🆕 シナリオID判定：プルダウン化
+        if (col === "シナリオID") {
+          return (
+            <div key={col} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              <label style={{ fontSize: "11px", fontWeight: "800", color: THEME.textMuted }}>適用中シナリオ</label>
+              <select 
+                style={{ ...styles.input, width: "160px", padding: "10px" }} 
+                value={search[col] || ""} 
+                onChange={e => setSearch({...search, [col]: e.target.value})}
+              >
+                <option value="">すべて</option>
+                {[...new Set(scenarios?.map(x => x["シナリオID"]))].map(id => (
+                  <option key={id} value={id}>{id}</option>
+                ))}
+              </select>
+            </div>
+          );
+        }
+
+        // 通常のテキスト入力
+        return (
+          <div key={col} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            <label style={{ fontSize: "11px", fontWeight: "800", color: THEME.textMuted }}>{col}</label>
+            <input placeholder={`${col}で検索...`} style={{ ...styles.input, width: "150px", padding: "10px" }} value={search[col] || ""} onChange={e => setSearch({...search, [col]: e.target.value})} />
+          </div>
+        );
+      })}
+      
       <button onClick={() => setSearch({})} style={{ ...styles.btn, background: "none", color: THEME.primary, fontWeight: "800", padding: "10px" }}>条件リセット</button>
     </div>
-    <div style={{ ...styles.card, padding: 0, overflow: "hidden" }}><table style={{ width: "100%", borderCollapse: "collapse" }}><thead><tr>{vCols.map(c => <th key={c} style={{ ...styles.tableTh, cursor: "pointer" }} onClick={() => setSort({ key: c, dir: (sort.key === c && sort.dir === 'asc') ? 'desc' : 'asc' })}>{c} {sort.key === c ? (sort.dir === 'asc' ? <ArrowUp size={12}/> : <ArrowDown size={12}/>) : <ArrowUpDown size={12} opacity={0.3}/>}</th>)}<th style={styles.tableTh}>操作</th></tr></thead>
-      <tbody>{filtered.map(c => (<tr key={c.id} style={{ transition: "0.2s" }} onMouseEnter={e => e.currentTarget.style.backgroundColor = THEME.bg} onMouseLeave={e => e.currentTarget.style.backgroundColor = "transparent"}>
-        {vCols.map(col => <td key={col} style={styles.tableTd}>{col === "シナリオID" ? <span style={styles.badge}>{c[col]}</span> : formatDate(c[col])}</td>)}
-        <td style={styles.tableTd}><div style={{ display: "flex", gap: "12px" }}>
-          <Link to={`/direct-sms/${c.id}`} style={{ ...styles.badge, textDecoration: "none", backgroundColor: THEME.primary, color: "white" }}><MessageSquare size={12}/> 送信</Link>
-          <Link to={`/schedule/${c.id}`} style={{ textDecoration: "none", color: THEME.primary, fontWeight: "800" }}>状況</Link>
-          <Link to={`/edit/${c.id}`} style={{ textDecoration: "none", color: THEME.textMuted }}><Edit3 size={16}/></Link>
-          <button onClick={async () => { if(window.confirm("顧客情報を削除しますか？")) { await apiCall.post(GAS_URL, { action: "delete", id: c.id }); onRefresh(); } }} style={{ background: "none", border: "none", color: THEME.danger, cursor: "pointer" }}><Trash2 size={16}/></button>
-        </div></td></tr>))}</tbody></table></div></Page>);
+    
+    <div style={{ ...styles.card, padding: 0, overflow: "hidden" }}>
+      <table style={{ width: "100%", borderCollapse: "collapse" }}>
+        <thead>
+          <tr>
+            {vCols.map(c => (
+              <th key={c} style={{ ...styles.tableTh, cursor: "pointer" }} onClick={() => setSort({ key: c, dir: (sort.key === c && sort.dir === 'asc') ? 'desc' : 'asc' })}>
+                {c} {sort.key === c ? (sort.dir === 'asc' ? <ArrowUp size={12}/> : <ArrowDown size={12}/>) : <ArrowUpDown size={12} opacity={0.3}/>}
+              </th>
+            ))}
+            <th style={styles.tableTh}>操作</th>
+          </tr>
+        </thead>
+        <tbody>
+          {filtered.map(c => (
+            <tr key={c.id} style={{ transition: "0.2s" }} onMouseEnter={e => e.currentTarget.style.backgroundColor = THEME.bg} onMouseLeave={e => e.currentTarget.style.backgroundColor = "transparent"}>
+              {vCols.map(col => <td key={col} style={styles.tableTd}>{col === "シナリオID" ? <span style={styles.badge}>{c[col]}</span> : formatDate(c[col])}</td>)}
+              <td style={styles.tableTd}>
+                <div style={{ display: "flex", gap: "12px" }}>
+                  <Link to={`/direct-sms/${c.id}`} style={{ ...styles.badge, textDecoration: "none", backgroundColor: THEME.primary, color: "white" }}><MessageSquare size={12}/> 送信</Link>
+                  <Link to={`/schedule/${c.id}`} style={{ textDecoration: "none", color: THEME.primary, fontWeight: "800" }}>状況</Link>
+                  <Link to={`/edit/${c.id}`} style={{ textDecoration: "none", color: THEME.textMuted }}><Edit3 size={16}/></Link>
+                  <button onClick={async () => { if(window.confirm("顧客情報を削除しますか？")) { await apiCall.post(GAS_URL, { action: "delete", id: c.id }); onRefresh(); } }} style={{ background: "none", border: "none", color: THEME.danger, cursor: "pointer" }}><Trash2 size={16}/></button>
+                </div>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  </Page>);
 }
 
 // --- (2) 顧客詳細 ---
@@ -622,7 +690,15 @@ function App() {
   if (!user) return (<div style={{ height: "100vh", display: "flex", alignItems: "center", justifyContent: "center", backgroundColor: THEME.bg }}><style>{globalStyle}</style><div style={{ ...styles.card, textAlign: "center", width: "400px", padding: "48px" }}><div style={{ backgroundColor: THEME.primary, width: "64px", height: "64px", borderRadius: "18px", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 32px", boxShadow: "0 10px 25px -5px rgba(79, 70, 229, 0.4)" }}><MessageSquare color="white" size={32} /></div><h1 style={{fontSize:28, fontWeight:900, marginBottom:10}}>StepFlow</h1><p style={{fontSize:14, color:THEME.textMuted, marginBottom:40}}>マーケティングSMS・配信管理 [V13.1]</p><GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID}><GoogleLogin onSuccess={(res) => { const dec = jwtDecode(res.credential); setUser(dec); localStorage.setItem("sf_user", JSON.stringify(dec)); }} /></GoogleOAuthProvider></div></div>);
   if(load) return <div style={{ height: "100vh", display: "flex", alignItems: "center", justifyContent: "center", backgroundColor: THEME.bg }}><Loader2 size={48} className="animate-spin" color={THEME.primary} /></div>;
   return (<GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID}><style>{globalStyle}</style><Router><div style={{ display: "flex" }}><Sidebar onLogout={() => { setUser(null); localStorage.removeItem("sf_user"); }} /><Routes>
-    <Route path="/" element={<CustomerList customers={d?.customers} displaySettings={d?.displaySettings} formSettings={d?.formSettings} onRefresh={refresh} />} />
+    <Route path="/" element={
+  <CustomerList 
+    customers={d?.customers} 
+    displaySettings={d?.displaySettings} 
+    formSettings={d?.formSettings} 
+    scenarios={d?.scenarios} // 🆕 シナリオデータを渡す
+    onRefresh={refresh} 
+  />
+} />
     <Route path="/column-settings" element={<ColumnSettings displaySettings={d?.displaySettings} formSettings={d?.formSettings} onRefresh={refresh} />} />
     <Route path="/add" element={<CustomerForm scenarios={d?.scenarios} formSettings={d?.formSettings} onRefresh={refresh} />} />
     <Route path="/edit/:id" element={<CustomerEdit customers={d?.customers} scenarios={d?.scenarios} formSettings={d?.formSettings} onRefresh={refresh} />} />
