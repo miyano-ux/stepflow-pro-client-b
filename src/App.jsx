@@ -155,10 +155,12 @@ function Sidebar({ onLogout }) {
   const l = useLocation();
   const m = [
     { n: "ダッシュボード", p: "/", i: <LayoutDashboard size={18} /> },
+    { n: "案件カンバン", p: "/kanban", i: <Columns size={18} /> }, // カンバンを上位に
     { n: "新規顧客登録", p: "/add", i: <UserPlus size={18} /> },
     { n: "シナリオ管理", p: "/scenarios", i: <Settings size={18} /> },
     { n: "テンプレート管理", p: "/templates", i: <Copy size={18} /> },
     { n: "Gmail連携設定", p: "/gmail-settings", i: <Mail size={18} /> },
+    { n: "ステータス管理", p: "/status-settings", i: <ListTodo size={18} /> }, // ステータス設定を追加
     { n: "取り込みエラー", p: "/import-errors", i: <AlertCircle size={18} /> },
     { n: "ユーザー管理", p: "/users", i: <Users size={18} /> }
   ];
@@ -315,10 +317,18 @@ function CustomerDetail({ customers = [] }) {
 }
 
 // --- (3) 顧客登録 [テンプレートDL・項目設定ボタン統合] ---
-function CustomerForm({ formSettings = [], scenarios = [], onRefresh }) {
+function CustomerForm({ formSettings = [], scenarios = [], statuses = [], masterUrl, onRefresh }) {
   const navigate = useNavigate(); const [ln, setLn] = useState(""); const [fn, setFn] = useState(""); const [ph, setPh] = useState("");
-  const [fd, setFd] = useState({}); const [sc, setSc] = useState("");
-  useEffect(() => { if(scenarios?.length > 0) setSc(scenarios[0]["シナリオID"]); }, [scenarios]);
+  const [fd, setFd] = useState({ "対応ステータス": "未対応", "担当者メール": "" }); const [sc, setSc] = useState("");
+  const [staffList, setStaffList] = useState([]);
+
+  useEffect(() => { 
+    if(scenarios?.length > 0) setSc(scenarios[0]["シナリオID"]); 
+    const fetchStaff = async () => {
+      try { const res = await axios.get(`${masterUrl}?action=list&company=${CLIENT_COMPANY_NAME}`); setStaffList(res?.data?.users || []); } catch(e) { console.error(e); }
+    };
+    if (masterUrl) fetchStaff();
+  }, [scenarios, masterUrl]);
   
   const handleUpload = (e) => {
     const file = e.target.files[0]; if (!file) return;
@@ -326,7 +336,7 @@ function CustomerForm({ formSettings = [], scenarios = [], onRefresh }) {
     reader.onload = async (ev) => {
       const rows = ev.target.result.split("\n").map(r => r.split(",").map(c => c.replace(/^"|"$/g, "").trim()));
       const items = rows.slice(1).filter(r => r.length > 2).map(row => {
-        const obj = { lastName: row[0], firstName: row[1], phone: smartNormalizePhone(row[2]), scenarioID: row[3], data: {} };
+        const obj = { lastName: row[0], firstName: row[1], phone: smartNormalizePhone(row[2]), scenarioID: row[3], data: { "対応ステータス": "未対応" } };
         rows[0].slice(4).forEach((h, i) => { if(h) obj.data[h] = row[i+4]; }); return obj;
       });
       try { await apiCall.post(GAS_URL, { action: "bulkAdd", customers: items }); alert("一括登録完了"); onRefresh(); navigate("/"); } catch (err) { alert(err.message); }
@@ -347,6 +357,13 @@ function CustomerForm({ formSettings = [], scenarios = [], onRefresh }) {
     <form onSubmit={async (e) => { e.preventDefault(); try { await apiCall.post(GAS_URL, { action: "add", lastName: ln, firstName: fn, phone: ph, data: fd, scenarioID: sc }); onRefresh(); navigate("/"); } catch(err) { alert(err.message); } }}>
       <div style={{ display: "flex", gap: "20px", marginBottom: "20px" }}><div style={{ flex: 1 }}><label style={{fontWeight:"700"}}>姓 *</label><input style={styles.input} required onChange={e => setLn(e.target.value)} /></div><div style={{ flex: 1 }}><label style={{fontWeight:"700"}}>名 *</label><input style={styles.input} required onChange={e => setFn(e.target.value)} /></div></div>
       <label style={{fontWeight:"700"}}>電話番号 *</label><input style={{...styles.input, marginBottom:"20px"}} required value={ph} onChange={e => setPh(e.target.value)} placeholder="09012345678" />
+      
+      {/* 🆕 営業管理項目 */}
+      <div style={{display:"grid", gridTemplateColumns:"1fr 1fr", gap:20, marginBottom:20, padding:20, background:"#F8FAFC", borderRadius:12}}>
+        <div><label style={{fontWeight:700, fontSize:12, color:THEME.primary}}>担当者</label><select style={styles.input} value={fd["担当者メール"]} onChange={e=>setFd({...fd, "担当者メール":e.target.value})}><option value="">未割当</option>{staffList.map(s => <option key={s.email} value={s.email}>{s.lastName} {s.firstName}</option>)}</select></div>
+        <div><label style={{fontWeight:700, fontSize:12, color:THEME.primary}}>対応ステータス</label><select style={styles.input} value={fd["対応ステータス"]} onChange={e=>setFd({...fd, "対応ステータス":e.target.value})}>{statuses.map(st => <option key={st.name} value={st.name}>{st.name}</option>)}</select></div>
+      </div>
+
       {formSettings.map(f => <div key={f.name} style={{marginBottom:"20px"}}><label style={{fontWeight:"700"}}>{f.name}</label><DynamicField f={f} value={fd[f.name]} onChange={v => setFd({...fd, [f.name]: v})} /></div>)}
       <label style={{fontWeight:"700"}}>適用シナリオ</label>
       <select style={{...styles.input, marginBottom:"32px"}} value={sc} onChange={e => setSc(e.target.value)}>
@@ -361,15 +378,31 @@ function CustomerForm({ formSettings = [], scenarios = [], onRefresh }) {
 }
 
 // --- (4) 顧客編集 ---
-function CustomerEdit({ customers = [], scenarios = [], formSettings = [], onRefresh }) {
+function CustomerEdit({ customers = [], scenarios = [], formSettings = [], statuses = [], masterUrl, onRefresh }) {
   const { id } = useParams(); const nav = useNavigate(); const c = customers?.find(x => x.id === Number(id));
   const [ln, setLn] = useState(""); const [fn, setFn] = useState(""); const [ph, setPh] = useState("");
   const [fd, setFd] = useState({}); const [sc, setSc] = useState("");
-  useEffect(() => { if (c) { setLn(c["姓"] || ""); setFn(c["名"] || ""); setPh(c["電話番号"] || ""); setFd(c); setSc(c["シナリオID"]); } }, [c]);
+  const [staffList, setStaffList] = useState([]);
+
+  useEffect(() => { 
+    if (c) { setLn(c["姓"] || ""); setFn(c["名"] || ""); setPh(c["電話番号"] || ""); setFd(c); setSc(c["シナリオID"]); }
+    const fetchStaff = async () => {
+      try { const res = await axios.get(`${masterUrl}?action=list&company=${CLIENT_COMPANY_NAME}`); setStaffList(res?.data?.users || []); } catch(e) { console.error(e); }
+    };
+    if (masterUrl) fetchStaff();
+  }, [c, masterUrl]);
+
   if(!c) return <Page title="読込中..."><Loader2 className="animate-spin"/></Page>;
   return (<Page title="顧客情報の編集"><div style={{ ...styles.card, maxWidth: "700px", margin: "0 auto" }}><form onSubmit={async (e) => { e.preventDefault(); await apiCall.post(GAS_URL, { action: "update", id, lastName:ln, firstName:fn, phone:ph, data: fd, status: c["配信ステータス"], scenarioID: sc }); onRefresh(); nav("/"); }}>
     <div style={{ display: "flex", gap: "20px", marginBottom: "20px" }}><div style={{ flex: 1 }}><label style={{fontWeight:"700"}}>姓</label><input style={styles.input} value={ln} onChange={e=>setLn(e.target.value)} /></div><div style={{ flex: 1 }}><label style={{fontWeight:"700"}}>名</label><input style={styles.input} value={fn} onChange={e=>setFn(e.target.value)} /></div></div>
     <label style={{fontWeight:"700"}}>電話番号</label><input style={styles.input} value={ph} onChange={e=>setPh(e.target.value)} />
+    
+    {/* 🆕 営業管理項目 */}
+    <div style={{display:"grid", gridTemplateColumns:"1fr 1fr", gap:20, marginTop:20, padding:20, background:"#F8FAFC", borderRadius:12}}>
+      <div><label style={{fontWeight:700, fontSize:12, color:THEME.primary}}>担当者</label><select style={styles.input} value={fd["担当者メール"] || ""} onChange={e=>setFd({...fd, "担当者メール":e.target.value})}><option value="">未割当</option>{staffList.map(s => <option key={s.email} value={s.email}>{s.lastName} {s.firstName}</option>)}</select></div>
+      <div><label style={{fontWeight:700, fontSize:12, color:THEME.primary}}>対応ステータス</label><select style={styles.input} value={fd["対応ステータス"] || "未対応"} onChange={e=>setFd({...fd, "対応ステータス":e.target.value})}>{statuses.map(st => <option key={st.name} value={st.name}>{st.name}</option>)}</select></div>
+    </div>
+
     {formSettings.map(f => <div key={f.name} style={{marginTop:"20px"}}><label style={{fontWeight:"700"}}>{f.name}</label><DynamicField f={f} value={fd[f.name]} onChange={v=>setFd({...fd,[f.name]:v})} /></div>)}
     <label style={{display:"block", marginTop:"20px", fontWeight:"700"}}>シナリオ</label><select style={styles.input} value={sc} onChange={e=>setSc(e.target.value)}>{[...new Set(scenarios?.map(x=>x["シナリオID"]))].map(id=><option key={id} value={id}>{id}</option>)}</select>
     <button type="submit" style={{ ...styles.btn, ...styles.btnPrimary, width: "100%", marginTop: "32px", padding: "16px" }}>変更を保存</button></form></div></Page>);
@@ -684,25 +717,19 @@ function UserManager({ masterUrl }) {
 
 // --- (13) Appメイン [認証 & ルーティング] ---
 function App() {
-  const [d, setD] = useState({ customers: [], scenarios: [], formSettings: [], displaySettings: [], deliveryLogs: [], templates: [] , gmailSettings: []});
+  const [d, setD] = useState({ customers: [], scenarios: [], formSettings: [], displaySettings: [], deliveryLogs: [], templates: [] , gmailSettings: [], importErrors: [], statuses: []});
   const [load, setLoad] = useState(true); const [user, setUser] = useState(() => { const sUser = localStorage.getItem("sf_user"); return sUser ? JSON.parse(sUser) : null; });
   const refresh = useCallback(async () => { if(!user) return; try { const res = await axios.get(`${GAS_URL}`); setD(res?.data || {}); } finally { setLoad(false); } }, [user]);
   useEffect(() => { refresh(); }, [refresh]);
-  if (!user) return (<div style={{ height: "100vh", display: "flex", alignItems: "center", justifyContent: "center", backgroundColor: THEME.bg }}><style>{globalStyle}</style><div style={{ ...styles.card, textAlign: "center", width: "400px", padding: "48px" }}><div style={{ backgroundColor: THEME.primary, width: "64px", height: "64px", borderRadius: "18px", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 32px", boxShadow: "0 10px 25px -5px rgba(79, 70, 229, 0.4)" }}><MessageSquare color="white" size={32} /></div><h1 style={{fontSize:28, fontWeight:900, marginBottom:10}}>StepFlow</h1><p style={{fontSize:14, color:THEME.textMuted, marginBottom:40}}>マーケティングSMS・配信管理 [V13.1]</p><GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID}><GoogleLogin onSuccess={(res) => { const dec = jwtDecode(res.credential); setUser(dec); localStorage.setItem("sf_user", JSON.stringify(dec)); }} /></GoogleOAuthProvider></div></div>);
+  if (!user) return (<div style={{ height: "100vh", display: "flex", alignItems: "center", justifyContent: "center", backgroundColor: THEME.bg }}><style>{globalStyle}</style><div style={{ ...styles.card, textAlign: "center", width: "400px", padding: "48px" }}><div style={{ backgroundColor: THEME.primary, width: "64px", height: "64px", borderRadius: "18px", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 32px", boxShadow: "0 10px 25px -5px rgba(79, 70, 229, 0.4)" }}><MessageSquare color="white" size={32} /></div><h1 style={{fontSize:28, fontWeight:900, marginBottom:10}}>StepFlow</h1><p style={{fontSize:14, color:THEME.textMuted, marginBottom:40}}>マーケティングSMS・配信管理 [V18.1]</p><GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID}><GoogleLogin onSuccess={(res) => { const dec = jwtDecode(res.credential); setUser(dec); localStorage.setItem("sf_user", JSON.stringify(dec)); }} /></GoogleOAuthProvider></div></div>);
   if(load) return <div style={{ height: "100vh", display: "flex", alignItems: "center", justifyContent: "center", backgroundColor: THEME.bg }}><Loader2 size={48} className="animate-spin" color={THEME.primary} /></div>;
   return (<GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID}><style>{globalStyle}</style><Router><div style={{ display: "flex" }}><Sidebar onLogout={() => { setUser(null); localStorage.removeItem("sf_user"); }} /><Routes>
-    <Route path="/" element={
-  <CustomerList 
-    customers={d?.customers} 
-    displaySettings={d?.displaySettings} 
-    formSettings={d?.formSettings} 
-    scenarios={d?.scenarios} // 🆕 シナリオデータを渡す
-    onRefresh={refresh} 
-  />
-} />
+    <Route path="/" element={<CustomerList customers={d?.customers} displaySettings={d?.displaySettings} formSettings={d?.formSettings} scenarios={d?.scenarios} onRefresh={refresh} />} />
+    <Route path="/kanban" element={<KanbanBoard customers={d?.customers} statuses={d?.statuses} onRefresh={refresh} masterUrl={MASTER_WHITELIST_API} />} /> 
+    <Route path="/status-settings" element={<StatusSettings statuses={d?.statuses} onRefresh={refresh} />} />
     <Route path="/column-settings" element={<ColumnSettings displaySettings={d?.displaySettings} formSettings={d?.formSettings} onRefresh={refresh} />} />
-    <Route path="/add" element={<CustomerForm scenarios={d?.scenarios} formSettings={d?.formSettings} onRefresh={refresh} />} />
-    <Route path="/edit/:id" element={<CustomerEdit customers={d?.customers} scenarios={d?.scenarios} formSettings={d?.formSettings} onRefresh={refresh} />} />
+    <Route path="/add" element={<CustomerForm scenarios={d?.scenarios} formSettings={d?.formSettings} statuses={d?.statuses} masterUrl={MASTER_WHITELIST_API} onRefresh={refresh} />} />
+    <Route path="/edit/:id" element={<CustomerEdit customers={d?.customers} scenarios={d?.scenarios} formSettings={d?.formSettings} statuses={d?.statuses} masterUrl={MASTER_WHITELIST_API} onRefresh={refresh} />} />
     <Route path="/schedule/:id" element={<CustomerSchedule customers={d?.customers} deliveryLogs={d?.deliveryLogs} onRefresh={refresh} />} />
     <Route path="/detail/:id" element={<CustomerDetail customers={d?.customers} />} />
     <Route path="/direct-sms/:id" element={<DirectSms customers={d?.customers} templates={d?.templates} onRefresh={refresh} masterUrl={MASTER_WHITELIST_API} currentUserEmail={user?.email} />} />
@@ -962,6 +989,98 @@ function ImportErrorList({ errors = [], onRefresh }) {
           </div>
         </div>
       )}
+    </Page>
+  );
+}
+
+/**
+ * (16) KanbanBoard コンポーネント
+ * 役割: 営業進捗を視覚的に管理。ドラッグ＆ドロップでステータス変更。
+ */
+function KanbanBoard({ customers = [], statuses = [], onRefresh, masterUrl }) {
+  const [filterStaff, setFilterStaff] = useState("");
+  const [staffList, setStaffList] = useState([]);
+
+  useEffect(() => {
+    const fetchStaff = async () => {
+      try {
+        const res = await axios.get(`${masterUrl}?action=list&company=${CLIENT_COMPANY_NAME}`);
+        setStaffList(res?.data?.users || []);
+      } catch(e) { console.error(e); }
+    };
+    if (masterUrl) fetchStaff();
+  }, [masterUrl]);
+
+  const onDragStart = (e, customerId) => e.dataTransfer.setData("customerId", customerId);
+  const onDragOver = (e) => e.preventDefault();
+  const onDrop = async (e, newStatus) => {
+    const cid = e.dataTransfer.getData("customerId");
+    await apiCall.post(GAS_URL, { action: "updateStatus", id: cid, status: newStatus });
+    onRefresh();
+  };
+
+  const filtered = customers.filter(c => !filterStaff || c["担当者メール"] === filterStaff);
+
+  return (
+    <Page title="営業カンバン" topButton={
+      <div style={{display:"flex", gap:12, alignItems:"center"}}>
+        <span style={{fontSize:12, fontWeight:800, color:THEME.textMuted}}>担当で絞り込み:</span>
+        <select style={{...styles.input, width:200}} value={filterStaff} onChange={e=>setFilterStaff(e.target.value)}>
+          <option value="">全ての担当者</option>
+          {staffList.map(s => <option key={s.email} value={s.email}>{s.lastName} {s.firstName}</option>)}
+        </select>
+      </div>
+    }>
+      <div style={{ display: "flex", gap: "20px", overflowX: "auto", paddingBottom: "20px", alignItems: "flex-start" }}>
+        {statuses.map(st => {
+          const colCustomers = filtered.filter(c => (c["対応ステータス"] || "未対応") === st.name);
+          return (
+            <div key={st.name} onDragOver={onDragOver} onDrop={(e) => onDrop(e, st.name)} style={{ minWidth: "320px", backgroundColor: "#F1F5F9", borderRadius: "16px", padding: "16px", minHeight: "70vh" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px", padding: "0 8px" }}>
+                <h3 style={{ fontSize: "15px", fontWeight: "900", margin: 0 }}>{st.name}</h3>
+                <span style={styles.badge}>{colCustomers.length}</span>
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                {colCustomers.map(c => (
+                  <div key={c.id} draggable onDragStart={(e) => onDragStart(e, c.id)} style={{ ...styles.card, padding: "16px", cursor: "grab", border: "1px solid transparent" }} onMouseEnter={e=>e.currentTarget.style.borderColor=THEME.primary} onMouseLeave={e=>e.currentTarget.style.borderColor="transparent"}>
+                    <div style={{ fontWeight: "800", marginBottom: "8px", fontSize: "14px" }}>{c["姓"]} {c["名"]} 様</div>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <div style={{ fontSize: "11px", color: THEME.textMuted, display: "flex", alignItems: "center", gap: 4 }}>
+                        <UserCircle size={12}/> {staffList.find(s => s.email === c["担当者メール"])?.lastName || "未割当"}
+                      </div>
+                      <Link to={`/direct-sms/${c.id}`} style={{ color: THEME.primary }}><MessageSquare size={14}/></Link>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </Page>
+  );
+}
+
+/**
+ * (17) StatusSettings コンポーネント
+ */
+function StatusSettings({ statuses = [], onRefresh }) {
+  const [items, setItems] = useState(statuses.map(s => s.name) || []);
+  useEffect(() => { setItems(statuses.map(s => s.name)); }, [statuses]);
+
+  return (
+    <Page title="ステータス管理" subtitle="カンバンボードの列（営業フェーズ）を定義します">
+      <div style={{ maxWidth: "500px" }}>
+        {items.map((it, i) => (
+          <div key={i} style={{ ...styles.card, marginBottom: "12px", display: "flex", gap: "12px", alignItems: "center" }}>
+            <GripVertical size={18} color={THEME.textMuted} />
+            <input style={styles.input} value={it} onChange={e => { const n = [...items]; n[i] = e.target.value; setItems(n); }} />
+            <button onClick={() => setItems(items.filter((_, idx) => idx !== i))} style={{ color: THEME.danger, background: "none", border: "none" }}><Trash2 size={18}/></button>
+          </div>
+        ))}
+        <button onClick={() => setItems([...items, ""])} style={{ ...styles.btn, ...styles.btnSecondary, width: "100%", borderStyle: "dashed", marginTop: "12px" }}>+ 新しいステータスを追加</button>
+        <button onClick={async () => { await apiCall.post(GAS_URL, { action: "saveStatuses", statuses: items }); onRefresh(); alert("保存しました"); }} style={{ ...styles.btn, ...styles.btnPrimary, width: "100%", marginTop: "32px" }}>設定を保存して反映</button>
+      </div>
     </Page>
   );
 }
