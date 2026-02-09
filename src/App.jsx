@@ -189,22 +189,17 @@ function Page({ title, subtitle, children, topButton }) {
 // 📺 4. 画面コンポーネント (全13個・完全収録)
 // ==========================================
 
-// --- (1) 顧客ダッシュボード [楽観的更新・高速レスポンス版] ---
+
+// --- (1) 顧客ダッシュボード [V22.0 デザイン版] ---
 function CustomerList({ customers = [], displaySettings = [], formSettings = [], scenarios = [], statuses = [], masterUrl, onRefresh }) {
   const navigate = useNavigate(); 
   const [search, setSearch] = useState({}); 
   const [sort, setSort] = useState({ key: null, dir: 'asc' });
   const [staffList, setStaffList] = useState([]);
   const [confirmModal, setConfirmModal] = useState({ open: false, customer: null, field: "", newValue: "", oldValue: "" });
-  
-  // 🆕 画面表示用のローカルデータ管理
   const [localCustomers, setLocalCustomers] = useState(customers);
 
-  // 親(App)のデータが更新されたらローカルに同期
-  useEffect(() => {
-    setLocalCustomers(customers);
-  }, [customers]);
-
+  useEffect(() => { setLocalCustomers(customers); }, [customers]);
   useEffect(() => {
     const fetchStaff = async () => {
       if (!masterUrl) return;
@@ -216,6 +211,7 @@ function CustomerList({ customers = [], displaySettings = [], formSettings = [],
     fetchStaff();
   }, [masterUrl]);
 
+  // 表示列の定義
   const vCols = useMemo(() => {
     let cols = displaySettings?.length > 0 ? displaySettings.filter(i => i.visible).map(i => i.name) : ["姓", "名", "対応ステータス", "担当者メール", "シナリオID", "登録日"];
     if (!cols.includes("対応ステータス")) cols.splice(2, 0, "対応ステータス");
@@ -225,7 +221,6 @@ function CustomerList({ customers = [], displaySettings = [], formSettings = [],
 
   const sCols = useMemo(() => displaySettings?.length > 0 ? displaySettings.filter(i => i.searchable).map(i => i.name) : ["姓", "対応ステータス", "担当者メール", "登録日"], [displaySettings]);
   
-  // 🆕 filtered の計算に localCustomers を使用するように変更
   const filtered = useMemo(() => {
     let res = [...(localCustomers || [])].filter(c => Object.keys(search).every(k => {
       const q = search[k]; if (!q || q === "") return true;
@@ -239,130 +234,138 @@ function CustomerList({ customers = [], displaySettings = [], formSettings = [],
       }
       return String(c[k] || "").toLowerCase().includes(String(q).toLowerCase());
     }));
-    if (sort.key) res.sort((a, b) => { const aV = a[sort.key], bV = b[sort.key]; return sort.dir === 'asc' ? String(aV).localeCompare(String(bV)) : String(bV).localeCompare(String(aV)); });
+    if (sort.key) {
+      res.sort((a, b) => {
+        const aV = a[sort.key] || "", bV = b[sort.key] || "";
+        return sort.dir === 'asc' ? String(aV).localeCompare(String(bV), 'ja') : String(bV).localeCompare(String(aV), 'ja');
+      });
+    }
     return res;
   }, [localCustomers, search, formSettings, sort]);
 
-  // 🆕 実行ボタン押下時の処理：即座に画面を書き換える
   const handleExecuteChange = async () => {
     const { customer, field, newValue } = confirmModal;
-    
-    // 1. まずモーダルを閉じ、UIだけを即座に書き換える
-    const optimisticData = localCustomers.map(c => 
-      c.id === customer.id ? { ...c, [field]: newValue } : c
-    );
+    const optimisticData = localCustomers.map(c => c.id === customer.id ? { ...c, [field]: newValue } : c);
     setLocalCustomers(optimisticData);
     setConfirmModal({ open: false, customer: null, field: "", newValue: "", oldValue: "" });
-
-    // 2. その後、バックグラウンドでGASに通知
     try {
       const updatedData = { ...customer, [field]: newValue };
       await apiCall.post(GAS_URL, { 
         action: "update", id: customer.id, lastName: customer["姓"], firstName: customer["名"], 
         phone: customer["電話番号"], scenarioID: customer["シナリオID"], status: customer["配信ステータス"], data: updatedData 
       });
-      // 3. 完了したらサイレントに最新同期
       onRefresh();
-    } catch (e) {
-      alert("通信エラーが発生しました。データを元に戻します。");
-      onRefresh(); // エラー時は正しいデータにロールバック
-    }
+    } catch (e) { alert("更新に失敗しました"); onRefresh(); }
   };
 
-  return (<Page title="顧客ダッシュボード" topButton={
+  return (<Page title="顧客ダッシュボード" subtitle={`全 ${filtered.length} 件の顧客データを管理中`} topButton={
     <div style={{ display: "flex", gap: "12px" }}>
-      <button onClick={() => downloadCSV([vCols, ...filtered.map(c => vCols.map(col => c[col]))], "customers.csv")} style={{ ...styles.btn, ...styles.btnSecondary }}><Download size={18} /> CSV出力</button>
-      <button onClick={() => navigate("/column-settings")} style={{ ...styles.btn, ...styles.btnPrimary }}><SlidersHorizontal size={18} /> 表示設定</button>
+      <button onClick={() => downloadCSV([vCols, ...filtered.map(c => vCols.map(col => c[col]))], "customers.csv")} style={{ ...styles.btn, ...styles.btnSecondary, height: 44 }}><Download size={18} /> エクスポート</button>
+      <button onClick={() => navigate("/column-settings")} style={{ ...styles.btn, ...styles.btnPrimary, height: 44 }}><SlidersHorizontal size={18} /> 表示設定</button>
     </div>
   }>
-    <div style={{ ...styles.card, padding: "24px", marginBottom: "32px", display: "flex", gap: "24px", flexWrap: "wrap", alignItems: "flex-end", backgroundColor: "white" }}>
-      <div style={{ color: THEME.textMuted, paddingBottom: 10 }}><Search size={20} /></div>
-      {sCols.map(col => {
-        if (formSettings?.find(x => x.name === col)?.type === "date" || col === "登録日") {
-          return <DateRangePicker key={col} label={col} value={search[col] || {}} onChange={v => setSearch({ ...search, [col]: v })} />;
-        }
-        if (col === "対応ステータス") {
-          return (
-            <div key={col} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-              <label style={{ fontSize: "11px", fontWeight: "800", color: THEME.textMuted }}>対応ステータス</label>
-              <select style={{ ...styles.input, width: "150px", padding: "10px" }} value={search[col] || ""} onChange={e => setSearch({...search, [col]: e.target.value})}>
-                <option value="">すべて</option>
-                {statuses.map(st => <option key={st.name} value={st.name}>{st.name}</option>)}
+    {/* 🆕 整理された検索グリッド */}
+    <div style={{ ...styles.card, padding: "24px", marginBottom: "32px", border: "none", boxShadow: "0 1px 3px rgba(0,0,0,0.1)" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: "20px", alignItems: "flex-end" }}>
+        {sCols.map(col => (
+          <div key={col} style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <label style={{ fontSize: "12px", fontWeight: "700", color: THEME.textMuted }}>{col}</label>
+            {formSettings?.find(x => x.name === col)?.type === "date" || col === "登録日" ? (
+              <div style={{ display: "flex", gap: 4 }}><DateRangePicker value={search[col] || {}} onChange={v => setSearch({ ...search, [col]: v })} /></div>
+            ) : col === "対応ステータス" || col === "シナリオID" ? (
+              <select style={{ ...styles.input, height: 42 }} value={search[col] || ""} onChange={e => setSearch({...search, [col]: e.target.value})}>
+                <option value="">すべて表示</option>
+                {col === "対応ステータス" ? statuses.map(st => <option key={st.name} value={st.name}>{st.name}</option>) 
+                : [...new Set(scenarios?.map(x => x["シナリオID"]))].map(id => <option key={id} value={id}>{id}</option>)}
               </select>
-            </div>
-          );
-        }
-        if (col === "シナリオID") {
-          return (
-            <div key={col} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-              <label style={{ fontSize: "11px", fontWeight: "800", color: THEME.textMuted }}>適用中シナリオ</label>
-              <select style={{ ...styles.input, width: "160px", padding: "10px" }} value={search[col] || ""} onChange={e => setSearch({...search, [col]: e.target.value})}>
-                <option value="">すべて</option>
-                {[...new Set(scenarios?.map(x => x["シナリオID"]))].map(id => <option key={id} value={id}>{id}</option>)}
-              </select>
-            </div>
-          );
-        }
-        return (
-          <div key={col} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            <label style={{ fontSize: "11px", fontWeight: "800", color: THEME.textMuted }}>{col}</label>
-            <input placeholder={`${col}で検索...`} style={{ ...styles.input, width: "150px", padding: "10px" }} value={search[col] || ""} onChange={e => setSearch({...search, [col]: e.target.value})} />
+            ) : (
+              <div style={{ position: "relative" }}>
+                <Search size={14} style={{ position: "absolute", left: 12, top: 14, color: THEME.textMuted }} />
+                <input placeholder="検索..." style={{ ...styles.input, paddingLeft: 36, height: 42 }} value={search[col] || ""} onChange={e => setSearch({...search, [col]: e.target.value})} />
+              </div>
+            )}
           </div>
-        );
-      })}
-      <button onClick={() => setSearch({})} style={{ ...styles.btn, background: "none", color: THEME.primary, fontWeight: "800", padding: "10px" }}>リセット</button>
+        ))}
+        <div style={{ display: "flex", gap: 12 }}>
+          <button onClick={() => setSearch({})} style={{ ...styles.btn, ...styles.btnSecondary, flex: 1, height: 42 }}>条件クリア</button>
+        </div>
+      </div>
     </div>
     
-    <div style={{ ...styles.card, padding: 0, overflowX: "auto" }}>
-      <table style={{ width: "100%", borderCollapse: "collapse" }}>
-        <thead>
-          <tr>
-            {vCols.map(c => (
-              <th key={c} style={{ ...styles.tableTh, cursor: "pointer" }} onClick={() => setSort({ key: c, dir: (sort.key === c && sort.dir === 'asc') ? 'desc' : 'asc' })}>
-                {c} {sort.key === c ? (sort.dir === 'asc' ? <ArrowUp size={12}/> : <ArrowDown size={12}/>) : <ArrowUpDown size={12} opacity={0.3}/>}
-              </th>
-            ))}
-            <th style={styles.tableTh}>操作</th>
-          </tr>
-        </thead>
-        <tbody>
-          {filtered.map(c => (
-            <tr key={c.id} style={{ transition: "0.2s" }} onMouseEnter={e => e.currentTarget.style.backgroundColor = THEME.bg} onMouseLeave={e => e.currentTarget.style.backgroundColor = "transparent"}>
-              {vCols.map(col => {
-                if (col === "対応ステータス") return <td key={col} style={styles.tableTd}><select style={{ ...styles.input, padding: "4px 8px", fontSize: "12px", width: "auto" }} value={c[col] || "未対応"} onChange={e => setConfirmModal({ open: true, customer: c, field: col, newValue: e.target.value, oldValue: c[col] || "未対応" })}>{statuses.map(st => <option key={st.name} value={st.name}>{st.name}</option>)}</select></td>;
-                if (col === "担当者メール") return <td key={col} style={styles.tableTd}><select style={{ ...styles.input, padding: "4px 8px", fontSize: "12px", width: "auto" }} value={c[col] || ""} onChange={e => setConfirmModal({ open: true, customer: c, field: col, newValue: e.target.value, oldValue: c[col] || "未割当" })}><option value="">未割当</option>{staffList.map(s => <option key={s.email} value={s.email}>{s.lastName} {s.firstName}</option>)}</select></td>;
-                return <td key={col} style={styles.tableTd}>{col === "シナリオID" ? <span style={styles.badge}>{c[col]}</span> : formatDate(c[col])}</td>
-              })}
-              <td style={styles.tableTd}><div style={{ display: "flex", gap: "12px" }}>
-                <Link to={`/direct-sms/${c.id}`} style={{ ...styles.badge, textDecoration: "none", backgroundColor: THEME.primary, color: "white" }}><MessageSquare size={12}/> 送信</Link>
-                <Link to={`/schedule/${c.id}`} style={{ textDecoration: "none", color: THEME.primary, fontWeight: "800" }}>状況</Link>
-                <Link to={`/edit/${c.id}`} style={{ textDecoration: "none", color: THEME.textMuted }}><Edit3 size={16}/></Link>
-                <button onClick={async () => { if(window.confirm("顧客情報を削除しますか？")) { await apiCall.post(GAS_URL, { action: "delete", id: c.id }); onRefresh(); } }} style={{ background: "none", border: "none", color: THEME.danger, cursor: "pointer" }}><Trash2 size={16}/></button>
-              </div></td>
+    {/* 🆕 スティッキー・コンテナ */}
+    <div style={{ ...styles.card, padding: 0, overflow: "hidden", border: `1px solid ${THEME.border}`, position: "relative" }}>
+      <div style={{ overflowX: "auto", maxHeight: "calc(100vh - 400px)" }} className="custom-scrollbar">
+        <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: 0, tableLayout: "auto" }}>
+          <thead>
+            <tr>
+              {vCols.map(c => (
+                <th key={c} 
+                  onClick={() => setSort({ key: c, dir: (sort.key === c && sort.dir === 'asc') ? 'desc' : 'asc' })}
+                  style={{ 
+                    ...styles.tableTh, 
+                    position: "sticky", top: 0, zIndex: 10, backgroundColor: "#F8FAFC", 
+                    cursor: "pointer", whiteSpace: "nowrap", minWidth: 120,
+                    borderBottom: `2px solid ${THEME.border}`
+                  }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    {c} {sort.key === c ? (sort.dir === 'asc' ? <ArrowUp size={14}/> : <ArrowDown size={14}/>) : <ArrowUpDown size={14} opacity={0.2}/>}
+                  </div>
+                </th>
+              ))}
+              <th style={{ ...styles.tableTh, position: "sticky", top: 0, zIndex: 10, backgroundColor: "#F8FAFC", borderBottom: `2px solid ${THEME.border}`, textAlign: "center" }}>操作</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {filtered.map((c, idx) => (
+              <tr key={c.id} style={{ backgroundColor: idx % 2 === 0 ? "white" : "#FCFDFF" }} onMouseEnter={e => e.currentTarget.style.backgroundColor = "#F1F5F9"} onMouseLeave={e => e.currentTarget.style.backgroundColor = idx % 2 === 0 ? "white" : "#FCFDFF"}>
+                {vCols.map(col => {
+                  if (col === "対応ステータス") return (
+                    <td key={col} style={styles.tableTd}>
+                      <select style={{ border: `1px solid transparent`, background: "#EEF2FF", padding: "6px 12px", borderRadius: 8, fontSize: 12, fontWeight: 700, color: THEME.primary, cursor: "pointer" }}
+                        value={c[col] || "未対応"} onChange={e => setConfirmModal({ open: true, customer: c, field: col, newValue: e.target.value, oldValue: c[col] || "未対応" })}>
+                        {statuses.map(st => <option key={st.name} value={st.name}>{st.name}</option>)}
+                      </select>
+                    </td>
+                  );
+                  if (col === "担当者メール") return (
+                    <td key={col} style={styles.tableTd}>
+                      <select style={{ border: `1px solid transparent`, background: "#F1F5F9", padding: "6px 12px", borderRadius: 8, fontSize: 12, fontWeight: 600, color: THEME.textMain, cursor: "pointer" }}
+                        value={c[col] || ""} onChange={e => setConfirmModal({ open: true, customer: c, field: col, newValue: e.target.value, oldValue: c[col] || "未設定" })}>
+                        <option value="">未割当</option>
+                        {staffList.map(s => <option key={s.email} value={s.email}>{s.lastName} {s.firstName}</option>)}
+                      </select>
+                    </td>
+                  );
+                  return (
+                    <td key={col} style={{ ...styles.tableTd, whiteSpace: "nowrap" }}>
+                      {col === "シナリオID" ? <span style={{ ...styles.badge, backgroundColor: "#F1F5F9", color: THEME.textMain }}>{c[col]}</span> : formatDate(c[col])}
+                    </td>
+                  );
+                })}
+                <td style={{ ...styles.tableTd, textAlign: "center" }}>
+                  <div style={{ display: "flex", gap: "8px", justifyContent: "center" }}>
+                    <Link to={`/direct-sms/${c.id}`} title="個別送信" style={{ ...styles.btn, padding: "8px", backgroundColor: THEME.primary, color: "white", borderRadius: 8 }}><Send size={14}/></Link>
+                    <Link to={`/schedule/${c.id}`} title="配信状況" style={{ ...styles.btn, padding: "8px", backgroundColor: "#F1F5F9", color: THEME.textMain, borderRadius: 8 }}><Clock size={14}/></Link>
+                    <button onClick={async () => { if(window.confirm("削除しますか？")) { await apiCall.post(GAS_URL, { action: "delete", id: c.id }); onRefresh(); } }} style={{ ...styles.btn, padding: "8px", backgroundColor: "#FEF2F2", color: THEME.danger, borderRadius: 8 }}><Trash2 size={14}/></button>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
 
+    {/* 🆕 中央確認モーダル（デザイン強化版） */}
     {confirmModal.open && (
-      <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(0,0,0,0.6)", display: "flex", justifyContent: "center", alignItems: "center", zIndex: 3000 }}>
-        <div style={{ ...styles.card, width: "450px", textAlign: "center", padding: "32px" }}>
-          <div style={{ backgroundColor: "#F1F5F9", width: "56px", height: "56px", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 20px" }}><AlertCircle size={28} color={THEME.primary} /></div>
-          <h3>変更の確認</h3>
-          <p style={{ fontSize: "14px", color: THEME.textMuted, lineHeight: 1.6, marginBottom: "24px" }}><strong>{confirmModal.customer?.["姓"]} {confirmModal.customer?.["名"]}</strong> 様の<br />「{confirmModal.field === "担当者メール" ? "担当者" : confirmModal.field}」を変更しますか？</p>
-          <div style={{ background: "#F8FAFC", padding: "16px", borderRadius: "12px", marginBottom: "32px", display: "flex", justifyContent: "center", alignItems: "center", gap: "16px" }}>
-            <span style={{ fontSize: "13px", fontWeight: "700" }}>{confirmModal.oldValue || "未設定"}</span>
-            <ChevronRight size={16} color={THEME.textMuted} />
-            <span style={{ fontSize: "13px", fontWeight: "700", color: THEME.primary }}>
-              {confirmModal.field === "担当者メール" 
-                ? (staffList.find(s => s.email === confirmModal.newValue)?.lastName || "未割当")
-                : confirmModal.newValue}
-            </span>
-          </div>
-          <div style={{ display: "flex", gap: "12px" }}>
-            <button onClick={handleExecuteChange} style={{ ...styles.btn, ...styles.btnPrimary, flex: 1 }}>変更を実行する</button>
-            <button onClick={() => setConfirmModal({ open: false, customer: null, field: "", newValue: "", oldValue: "" })} style={{ ...styles.btn, ...styles.btnSecondary, flex: 1 }}>キャンセル</button>
+      <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(15, 23, 42, 0.6)", display: "flex", justifyContent: "center", alignItems: "center", zIndex: 3000, backdropFilter: "blur(4px)" }}>
+        <div style={{ ...styles.card, width: "400px", textAlign: "center", padding: "40px", borderRadius: 24, border: "none" }}>
+          <div style={{ backgroundColor: "#EEF2FF", width: "64px", height: "64px", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 24px" }}><AlertCircle size={32} color={THEME.primary} /></div>
+          <h3 style={{ fontSize: 20, fontWeight: 900, marginBottom: 8 }}>変更を確認</h3>
+          <p style={{ fontSize: "14px", color: THEME.textMuted, marginBottom: 32 }}>{confirmModal.customer?.["姓"]}様の「{confirmModal.field === "担当者メール" ? "担当者" : "対応ステータス"}」を更新しますか？</p>
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            <button onClick={handleExecuteChange} style={{ ...styles.btn, ...styles.btnPrimary, height: 48, fontSize: 15 }}>変更を実行する</button>
+            <button onClick={() => setConfirmModal({ open: false, customer: null, field: "", newValue: "", oldValue: "" })} style={{ ...styles.btn, ...styles.btnSecondary, height: 48, border: "none" }}>キャンセル</button>
           </div>
         </div>
       </div>
