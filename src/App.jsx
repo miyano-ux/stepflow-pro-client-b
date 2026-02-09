@@ -190,27 +190,33 @@ function Page({ title, subtitle, children, topButton }) {
 // 📺 4. 画面コンポーネント (全13個・完全収録)
 // ==========================================
 
-// --- (1) 顧客ダッシュボード [営業進捗・担当インライン更新版] ---
+// --- (1) 顧客ダッシュボード [楽観的更新・高速レスポンス版] ---
 function CustomerList({ customers = [], displaySettings = [], formSettings = [], scenarios = [], statuses = [], masterUrl, onRefresh }) {
   const navigate = useNavigate(); 
   const [search, setSearch] = useState({}); 
   const [sort, setSort] = useState({ key: null, dir: 'asc' });
   const [staffList, setStaffList] = useState([]);
   const [confirmModal, setConfirmModal] = useState({ open: false, customer: null, field: "", newValue: "", oldValue: "" });
+  
+  // 🆕 画面表示用のローカルデータ管理
+  const [localCustomers, setLocalCustomers] = useState(customers);
 
-  // 担当者一覧の取得
+  // 親(App)のデータが更新されたらローカルに同期
+  useEffect(() => {
+    setLocalCustomers(customers);
+  }, [customers]);
+
   useEffect(() => {
     const fetchStaff = async () => {
-      if (!masterUrl) return; // masterUrlがない場合は実行しない
+      if (!masterUrl) return;
       try {
         const res = await axios.get(`${masterUrl}?action=list&company=${CLIENT_COMPANY_NAME}`);
         setStaffList(res?.data?.users || []);
-      } catch(e) { console.error("担当者取得失敗:", e); }
+      } catch(e) { console.error(e); }
     };
     fetchStaff();
   }, [masterUrl]);
 
-  // 表示列の定義
   const vCols = useMemo(() => {
     let cols = displaySettings?.length > 0 ? displaySettings.filter(i => i.visible).map(i => i.name) : ["姓", "名", "対応ステータス", "担当者メール", "シナリオID", "登録日"];
     if (!cols.includes("対応ステータス")) cols.splice(2, 0, "対応ステータス");
@@ -220,8 +226,9 @@ function CustomerList({ customers = [], displaySettings = [], formSettings = [],
 
   const sCols = useMemo(() => displaySettings?.length > 0 ? displaySettings.filter(i => i.searchable).map(i => i.name) : ["姓", "対応ステータス", "担当者メール", "登録日"], [displaySettings]);
   
+  // 🆕 filtered の計算に localCustomers を使用するように変更
   const filtered = useMemo(() => {
-    let res = [...(customers || [])].filter(c => Object.keys(search).every(k => {
+    let res = [...(localCustomers || [])].filter(c => Object.keys(search).every(k => {
       const q = search[k]; if (!q || q === "") return true;
       if (formSettings?.find(x => x.name === k)?.type === "date" || k === "登録日") {
         if (!q.start && !q.end) return true;
@@ -235,19 +242,32 @@ function CustomerList({ customers = [], displaySettings = [], formSettings = [],
     }));
     if (sort.key) res.sort((a, b) => { const aV = a[sort.key], bV = b[sort.key]; return sort.dir === 'asc' ? String(aV).localeCompare(String(bV)) : String(bV).localeCompare(String(aV)); });
     return res;
-  }, [customers, search, formSettings, sort]);
+  }, [localCustomers, search, formSettings, sort]);
 
+  // 🆕 実行ボタン押下時の処理：即座に画面を書き換える
   const handleExecuteChange = async () => {
     const { customer, field, newValue } = confirmModal;
+    
+    // 1. まずモーダルを閉じ、UIだけを即座に書き換える
+    const optimisticData = localCustomers.map(c => 
+      c.id === customer.id ? { ...c, [field]: newValue } : c
+    );
+    setLocalCustomers(optimisticData);
+    setConfirmModal({ open: false, customer: null, field: "", newValue: "", oldValue: "" });
+
+    // 2. その後、バックグラウンドでGASに通知
     try {
       const updatedData = { ...customer, [field]: newValue };
       await apiCall.post(GAS_URL, { 
         action: "update", id: customer.id, lastName: customer["姓"], firstName: customer["名"], 
         phone: customer["電話番号"], scenarioID: customer["シナリオID"], status: customer["配信ステータス"], data: updatedData 
       });
-      setConfirmModal({ open: false, customer: null, field: "", newValue: "", oldValue: "" });
+      // 3. 完了したらサイレントに最新同期
       onRefresh();
-    } catch (e) { alert("更新に失敗しました"); }
+    } catch (e) {
+      alert("通信エラーが発生しました。データを元に戻します。");
+      onRefresh(); // エラー時は正しいデータにロールバック
+    }
   };
 
   return (<Page title="顧客ダッシュボード" topButton={
@@ -291,7 +311,7 @@ function CustomerList({ customers = [], displaySettings = [], formSettings = [],
           </div>
         );
       })}
-      <button onClick={() => setSearch({})} style={{ ...styles.btn, background: "none", color: THEME.primary, fontWeight: "800", padding: "10px" }}>条件リセット</button>
+      <button onClick={() => setSearch({})} style={{ ...styles.btn, background: "none", color: THEME.primary, fontWeight: "800", padding: "10px" }}>リセット</button>
     </div>
     
     <div style={{ ...styles.card, padding: 0, overflowX: "auto" }}>
@@ -326,7 +346,6 @@ function CustomerList({ customers = [], displaySettings = [], formSettings = [],
       </table>
     </div>
 
-    {/* ポップアップモーダル（中略なし） */}
     {confirmModal.open && (
       <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(0,0,0,0.6)", display: "flex", justifyContent: "center", alignItems: "center", zIndex: 3000 }}>
         <div style={{ ...styles.card, width: "450px", textAlign: "center", padding: "32px" }}>
