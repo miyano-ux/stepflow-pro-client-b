@@ -841,145 +841,53 @@ function FormSettings({ formSettings = [], onRefresh }) {
 
 // --- (12) ユーザー管理 ---
 /**
- * UserManager コンポーネント (V22.1 編集機能復旧版)
- * 役割: 利用スタッフ（担当者）のマスタ管理。新規登録および既存ユーザーの編集・更新に対応。
+ *  UserManager コンポーネント (V23.0 設計刷新版)
+ * 役割: ユーザー一覧の表示と削除管理。登録・編集は別画面へ遷移。
  */
 function UserManager({ masterUrl }) {
+  const navigate = useNavigate();
   const [users, setUsers] = useState([]);
-  const [form, setForm] = useState({ email: "", company: CLIENT_COMPANY_NAME, lastName: "", firstName: "", phone: "" });
-  const [editingId, setEditingId] = useState(null); // 🆕 編集中のユーザーIDを管理
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
 
-  // ユーザー一覧の取得
+  // ユーザー一覧の取得（キャッシュ回避のため毎回取得）
   const fetchUsers = useCallback(async () => {
+    setLoading(true);
     try {
-      const res = await axios.get(`${masterUrl}?action=list&company=${CLIENT_COMPANY_NAME}`);
+      const res = await axios.get(`${masterUrl}?action=list&company=${CLIENT_COMPANY_NAME}&_t=${Date.now()}`);
       setUsers(res.data.users || []);
     } catch (e) {
-      console.error("ユーザーリストの取得に失敗しました", e);
+      console.error("データ取得エラー", e);
+    } finally {
+      setLoading(false);
     }
   }, [masterUrl]);
 
   useEffect(() => { fetchUsers(); }, [fetchUsers]);
 
-  // 編集モードへの切り替え
-  const handleEditStart = (user) => {
-    setEditingId(user.id);
-    setForm({
-      email: user.email,
-      company: CLIENT_COMPANY_NAME,
-      lastName: user.lastName,
-      firstName: user.firstName,
-      phone: user.phone || ""
-    });
-    window.scrollTo({ top: 0, behavior: 'smooth' }); // 入力欄へ誘導
-  };
-
-  // 編集のキャンセル
-  const handleCancel = () => {
-    setEditingId(null);
-    setForm({ email: "", company: CLIENT_COMPANY_NAME, lastName: "", firstName: "", phone: "" });
-  };
-
-  // 保存（新規追加・更新共通）
-  const handleSave = async () => {
-    if (!form.email || !form.lastName) return alert("氏名とメールアドレスは必須です");
-    
-    setLoading(true);
+  const handleDelete = async (id) => {
+    if (!window.confirm("このユーザーを完全に削除しますか？この操作は取り消せません。")) return;
     try {
-      // 要件4.2準拠: 電話番号のゼロ落ち防止
-      const processedForm = {
-        ...form,
-        phone: form.phone ? (form.phone.startsWith("'") ? form.phone : "'" + form.phone) : ""
-      };
-
-      await axios.post(masterUrl, 
-        { 
-          action: "save", 
-          id: editingId, // editingIdがあれば更新、なければ新規
-          ...processedForm 
-        }, 
+      // マスターAPIへの削除リクエスト（action: "delete"）
+      const res = await axios.post(masterUrl, 
+        JSON.stringify({ action: "delete", id: String(id) }), // IDは確実に文字列で送信
         { headers: { 'Content-Type': 'text/plain' } }
       );
-      
-      handleCancel();
-      fetchUsers();
+      if (res.data.status === "success") {
+        fetchUsers();
+      } else {
+        alert("削除に失敗しました: " + res.data.message);
+      }
     } catch (e) {
-      alert("保存中にエラーが発生しました");
-    }
-    setLoading(false);
-  };
-
-  const handleDelete = async (id) => {
-    if (!window.confirm("このユーザーを削除すると、担当者の紐付けが解除される可能性があります。削除しますか？")) return;
-    try {
-      await axios.post(masterUrl, { action: "delete", id }, { headers: { 'Content-Type': 'text/plain' } });
-      fetchUsers();
-    } catch (e) {
-      alert("削除に失敗しました");
+      alert("通信エラーが発生しました");
     }
   };
 
   return (
-    <Page title="ユーザー管理" subtitle="システムを利用するスタッフアカウントの登録・編集を行います">
-      {/* 入力・編集フォームパネル */}
-      <div style={{ 
-        ...styles.card, 
-        padding: "28px", 
-        marginBottom: "32px", 
-        border: editingId ? `2px solid ${THEME.primary}` : "none",
-        backgroundColor: editingId ? "#F8FAFF" : "white",
-        transition: "0.3s"
-      }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px" }}>
-          <h3 style={{ fontSize: "18px", fontWeight: "900", margin: 0 }}>
-            {editingId ? "ユーザー情報の編集" : "新規ユーザー登録"}
-          </h3>
-          {editingId && (
-            <button onClick={handleCancel} style={{ display: "flex", alignItems: "center", gap: "4px", background: "none", border: "none", color: THEME.textMuted, cursor: "pointer", fontWeight: "800" }}>
-              <X size={16}/> 編集をキャンセル
-            </button>
-          )}
-        </div>
-
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1.5fr 1fr auto", gap: "16px", alignItems: "flex-end" }}>
-          <div style={styles.inputGroup}>
-            <label style={{ ...styles.label, fontSize: "11px" }}>姓</label>
-            <input placeholder="山田" style={{ ...styles.input, height: "42px" }} value={form.lastName} onChange={e => setForm({ ...form, lastName: e.target.value })} />
-          </div>
-          <div style={styles.inputGroup}>
-            <label style={{ ...styles.label, fontSize: "11px" }}>名</label>
-            <input placeholder="太郎" style={{ ...styles.input, height: "42px" }} value={form.firstName} onChange={e => setForm({ ...form, firstName: e.target.value })} />
-          </div>
-          <div style={styles.inputGroup}>
-            <label style={{ ...styles.label, fontSize: "11px" }}>メールアドレス</label>
-            <input placeholder="example@email.com" style={{ ...styles.input, height: "42px" }} value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} />
-          </div>
-          <div style={styles.inputGroup}>
-            <label style={{ ...styles.label, fontSize: "11px" }}>電話番号</label>
-            <input placeholder="090..." style={{ ...styles.input, height: "42px" }} value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} />
-          </div>
-          <button 
-            onClick={handleSave} 
-            disabled={loading} 
-            style={{ 
-              ...styles.btn, 
-              backgroundColor: editingId ? THEME.success : THEME.primary,
-              color: "white",
-              height: "42px",
-              padding: "0 24px",
-              display: "flex",
-              alignItems: "center",
-              gap: "8px"
-            }}
-          >
-            {loading ? <Loader2 size={16} className="animate-spin" /> : (editingId ? <Check size={16}/> : <UserPlus size={16}/>)}
-            {editingId ? "更新する" : "登録する"}
-          </button>
-        </div>
-      </div>
-
-      {/* ユーザー一覧テーブル */}
+    <Page title="ユーザー管理" topButton={
+      <button onClick={() => navigate("/users/add")} style={{ ...styles.btn, ...styles.btnPrimary, height: 44, padding: "0 24px" }}>
+        <UserPlus size={18} /> 新規ユーザーを登録
+      </button>
+    }>
       <div style={{ ...styles.card, padding: 0, overflow: "hidden", border: `1px solid ${THEME.border}` }}>
         <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: 0 }}>
           <thead>
@@ -987,43 +895,30 @@ function UserManager({ masterUrl }) {
               <th style={{ ...styles.tableTh, borderBottom: `1px solid ${THEME.border}` }}>氏名</th>
               <th style={{ ...styles.tableTh, borderBottom: `1px solid ${THEME.border}` }}>メールアドレス</th>
               <th style={{ ...styles.tableTh, borderBottom: `1px solid ${THEME.border}` }}>電話番号</th>
-              <th style={{ ...styles.tableTh, borderBottom: `1px solid ${THEME.border}`, textAlign: "center", width: "120px" }}>操作</th>
+              <th style={{ ...styles.tableTh, borderBottom: `1px solid ${THEME.border}`, textAlign: "center", width: "140px" }}>操作</th>
             </tr>
           </thead>
           <tbody>
-            {users.length > 0 ? users.map((u, idx) => (
-              <tr key={u.id} style={{ 
-                backgroundColor: editingId === u.id ? "#F0F7FF" : (idx % 2 === 0 ? "white" : "#FCFDFF"),
-                transition: "0.2s"
-              }}>
+            {loading ? (
+              <tr><td colSpan="4" style={{ padding: 40, textAlign: "center" }}><Loader2 className="animate-spin" /></td></tr>
+            ) : users.length > 0 ? users.map((u, idx) => (
+              <tr key={u.id} style={{ backgroundColor: idx % 2 === 0 ? "white" : "#FCFDFF" }}>
                 <td style={{ ...styles.tableTd, fontWeight: "700" }}>{u.lastName} {u.firstName}</td>
                 <td style={styles.tableTd}>{u.email}</td>
                 <td style={styles.tableTd}>{String(u.phone || "-").replace(/'/g, "")}</td>
                 <td style={{ ...styles.tableTd, textAlign: "center" }}>
-                  <div style={{ display: "flex", gap: "12px", justifyContent: "center" }}>
-                    <button 
-                      onClick={() => handleEditStart(u)} 
-                      title="編集"
-                      style={{ background: "none", border: "none", color: THEME.primary, cursor: "pointer", display: "flex", alignItems: "center" }}
-                    >
+                  <div style={{ display: "flex", gap: "16px", justifyContent: "center" }}>
+                    <button onClick={() => navigate(`/users/edit/${u.id}`, { state: { user: u } })} title="編集" style={{ background: "none", border: "none", color: THEME.primary, cursor: "pointer" }}>
                       <Edit3 size={18}/>
                     </button>
-                    <button 
-                      onClick={() => handleDelete(u.id)} 
-                      title="削除"
-                      style={{ background: "none", border: "none", color: THEME.danger, cursor: "pointer", display: "flex", alignItems: "center" }}
-                    >
+                    <button onClick={() => handleDelete(u.id)} title="削除" style={{ background: "none", border: "none", color: THEME.danger, cursor: "pointer" }}>
                       <Trash2 size={18}/>
                     </button>
                   </div>
                 </td>
               </tr>
             )) : (
-              <tr>
-                <td colSpan="4" style={{ ...styles.tableTd, textAlign: "center", padding: "40px", color: THEME.textMuted }}>
-                  登録されているユーザーはいません。
-                </td>
-              </tr>
+              <tr><td colSpan="4" style={{ padding: 40, textAlign: "center", color: THEME.textMuted }}>ユーザーが登録されていません</td></tr>
             )}
           </tbody>
         </table>
@@ -1063,6 +958,8 @@ function App() {
     <Route path="/scenarios/new" element={<ScenarioForm scenarios={d?.scenarios} onRefresh={refresh} />} />
     <Route path="/scenarios/edit/:id" element={<ScenarioForm scenarios={d?.scenarios} onRefresh={refresh} />} />
     <Route path="/users" element={<UserManager masterUrl={MASTER_WHITELIST_API} />} />
+    <Route path="/users/add" element={<UserForm masterUrl={MASTER_WHITELIST_API} />} />
+    <Route path="/users/edit/:id" element={<UserForm masterUrl={MASTER_WHITELIST_API} />} />
   </Routes></div></Router></GoogleOAuthProvider>);
 }
 
@@ -1549,6 +1446,93 @@ function ResponseImportPortal() {
             </div>
           </div>
         ))}
+      </div>
+    </Page>
+  );
+}
+
+/**
+ * (19) UserForm コンポーネント (🆕 新設)
+ * 役割: ユーザーの新規登録および既存情報の編集。専用画面化により状態管理の不備を解消。
+ */
+function UserForm({ masterUrl, onRefresh }) {
+  const navigate = useNavigate();
+  const { id } = useParams(); // URLにIDがあれば編集モード
+  const location = useLocation();
+  const [loading, setLoading] = useState(false);
+  
+  // 編集時は遷移元からのデータを使用、なければ初期化
+  const [form, setForm] = useState(location.state?.user || {
+    email: "", company: CLIENT_COMPANY_NAME, lastName: "", firstName: "", phone: ""
+  });
+
+  const handleSave = async () => {
+    if (!form.email || !form.lastName) return alert("氏名とメールアドレスは必須です");
+    
+    setLoading(true);
+    try {
+      // 物理設計要件 4.2: 電話番号ゼロ落ち防止の徹底
+      const finalPhone = form.phone ? (String(form.phone).startsWith("'") ? form.phone : "'" + form.phone) : "";
+      
+      const payload = {
+        action: "save",
+        id: id || "", // IDがあれば更新(Update)、なければ新規(Add)としてMaster API側で処理
+        ...form,
+        phone: finalPhone
+      };
+
+      const res = await axios.post(masterUrl, JSON.stringify(payload), { headers: { 'Content-Type': 'text/plain' } });
+      
+      if (res.data.status === "success") {
+        alert(id ? "ユーザー情報を更新しました" : "ユーザーを登録しました");
+        navigate("/users");
+      } else {
+        alert("保存失敗: " + res.data.message);
+      }
+    } catch (e) {
+      alert("通信エラーが発生しました");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <Page title={id ? "ユーザー情報の編集" : "新規ユーザー登録"}>
+      <button onClick={() => navigate("/users")} style={{ background: "none", border: "none", color: THEME.primary, cursor: "pointer", fontWeight: "800", marginBottom: "24px", display: "flex", alignItems: "center", gap: 4 }}>
+        <ChevronLeft size={18}/> ユーザー一覧に戻る
+      </button>
+
+      <div style={{ ...styles.card, maxWidth: "600px", padding: "40px" }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px" }}>
+            <div style={styles.inputGroup}>
+              <label style={styles.label}>姓 <span style={{color: THEME.danger}}>*</span></label>
+              <input style={styles.input} value={form.lastName} onChange={e => setForm({ ...form, lastName: e.target.value })} placeholder="例: 山田" />
+            </div>
+            <div style={styles.inputGroup}>
+              <label style={styles.label}>名</label>
+              <input style={styles.input} value={form.firstName} onChange={e => setForm({ ...form, firstName: e.target.value })} placeholder="例: 太郎" />
+            </div>
+          </div>
+
+          <div style={styles.inputGroup}>
+            <label style={styles.label}>メールアドレス <span style={{color: THEME.danger}}>*</span></label>
+            <input style={styles.input} value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} placeholder="example@stepflow.jp" disabled={!!id} />
+            {id && <p style={{ fontSize: 11, color: THEME.textMuted, marginTop: 4 }}>※ メールアドレスは変更できません</p>}
+          </div>
+
+          <div style={styles.inputGroup}>
+            <label style={styles.label}>電話番号</label>
+            <input style={styles.input} value={String(form.phone || "").replace(/'/g, "")} onChange={e => setForm({ ...form, phone: e.target.value })} placeholder="09012345678" />
+          </div>
+
+          <div style={{ marginTop: "16px", display: "flex", gap: "16px" }}>
+            <button onClick={handleSave} disabled={loading} style={{ ...styles.btn, ...styles.btnPrimary, flex: 1, height: "48px" }}>
+              {loading ? <Loader2 className="animate-spin" size={18}/> : (id ? "変更内容を保存する" : "この内容で登録する")}
+            </button>
+            <button onClick={() => navigate("/users")} style={{ ...styles.btn, ...styles.btnSecondary, flex: 1, height: "48px" }}>キャンセル</button>
+          </div>
+        </div>
       </div>
     </Page>
   );
