@@ -615,7 +615,7 @@ function UserManager({ masterUrl }) {
 
 // --- (13) Appメイン [認証 & ルーティング] ---
 function App() {
-  const [d, setD] = useState({ customers: [], scenarios: [], formSettings: [], displaySettings: [], deliveryLogs: [], templates: [] });
+  const [d, setD] = useState({ customers: [], scenarios: [], formSettings: [], displaySettings: [], deliveryLogs: [], templates: [] , gmailSettings: []});
   const [load, setLoad] = useState(true); const [user, setUser] = useState(() => { const sUser = localStorage.getItem("sf_user"); return sUser ? JSON.parse(sUser) : null; });
   const refresh = useCallback(async () => { if(!user) return; try { const res = await axios.get(`${GAS_URL}`); setD(res?.data || {}); } finally { setLoad(false); } }, [user]);
   useEffect(() => { refresh(); }, [refresh]);
@@ -711,7 +711,17 @@ function GmailSettings({ gmailSettings = [], scenarios = [], onRefresh }) {
             </div>
             
             <div style={{display:"flex", gap:12, marginTop:32}}>
-              <button onClick={async() => { if(!modal.data.from || !modal.data.scenarioID) return alert("必須項目を入力してください"); await apiCall.post(GAS_URL, { action: "saveGmailSetting", ...modal.data }); setModal({open: false}); onRefresh(); }} style={{ ...styles.btn, ...styles.btnPrimary, flex:1 }}>設定を保存する</button>
+              <button onClick={async() => { 
+  if(!modal.data.from || !modal.data.scenarioID) return alert("送信元とシナリオは必須です"); 
+  try {
+    await apiCall.post(GAS_URL, { action: "saveGmailSetting", ...modal.data }); 
+    setModal({open: false}); 
+    onRefresh(); 
+    alert("設定をスプレッドシートに保存しました");
+  } catch(e) {
+    alert("保存に失敗しました。GAS側の更新を確認してください。");
+  }
+}} style={{ ...styles.btn, ...styles.btnPrimary, flex:1 }}>設定を保存する</button>
               <button onClick={() => setModal({open: false})} style={{ ...styles.btn, ...styles.btnSecondary, width: "120px" }}>キャンセル</button>
             </div>
           </div>
