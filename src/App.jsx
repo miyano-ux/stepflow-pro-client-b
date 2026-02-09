@@ -10,7 +10,7 @@ import axios from "axios";
 import { 
   LayoutDashboard, UserPlus, Settings, MessageSquare, Trash2, 
   Plus, Loader2, LogOut, Users, GripVertical, ListFilter, Edit3, Lock, Save, Search, Clock, ArrowUpDown, ArrowUp, ArrowDown, Download, Upload, FileSpreadsheet, Eye, Send, Copy, Calendar, AlertCircle, ChevronRight, SlidersHorizontal, 
-  UserCheck,Mail
+  UserCheck, Mail, Columns, ListTodo, UserCircle // 🆕 アイコンを追加
 } from "lucide-react";
 import { GoogleOAuthProvider, GoogleLogin } from '@react-oauth/google';
 import { jwtDecode } from "jwt-decode";
@@ -317,13 +317,17 @@ function CustomerDetail({ customers = [] }) {
 }
 
 // --- (3) 顧客登録 [テンプレートDL・項目設定ボタン統合] ---
+// --- (3) 顧客登録 [営業進捗・担当紐付け版] ---
 function CustomerForm({ formSettings = [], scenarios = [], statuses = [], masterUrl, onRefresh }) {
   const navigate = useNavigate(); const [ln, setLn] = useState(""); const [fn, setFn] = useState(""); const [ph, setPh] = useState("");
-  const [fd, setFd] = useState({ "対応ステータス": "未対応", "担当者メール": "" }); const [sc, setSc] = useState("");
+  // 🆕 ステータスと担当者の初期値をfdにセット
+  const [fd, setFd] = useState({ "対応ステータス": "未対応", "担当者メール": "" }); 
+  const [sc, setSc] = useState("");
   const [staffList, setStaffList] = useState([]);
 
   useEffect(() => { 
     if(scenarios?.length > 0) setSc(scenarios[0]["シナリオID"]); 
+    // 🆕 担当者（スタッフ）一覧を取得
     const fetchStaff = async () => {
       try { const res = await axios.get(`${masterUrl}?action=list&company=${CLIENT_COMPANY_NAME}`); setStaffList(res?.data?.users || []); } catch(e) { console.error(e); }
     };
@@ -358,8 +362,8 @@ function CustomerForm({ formSettings = [], scenarios = [], statuses = [], master
       <div style={{ display: "flex", gap: "20px", marginBottom: "20px" }}><div style={{ flex: 1 }}><label style={{fontWeight:"700"}}>姓 *</label><input style={styles.input} required onChange={e => setLn(e.target.value)} /></div><div style={{ flex: 1 }}><label style={{fontWeight:"700"}}>名 *</label><input style={styles.input} required onChange={e => setFn(e.target.value)} /></div></div>
       <label style={{fontWeight:"700"}}>電話番号 *</label><input style={{...styles.input, marginBottom:"20px"}} required value={ph} onChange={e => setPh(e.target.value)} placeholder="09012345678" />
       
-      {/* 🆕 営業管理項目 */}
-      <div style={{display:"grid", gridTemplateColumns:"1fr 1fr", gap:20, marginBottom:20, padding:20, background:"#F8FAFC", borderRadius:12}}>
+      {/* 🆕 営業管理セクション（担当者・ステータス） */}
+      <div style={{display:"grid", gridTemplateColumns:"1fr 1fr", gap:20, marginBottom:20, padding:20, background:"#F8FAFC", borderRadius:12, border:`1px solid ${THEME.border}`}}>
         <div><label style={{fontWeight:700, fontSize:12, color:THEME.primary}}>担当者</label><select style={styles.input} value={fd["担当者メール"]} onChange={e=>setFd({...fd, "担当者メール":e.target.value})}><option value="">未割当</option>{staffList.map(s => <option key={s.email} value={s.email}>{s.lastName} {s.firstName}</option>)}</select></div>
         <div><label style={{fontWeight:700, fontSize:12, color:THEME.primary}}>対応ステータス</label><select style={styles.input} value={fd["対応ステータス"]} onChange={e=>setFd({...fd, "対応ステータス":e.target.value})}>{statuses.map(st => <option key={st.name} value={st.name}>{st.name}</option>)}</select></div>
       </div>
@@ -378,6 +382,7 @@ function CustomerForm({ formSettings = [], scenarios = [], statuses = [], master
 }
 
 // --- (4) 顧客編集 ---
+// --- (4) 顧客編集 [営業進捗・担当紐付け版] ---
 function CustomerEdit({ customers = [], scenarios = [], formSettings = [], statuses = [], masterUrl, onRefresh }) {
   const { id } = useParams(); const nav = useNavigate(); const c = customers?.find(x => x.id === Number(id));
   const [ln, setLn] = useState(""); const [fn, setFn] = useState(""); const [ph, setPh] = useState("");
@@ -385,7 +390,18 @@ function CustomerEdit({ customers = [], scenarios = [], formSettings = [], statu
   const [staffList, setStaffList] = useState([]);
 
   useEffect(() => { 
-    if (c) { setLn(c["姓"] || ""); setFn(c["名"] || ""); setPh(c["電話番号"] || ""); setFd(c); setSc(c["シナリオID"]); }
+    if (c) { 
+      setLn(c["姓"] || ""); 
+      setFn(c["名"] || ""); 
+      setPh(c["電話番号"] || ""); 
+      // 既存データをセット。対応ステータスや担当者が未設定の場合のフォールバック
+      setFd({ 
+        ...c, 
+        "対応ステータス": c["対応ステータス"] || "未対応",
+        "担当者メール": c["担当者メール"] || ""
+      }); 
+      setSc(c["シナリオID"]); 
+    }
     const fetchStaff = async () => {
       try { const res = await axios.get(`${masterUrl}?action=list&company=${CLIENT_COMPANY_NAME}`); setStaffList(res?.data?.users || []); } catch(e) { console.error(e); }
     };
@@ -397,8 +413,8 @@ function CustomerEdit({ customers = [], scenarios = [], formSettings = [], statu
     <div style={{ display: "flex", gap: "20px", marginBottom: "20px" }}><div style={{ flex: 1 }}><label style={{fontWeight:"700"}}>姓</label><input style={styles.input} value={ln} onChange={e=>setLn(e.target.value)} /></div><div style={{ flex: 1 }}><label style={{fontWeight:"700"}}>名</label><input style={styles.input} value={fn} onChange={e=>setFn(e.target.value)} /></div></div>
     <label style={{fontWeight:"700"}}>電話番号</label><input style={styles.input} value={ph} onChange={e=>setPh(e.target.value)} />
     
-    {/* 🆕 営業管理項目 */}
-    <div style={{display:"grid", gridTemplateColumns:"1fr 1fr", gap:20, marginTop:20, padding:20, background:"#F8FAFC", borderRadius:12}}>
+    {/* 🆕 営業管理セクション（担当者・ステータス） */}
+    <div style={{display:"grid", gridTemplateColumns:"1fr 1fr", gap:20, marginTop:20, padding:20, background:"#F8FAFC", borderRadius:12, border:`1px solid ${THEME.border}`}}>
       <div><label style={{fontWeight:700, fontSize:12, color:THEME.primary}}>担当者</label><select style={styles.input} value={fd["担当者メール"] || ""} onChange={e=>setFd({...fd, "担当者メール":e.target.value})}><option value="">未割当</option>{staffList.map(s => <option key={s.email} value={s.email}>{s.lastName} {s.firstName}</option>)}</select></div>
       <div><label style={{fontWeight:700, fontSize:12, color:THEME.primary}}>対応ステータス</label><select style={styles.input} value={fd["対応ステータス"] || "未対応"} onChange={e=>setFd({...fd, "対応ステータス":e.target.value})}>{statuses.map(st => <option key={st.name} value={st.name}>{st.name}</option>)}</select></div>
     </div>
@@ -1015,6 +1031,7 @@ function KanbanBoard({ customers = [], statuses = [], onRefresh, masterUrl }) {
   const onDragOver = (e) => e.preventDefault();
   const onDrop = async (e, newStatus) => {
     const cid = e.dataTransfer.getData("customerId");
+    // customerId は顧客リストの index (d.customers.id)
     await apiCall.post(GAS_URL, { action: "updateStatus", id: cid, status: newStatus });
     onRefresh();
   };
@@ -1024,31 +1041,31 @@ function KanbanBoard({ customers = [], statuses = [], onRefresh, masterUrl }) {
   return (
     <Page title="営業カンバン" topButton={
       <div style={{display:"flex", gap:12, alignItems:"center"}}>
-        <span style={{fontSize:12, fontWeight:800, color:THEME.textMuted}}>担当で絞り込み:</span>
+        <span style={{fontSize:12, fontWeight:800, color:THEME.textMuted}}>担当絞り込み:</span>
         <select style={{...styles.input, width:200}} value={filterStaff} onChange={e=>setFilterStaff(e.target.value)}>
           <option value="">全ての担当者</option>
           {staffList.map(s => <option key={s.email} value={s.email}>{s.lastName} {s.firstName}</option>)}
         </select>
       </div>
     }>
-      <div style={{ display: "flex", gap: "20px", overflowX: "auto", paddingBottom: "20px", alignItems: "flex-start" }}>
+      <div style={{ display: "flex", gap: "20px", overflowX: "auto", paddingBottom: "24px", alignItems: "flex-start", minHeight: "calc(100vh - 250px)" }}>
         {statuses.map(st => {
           const colCustomers = filtered.filter(c => (c["対応ステータス"] || "未対応") === st.name);
           return (
-            <div key={st.name} onDragOver={onDragOver} onDrop={(e) => onDrop(e, st.name)} style={{ minWidth: "320px", backgroundColor: "#F1F5F9", borderRadius: "16px", padding: "16px", minHeight: "70vh" }}>
+            <div key={st.name} onDragOver={onDragOver} onDrop={(e) => onDrop(e, st.name)} style={{ minWidth: "300px", width: "300px", backgroundColor: "#F1F5F9", borderRadius: "16px", padding: "16px", minHeight: "500px" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px", padding: "0 8px" }}>
-                <h3 style={{ fontSize: "15px", fontWeight: "900", margin: 0 }}>{st.name}</h3>
-                <span style={styles.badge}>{colCustomers.length}</span>
+                <h3 style={{ fontSize: "14px", fontWeight: "900", margin: 0, color: THEME.textMain }}>{st.name}</h3>
+                <span style={{ ...styles.badge, backgroundColor: "white", border: `1px solid ${THEME.border}` }}>{colCustomers.length}</span>
               </div>
               <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
                 {colCustomers.map(c => (
-                  <div key={c.id} draggable onDragStart={(e) => onDragStart(e, c.id)} style={{ ...styles.card, padding: "16px", cursor: "grab", border: "1px solid transparent" }} onMouseEnter={e=>e.currentTarget.style.borderColor=THEME.primary} onMouseLeave={e=>e.currentTarget.style.borderColor="transparent"}>
-                    <div style={{ fontWeight: "800", marginBottom: "8px", fontSize: "14px" }}>{c["姓"]} {c["名"]} 様</div>
+                  <div key={c.id} draggable onDragStart={(e) => onDragStart(e, c.id)} style={{ ...styles.card, padding: "16px", cursor: "grab", border: "1px solid transparent", transition: "0.2s" }} onMouseEnter={e=>e.currentTarget.style.borderColor=THEME.primary} onMouseLeave={e=>e.currentTarget.style.borderColor="transparent"}>
+                    <div style={{ fontWeight: "800", marginBottom: "10px", fontSize: "14px" }}>{c["姓"]} {c["名"]} 様</div>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                       <div style={{ fontSize: "11px", color: THEME.textMuted, display: "flex", alignItems: "center", gap: 4 }}>
-                        <UserCircle size={12}/> {staffList.find(s => s.email === c["担当者メール"])?.lastName || "未割当"}
+                        <UserCircle size={14} color={THEME.primary}/> {staffList.find(s => s.email === c["担当者メール"])?.lastName || "担当未設定"}
                       </div>
-                      <Link to={`/direct-sms/${c.id}`} style={{ color: THEME.primary }}><MessageSquare size={14}/></Link>
+                      <Link to={`/direct-sms/${c.id}`} style={{ color: THEME.primary, display: "flex" }}><MessageSquare size={16}/></Link>
                     </div>
                   </div>
                 ))}
