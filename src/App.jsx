@@ -485,7 +485,7 @@ function CustomerEdit({ customers = [], scenarios = [], formSettings = [], statu
     <button type="submit" style={{ ...styles.btn, ...styles.btnPrimary, width: "100%", marginTop: "32px", padding: "16px" }}>変更を保存</button></form></div></Page>);
 }
 
-// --- (5) 配信状況/履歴 [ぶら下がり表示・完全版] ---
+// --- (5) 配信状況/履歴 [分離表示・ステップ名継承版] ---
 function CustomerSchedule({ customers = [], deliveryLogs = [], onRefresh }) {
   const navigate = useNavigate();
   const { id } = useParams(); 
@@ -497,12 +497,15 @@ function CustomerSchedule({ customers = [], deliveryLogs = [], onRefresh }) {
   const cP = smartNormalizePhone(c["電話番号"]);
   const allLogs = (deliveryLogs || []).filter(l => smartNormalizePhone(l["電話番号"]) === cP);
   
-  // 🆕 親ログ（親ログIDが空のもの）を抽出。これに子をぶら下げます。
-  const parentLogs = allLogs.filter(l => !l["親ログID"]).sort((a, b) => new Date(a["配信予定日時"]) - new Date(b["配信予定日時"]));
+  // 🆕 ステップ名が「個別SMS」ではない親ログ、または子ログを持つ親ログを抽出
+  const scenarioParentLogs = allLogs.filter(l => !l["親ログID"] && l["ステップ名"] !== "個別SMS").sort((a, b) => new Date(a["配信予定日時"]) - new Date(b["配信予定日時"]));
+  
+  // 🆕 最初から「個別SMS」として送られた独立したログ（親IDなし）
+  const pureIndividualLogs = allLogs.filter(l => !l["親ログID"] && l["ステップ名"] === "個別SMS").sort((a, b) => new Date(b["配信予定日時"]) - new Date(a["配信予定日時"]));
 
-  const handleResend = (messageContent, logId) => {
-    // 🆕 自分のログIDを親IDとして渡す
-    navigate(`/direct-sms/${id}`, { state: { prefilledMessage: messageContent, parentId: logId } });
+  const handleResend = (messageContent, logId, stepName) => {
+    // 🆕 親IDに加えて、現在のステップ名も渡す
+    navigate(`/direct-sms/${id}`, { state: { prefilledMessage: messageContent, parentId: logId, parentStepName: stepName } });
   };
 
   const LogCard = ({ l, isNested = false }) => (
@@ -514,7 +517,6 @@ function CustomerSchedule({ customers = [], deliveryLogs = [], onRefresh }) {
       backgroundColor: isNested ? "#F8FAFC" : "white",
       position: "relative"
     }}>
-      {/* 🆕 ぶら下がり線の描画 */}
       {isNested && <div style={{ position: "absolute", left: "-24px", top: "-20px", width: "24px", height: "46px", borderLeft: "2px solid #CBD5E1", borderBottom: "2px solid #CBD5E1", borderRadius: "0 0 0 8px" }} />}
       
       <div style={{display:"flex", justifyContent:"space-between", alignItems:"center"}}>
@@ -528,30 +530,40 @@ function CustomerSchedule({ customers = [], deliveryLogs = [], onRefresh }) {
           <span style={{marginLeft:"12px", color:THEME.textMuted, fontSize:"11px"}}>{l["ステップ名"]}</span>
         </div>
         <div>
-          {l["ステータス"] === "エラー" && <button onClick={() => handleResend(l["内容"], l["ログID"])} style={{...styles.badge, backgroundColor: THEME.danger, color: "white", border: "none", cursor: "pointer", display: "flex", alignItems: "center", gap: 4}}><Send size={10}/> 再送する</button>}
+          {l["ステータス"] === "エラー" && <button onClick={() => handleResend(l["内容"], l["ログID"], l["ステップ名"])} style={{...styles.badge, backgroundColor: THEME.danger, color: "white", border: "none", cursor: "pointer", display: "flex", alignItems: "center", gap: 4}}><Send size={10}/> 再送する</button>}
           {l["ステータス"] === "配信待ち" && <button onClick={()=>setEdit({ id: l["ログID"], t: new Date(new Date(l["配信予定日時"]).getTime() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 16), m: l["内容"] })} style={{color:THEME.primary, background:"none", border:"none", cursor:"pointer", fontSize:"12px", fontWeight:"800"}}>編集</button>}
         </div>
       </div>
-      <div style={{marginTop:"8px", fontSize:"14px", color: THEME.textMain}}>{l["内容"]}</div>
+      <div style={{marginTop:"8px", fontSize:"14px", color: THEME.textMain, whiteSpace: "pre-wrap"}}>{l["内容"]}</div>
     </div>
   );
 
   return (
     <Page title="配信状況・履歴" subtitle={`${c["姓"]} ${c["名"]} 様`}>
-      <Link to="/" style={{display:"block", marginBottom:"24px", color: THEME.primary, textDecoration:"none", fontWeight:"700"}}>← ダッシュボードへ戻る</Link>
+      <Link to="/" style={{display:"block", marginBottom:"24px", color: THEME.primary, textDecoration:"none", fontWeight:"700"}}>← 戻る</Link>
+      
       <div style={{maxWidth: "850px"}}>
-        {parentLogs.map((pl) => (
-          <div key={pl["ログID"]} style={{marginBottom: "20px"}}>
+        {/* セクション1: シナリオ配信（ぶら下がり再送含む） */}
+        <h3 style={{fontSize:"18px", marginBottom:"20px", borderLeft:`4px solid ${THEME.primary}`, paddingLeft:"12px"}}>シナリオ配信タイムライン</h3>
+        {scenarioParentLogs.map((pl) => (
+          <div key={pl["ログID"]} style={{marginBottom: "24px"}}>
             <LogCard l={pl} />
-            {/* 🆕 親ログIDがこの親のログIDと一致するものをすべて直下に描画 */}
             {allLogs.filter(cl => String(cl["親ログID"]) === String(pl["ログID"])).map(cl => (
               <LogCard key={cl["ログID"]} l={cl} isNested={true} />
             ))}
           </div>
         ))}
-        {parentLogs.length === 0 && <div style={styles.card}>履歴はありません</div>}
+
+        {/* セクション2: 個別メッセージ（再送ではない純粋なもの） */}
+        <h3 style={{fontSize:"18px", marginTop: "48px", marginBottom: "20px", borderLeft:`4px solid ${THEME.textMuted}`, paddingLeft:"12px", color: THEME.textMuted}}>個別メッセージ履歴</h3>
+        <div style={{display: "flex", flexDirection: "column", gap: "12px"}}>
+          {pureIndividualLogs.map((il) => (
+            <LogCard key={il["ログID"]} l={il} />
+          ))}
+          {pureIndividualLogs.length === 0 && <div style={{padding: "20px", color: THEME.textMuted, fontSize: "14px", textAlign: "center"}}>個別メッセージの履歴はありません</div>}
+        </div>
       </div>
-      {edit && (/* ...既存の編集モーダル... */)}
+      {/* 編集モーダルはそのまま維持 */}
     </Page>
   );
 }
@@ -560,12 +572,12 @@ function CustomerSchedule({ customers = [], deliveryLogs = [], onRefresh }) {
 function DirectSms({ customers = [], templates = [], onRefresh, masterUrl, currentUserEmail }) {
   const { id } = useParams(); 
   const navigate = useNavigate(); 
-  const location = useLocation(); // 🆕 遷移元からの情報を取得
+  const location = useLocation();
   const c = customers?.find(x => x.id === Number(id));
   
-  // 🆕 遷移元(CustomerSchedule)から渡されたメッセージと親ID
   const [msg, setMsg] = useState(location.state?.prefilledMessage || ""); 
   const parentId = location.state?.parentId || ""; 
+  const parentStepName = location.state?.parentStepName || "個別SMS"; // 🆕 親のステップ名を取得
 
   const [time, setTime] = useState(new Date(new Date().getTime() + 10 * 60000).toISOString().slice(0, 16));
   const [staffList, setStaffList] = useState([]);
@@ -587,12 +599,6 @@ function DirectSms({ customers = [], templates = [], onRefresh, masterUrl, curre
   if (!c) return <Page title="読込中..."><Loader2 className="animate-spin"/></Page>;
 
   return (<Page title="個別メッセージ送信" subtitle={`${c["姓"]} ${c["名"]} 様`}>
-    {parentId && (
-      <div style={{...styles.card, backgroundColor: "#FEF2F2", border: `1px solid ${THEME.danger}`, marginBottom: 24, display: "flex", alignItems: "center", gap: 12}}>
-        <AlertCircle size={20} color={THEME.danger} />
-        <span style={{fontSize: 14, fontWeight: 800, color: THEME.danger}}>再送モード: 親ログID {parentId} を引き継いでいます。</span>
-      </div>
-    )}
     <div style={{ display: "grid", gridTemplateColumns: "1fr 350px", gap: "32px" }}>
       <div>
         <div style={{...styles.card, marginBottom: 24, backgroundColor: "#EEF2FF", border: "none", padding: "20px"}}>
@@ -606,8 +612,16 @@ function DirectSms({ customers = [], templates = [], onRefresh, masterUrl, curre
         <textarea style={{ ...styles.input, height: "300px", resize: "none", marginTop: "24px" }} value={msg} onChange={e => setMsg(e.target.value)} />
         <button onClick={async()=>{ 
           if(!msg) return alert("本文を入力してください"); 
-          // 🆕 parentIdを送信
-          await apiCall.post(GAS_URL, { action:"sendDirectSms", phone:c["電話番号"], customerName:`${c["姓"]} ${c["名"]}`, scheduledTime:time, message:msg, parentId: parentId }); 
+          // 🆕 stepName に親のステップ名を指定して送信
+          await apiCall.post(GAS_URL, { 
+            action:"sendDirectSms", 
+            phone:c["電話番号"], 
+            customerName:`${c["姓"]} ${c["名"]}`, 
+            scheduledTime:time, 
+            message:msg, 
+            parentId: parentId,
+            stepName: parentStepName // 🆕 ここを追加
+          }); 
           alert("配信予約完了"); navigate("/"); onRefresh(); 
         }} style={{ ...styles.btn, ...styles.btnPrimary, width: "100%", marginTop: "24px" }}>配信予約を確定する</button>
       </div>
