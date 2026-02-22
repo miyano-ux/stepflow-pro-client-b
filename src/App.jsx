@@ -165,7 +165,7 @@ function Sidebar({ onLogout }) {
     { n: "新規顧客登録", p: "/add", i: <UserPlus size={18} /> },
     { n: "シナリオ管理", p: "/scenarios", i: <Settings size={18} /> },
     { n: "テンプレート管理", p: "/templates", i: <Copy size={18} /> },
-    { n: "ユーザー管理", p: "/users", i: <Users size={18} /> }
+    { n: "ユーザー管理", p: "/users", i: <Users size={18} /> },
     { n: "トラッキング実況", p: "/tracking", i: <Activity size={18} /> }
   ];
   return (
