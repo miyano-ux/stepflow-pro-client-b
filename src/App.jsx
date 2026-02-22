@@ -11,10 +11,11 @@ import {
   LayoutDashboard, UserPlus, Settings, MessageSquare, Trash2, 
   Plus, Loader2, LogOut, Users, GripVertical, ListFilter, Edit3, Lock, Save, Search, Clock, ArrowUpDown, ArrowUp, ArrowDown, Download, Upload, FileSpreadsheet, Eye, Send, Copy, Calendar, AlertCircle, ChevronRight, SlidersHorizontal, 
   UserCheck, Mail, Columns, ListTodo, UserCircle,
-  ChevronLeft, Check, X // 🆕 不足していたアイコンを追加
+  ChevronLeft, Check, X ,Activity, Zap
 } from "lucide-react";
 import { GoogleOAuthProvider, GoogleLogin } from '@react-oauth/google';
 import { jwtDecode } from "jwt-decode";
+import TrackingDashboard from "./pages/TrackingDashboard";
 
 // ==========================================
 // 🔑 1. 環境設定・テーマ定義 [仕様書 1.1 準拠]
@@ -165,6 +166,7 @@ function Sidebar({ onLogout }) {
     { n: "シナリオ管理", p: "/scenarios", i: <Settings size={18} /> },
     { n: "テンプレート管理", p: "/templates", i: <Copy size={18} /> },
     { n: "ユーザー管理", p: "/users", i: <Users size={18} /> }
+    { n: "トラッキング実況", p: "/tracking", i: <Activity size={18} /> }
   ];
   return (
     <div style={styles.sidebar}>
@@ -1036,6 +1038,7 @@ function App() {
     <Route path="/users" element={<UserManager masterUrl={MASTER_WHITELIST_API} />} />
     <Route path="/users/add" element={<UserForm masterUrl={MASTER_WHITELIST_API} />} />
     <Route path="/users/edit/:id" element={<UserForm masterUrl={MASTER_WHITELIST_API} />} />
+    <Route path="/tracking" element={<TrackingDashboard />} />
   </Routes></div></Router></GoogleOAuthProvider>);
 }
 
