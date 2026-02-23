@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import axios from "axios";
+// 🆕 LayoutGrid をインポートに追加しました
 import { 
   ArrowLeft, User, Mail, Phone, Calendar, Save, 
   MessageSquare, History, Loader2, AlertCircle, ExternalLink,
-  ChevronRight, CheckCircle2, UserCircle
+  ChevronRight, CheckCircle2, UserCircle, LayoutGrid
 } from "lucide-react";
 
 const THEME = { 
@@ -75,7 +76,7 @@ export default function CustomerDetail({ customers = [], formSettings = [], stat
   };
 
   // この顧客に関連するログを抽出
-  const customerLogs = trackingLogs
+  const customerLogs = (trackingLogs || [])
     .filter(log => String(log.customerId) === String(id))
     .sort((a, b) => new Date(b.time) - new Date(a.time));
 
@@ -144,13 +145,13 @@ export default function CustomerDetail({ customers = [], formSettings = [], stat
               {formSettings.map(field => (
                 <div key={field.name} style={styles.inputGroup}>
                   <label style={styles.label}>{field.name}</label>
-                  {field.type === "select" ? (
+                  {field.type === "dropdown" || field.type === "select" ? (
                     <select style={styles.input} value={formData[field.name] || ""} onChange={e => setFormData({...formData, [field.name]: e.target.value})}>
                       <option value="">未選択</option>
                       {(field.options || "").split(",").map(opt => <option key={opt} value={opt}>{opt}</option>)}
                     </select>
                   ) : (
-                    <input type={field.type === "number" ? "number" : "text"} style={styles.input} value={formData[field.name] || ""} onChange={e => setFormData({...formData, [field.name]: e.target.value})} />
+                    <input type={field.type === "number" ? "number" : (field.type === "date" ? "date" : "text")} style={styles.input} value={formData[field.name] || ""} onChange={e => setFormData({...formData, [field.name]: e.target.value})} />
                   )}
                 </div>
               ))}
