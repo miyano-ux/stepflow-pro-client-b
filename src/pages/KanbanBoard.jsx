@@ -77,31 +77,35 @@ export default function KanbanBoard({ customers = [], statuses = [], onRefresh, 
   const onDragEnd = () => setDraggingId(null);
   const onDragOver = (e) => e.preventDefault();
 
-  const onDrop = async (e, newStatus) => {
-    const cid = e.dataTransfer.getData("customerId");
-    if (!cid) return;
-    setDraggingId(null);
+const onDrop = async (e, newStatus) => {
+  const cid = e.dataTransfer.getData("customerId");
+  if (!cid) return;
+  setDraggingId(null);
 
-    // 楽観的更新: UIを即座に変更
-    const updated = localCustomers.map(c => 
-      String(c.id) === String(cid) ? { ...c, "対応ステータス": newStatus } : c
-    );
-    setLocalCustomers(updated);
+  // 1. 楽観的更新
+  const updated = localCustomers.map(c => 
+    String(c.id) === String(cid) ? { ...c, "対応ステータス": newStatus } : c
+  );
+  setLocalCustomers(updated);
 
-    try {
-      // GAS側への同期（API経由）
-      await axios.post(gasUrl, { 
+  try {
+    // 🆕 2. 同期エラーを解消する送信設定
+    // GAS側が JSON.parse できるように text/plain で JSON文字列を送信
+    await axios.post(gasUrl, 
+      JSON.stringify({ 
         action: "updateStatus", 
-        id: cid, 
+        id: String(cid), 
         status: newStatus 
-      });
-      onRefresh();
-    } catch (err) {
-      console.error("Sync error:", err);
-      alert("同期に失敗しました。再読み込みします。");
-      onRefresh();
-    }
-  };
+      }), 
+      { headers: { 'Content-Type': 'text/plain;charset=utf-8' } }
+    );
+    onRefresh();
+  } catch (err) {
+    console.error("Sync error:", err);
+    // alert("同期に失敗しました"); // ユーザー体験のため、裏でリフレッシュする運用に変更
+    onRefresh();
+  }
+};
 
   const filtered = localCustomers.filter(c => !filterStaff || c["担当者メール"] === filterStaff);
 
