@@ -1,9 +1,9 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import axios from "axios";
 import { 
   Columns, ListTodo, UserCircle, MessageSquare, 
-  Trophy, Moon, Trash2, ChevronRight, Loader2, Users 
+  Trophy, Moon, Trash2, ChevronDown, Loader2, Users 
 } from "lucide-react";
 
 const THEME = {
@@ -11,24 +11,39 @@ const THEME = {
   textMuted: "#64748B", border: "#E2E8F0", success: "#10B981", warning: "#F59E0B", danger: "#EF4444"
 };
 
+// 🆕 システムで予約する終着ステータス名
+const TERMINAL_STATUS_NAMES = ["成約", "休眠", "失注"];
+
 const styles = {
   main: { marginLeft: "260px", width: "calc(100% - 260px)", minHeight: "100vh", backgroundColor: THEME.bg, display: "flex", flexDirection: "column" },
   wrapper: { padding: "40px 40px 0", flex: 1, display: "flex", flexDirection: "column" },
+  
+  // 🆕 プレミアム・セレクトスタイル (AnalysisReportと統一)
+  selectContainer: {
+    position: "relative", display: "flex", alignItems: "center", backgroundColor: "#FFFFFF",
+    padding: "0 14px", borderRadius: "12px", border: `1px solid ${THEME.border}`,
+    height: "42px", minWidth: "220px", boxShadow: "0 2px 4px rgba(0,0,0,0.05)"
+  },
+  select: {
+    width: "100%", border: "none", outline: "none", backgroundColor: "transparent",
+    fontSize: "13px", fontWeight: "800", color: THEME.textMain, appearance: "none", cursor: "pointer", zIndex: 1
+  },
+
   kanbanContainer: { display: "flex", gap: "20px", overflowX: "auto", paddingBottom: "24px", flex: 1, alignItems: "flex-start" },
-  column: { minWidth: "300px", width: "300px", backgroundColor: "#EDF2F7", borderRadius: "16px", padding: "16px", minHeight: "65vh" },
-  card: { backgroundColor: "#FFF", borderRadius: "12px", padding: "16px", boxShadow: "0 2px 4px rgba(0,0,0,0.05)", cursor: "grab", transition: "0.2s" },
-  // 🆕 スペシャルゾーン（下部固定）のスタイル
+  column: { minWidth: "310px", width: "310px", backgroundColor: "#EDF2F7", borderRadius: "20px", padding: "16px", minHeight: "60vh", border: "1px solid #E2E8F0" },
+  card: { backgroundColor: "#FFF", borderRadius: "14px", padding: "16px", boxShadow: "0 4px 6px -1px rgba(0,0,0,0.05)", cursor: "grab", transition: "0.2s", border: "2px solid transparent" },
+  
   bottomBar: { 
     position: "sticky", bottom: 0, left: 0, right: 0, 
-    backgroundColor: "rgba(255, 255, 255, 0.9)", backdropFilter: "blur(10px)",
-    padding: "24px 40px", borderTop: `1px solid ${THEME.border}`,
+    backgroundColor: "rgba(255, 255, 255, 0.9)", backdropFilter: "blur(12px)",
+    padding: "20px 40px", borderTop: `1px solid ${THEME.border}`,
     display: "flex", gap: "24px", justifyContent: "center", zIndex: 10
   },
   specialZone: {
-    flex: 1, maxWidth: "300px", height: "80px", borderRadius: "16px",
+    flex: 1, maxWidth: "320px", height: "70px", borderRadius: "16px",
     display: "flex", alignItems: "center", justifyContent: "center", gap: "12px",
-    fontWeight: "900", fontSize: "16px", border: "3px dashed transparent",
-    transition: "all 0.3s ease"
+    fontWeight: "900", fontSize: "15px", border: "3px dashed transparent",
+    transition: "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)", cursor: "default"
   }
 };
 
@@ -37,7 +52,7 @@ export default function KanbanBoard({ customers = [], statuses = [], onRefresh, 
   const [filterStaff, setFilterStaff] = useState("");
   const [staffList, setStaffList] = useState([]);
   const [localCustomers, setLocalCustomers] = useState(customers);
-  const [draggingId, setDraggingId] = useState(null); // ドラッグ中のID
+  const [draggingId, setDraggingId] = useState(null);
 
   useEffect(() => { setLocalCustomers(customers); }, [customers]);
   
@@ -51,6 +66,9 @@ export default function KanbanBoard({ customers = [], statuses = [], onRefresh, 
     if (masterUrl) fetchStaff();
   }, [masterUrl, companyName]);
 
+  // 🆕 ステータスを「進行中」と「終着」に分離
+  const flowingStatuses = statuses.filter(st => !TERMINAL_STATUS_NAMES.includes(st.name));
+
   const onDragStart = (e, customerId) => {
     e.dataTransfer.setData("customerId", customerId);
     setDraggingId(customerId);
@@ -61,17 +79,25 @@ export default function KanbanBoard({ customers = [], statuses = [], onRefresh, 
 
   const onDrop = async (e, newStatus) => {
     const cid = e.dataTransfer.getData("customerId");
+    if (!cid) return;
     setDraggingId(null);
 
-    // 楽観的更新
-    const updated = localCustomers.map(c => String(c.id) === String(cid) ? { ...c, "対応ステータス": newStatus } : c);
+    // 楽観的更新: UIを即座に変更
+    const updated = localCustomers.map(c => 
+      String(c.id) === String(cid) ? { ...c, "対応ステータス": newStatus } : c
+    );
     setLocalCustomers(updated);
 
     try {
-      // GAS側へ送信 (失注等の場合は、将来的にここでモーダルを表示する等のロジックを追加可能)
-      await axios.post(gasUrl, { action: "updateStatus", id: cid, status: newStatus });
+      // GAS側への同期（API経由）
+      await axios.post(gasUrl, { 
+        action: "updateStatus", 
+        id: cid, 
+        status: newStatus 
+      });
       onRefresh();
     } catch (err) {
+      console.error("Sync error:", err);
       alert("同期に失敗しました。再読み込みします。");
       onRefresh();
     }
@@ -83,31 +109,43 @@ export default function KanbanBoard({ customers = [], statuses = [], onRefresh, 
     <div style={styles.main}>
       <div style={styles.wrapper}>
         <header style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "32px" }}>
-          <h1 style={{ fontSize: "28px", fontWeight: "900", color: THEME.textMain, margin: 0 }}>案件管理カンバン</h1>
+          <div>
+            <h1 style={{ fontSize: "32px", fontWeight: "900", color: THEME.textMain, margin: 0, letterSpacing: "-0.02em" }}>案件管理カンバン</h1>
+            <p style={{ color: THEME.textMuted, fontSize: "14px", marginTop: "4px" }}>ドラッグ＆ドロップでフェーズを動かし、下部のゾーンでクロージングします</p>
+          </div>
           
           <div style={{ display: "flex", gap: 16, alignItems: "center" }}>
-            <button onClick={() => navigate("/status-settings")} style={{ backgroundColor: "#FFF", border: `1px solid ${THEME.border}`, padding: "10px 20px", borderRadius: "10px", fontWeight: "800", display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
+            <button 
+              onClick={() => navigate("/status-settings")} 
+              style={{ backgroundColor: "#FFF", border: `1px solid ${THEME.border}`, padding: "10px 20px", borderRadius: "10px", fontWeight: "800", display: "flex", alignItems: "center", gap: 8, cursor: "pointer", color: THEME.textMain }}
+            >
               <ListTodo size={18} /> ステータス調整
             </button>
-            <div style={{ position: "relative", display: "flex", alignItems: "center", backgroundColor: "white", padding: "0 12px", borderRadius: "10px", border: `1px solid ${THEME.border}`, height: "42px" }}>
+
+            <div style={styles.selectContainer}>
               <Users size={16} color={THEME.textMuted} style={{ marginRight: 8 }} />
-              <select style={{ border: "none", outline: "none", fontWeight: "700", fontSize: "13px" }} value={filterStaff} onChange={e => setFilterStaff(e.target.value)}>
+              <select 
+                style={styles.select} 
+                value={filterStaff} 
+                onChange={e => setFilterStaff(e.target.value)}
+              >
                 <option value="">全ての担当者</option>
                 {staffList.map(s => <option key={s.email} value={s.email}>{s.lastName} {s.firstName}</option>)}
               </select>
+              <ChevronDown size={16} color={THEME.textMuted} style={{ position: "absolute", right: "12px", pointerEvents: "none" }} />
             </div>
           </div>
         </header>
 
-        {/* カンバンメインエリア */}
+        {/* 1. カンバンメインエリア（進行中のみ表示） */}
         <div style={styles.kanbanContainer}>
-          {statuses.map(st => {
+          {flowingStatuses.map(st => {
             const colCustomers = filtered.filter(c => (c["対応ステータス"] || "未対応") === st.name);
             return (
               <div key={st.name} onDragOver={onDragOver} onDrop={(e) => onDrop(e, st.name)} style={styles.column}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px", padding: "0 8px" }}>
-                  <h3 style={{ fontSize: "14px", fontWeight: "900", color: THEME.textMain }}>{st.name}</h3>
-                  <span style={{ backgroundColor: "white", padding: "2px 10px", borderRadius: "20px", fontSize: "12px", fontWeight: "900", color: THEME.primary }}>{colCustomers.length}</span>
+                  <h3 style={{ fontSize: "14px", fontWeight: "900", color: THEME.textMain, textTransform: "uppercase", letterSpacing: "0.05em" }}>{st.name}</h3>
+                  <span style={{ backgroundColor: THEME.primary, color: "white", padding: "2px 10px", borderRadius: "20px", fontSize: "12px", fontWeight: "900" }}>{colCustomers.length}</span>
                 </div>
                 <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
                   {colCustomers.map(c => (
@@ -118,16 +156,17 @@ export default function KanbanBoard({ customers = [], statuses = [], onRefresh, 
                       onDragEnd={onDragEnd}
                       style={{ 
                         ...styles.card, 
-                        border: draggingId === c.id ? `2px solid ${THEME.primary}` : "2px solid transparent",
-                        opacity: draggingId === c.id ? 0.5 : 1
+                        borderColor: draggingId === c.id ? THEME.primary : "transparent",
+                        opacity: draggingId === c.id ? 0.4 : 1,
+                        transform: draggingId === c.id ? "scale(0.98)" : "scale(1)"
                       }}
                     >
-                      <div style={{ fontWeight: "900", marginBottom: "8px", fontSize: "14px" }}>{c["姓"]} {c["名"]} 様</div>
+                      <div style={{ fontWeight: "900", marginBottom: "10px", fontSize: "15px", color: THEME.textMain }}>{c["姓"]} {c["名"]} 様</div>
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                        <div style={{ fontSize: "11px", color: THEME.textMuted, display: "flex", alignItems: "center", gap: 4 }}>
-                          <UserCircle size={12}/> {staffList.find(s => s.email === c["担当者メール"])?.lastName || "未割当"}
+                        <div style={{ fontSize: "11px", color: THEME.textMuted, display: "flex", alignItems: "center", gap: 5, fontWeight: "600" }}>
+                          <UserCircle size={14} color={THEME.primary}/> {staffList.find(s => s.email === c["担当者メール"])?.lastName || "未割当"}
                         </div>
-                        <Link to={`/direct-sms/${c.id}`} style={{ color: THEME.primary, backgroundColor: "#EEF2FF", padding: "6px", borderRadius: "8px" }}>
+                        <Link to={`/direct-sms/${c.id}`} style={{ color: THEME.primary, backgroundColor: "#EEF2FF", padding: "6px", borderRadius: "8px", display: "flex" }}>
                           <MessageSquare size={14}/>
                         </Link>
                       </div>
@@ -140,7 +179,7 @@ export default function KanbanBoard({ customers = [], statuses = [], onRefresh, 
         </div>
       </div>
 
-      {/* 🆕 最終結果スペシャルゾーン (Sticky Bottom) */}
+      {/* 2. 最終結果スペシャルゾーン (Sticky Bottom) */}
       <div style={styles.bottomBar}>
         {/* 成約エリア */}
         <div 
@@ -148,12 +187,13 @@ export default function KanbanBoard({ customers = [], statuses = [], onRefresh, 
           onDrop={(e) => onDrop(e, "成約")}
           style={{ 
             ...styles.specialZone, 
-            backgroundColor: "#ECFDF5", color: THEME.success,
-            borderColor: draggingId ? THEME.success : "transparent",
-            boxShadow: draggingId ? "0 0 20px rgba(16, 185, 129, 0.2)" : "none"
+            backgroundColor: draggingId ? "#ECFDF5" : "#F9FAFB", 
+            color: THEME.success,
+            borderColor: draggingId ? THEME.success : THEME.border,
+            boxShadow: draggingId ? "0 10px 15px -3px rgba(16, 185, 129, 0.2)" : "none"
           }}
         >
-          <Trophy size={24} /> 成約（売上確定）
+          <Trophy size={22} strokeWidth={2.5} /> 成約（売上確定）
         </div>
 
         {/* 休眠エリア */}
@@ -162,12 +202,13 @@ export default function KanbanBoard({ customers = [], statuses = [], onRefresh, 
           onDrop={(e) => onDrop(e, "休眠")}
           style={{ 
             ...styles.specialZone, 
-            backgroundColor: "#FFFBEB", color: THEME.warning,
-            borderColor: draggingId ? THEME.warning : "transparent",
-            boxShadow: draggingId ? "0 0 20px rgba(245, 158, 11, 0.2)" : "none"
+            backgroundColor: draggingId ? "#FFFBEB" : "#F9FAFB", 
+            color: THEME.warning,
+            borderColor: draggingId ? THEME.warning : THEME.border,
+            boxShadow: draggingId ? "0 10px 15px -3px rgba(245, 158, 11, 0.2)" : "none"
           }}
         >
-          <Moon size={24} /> 休眠（ナーチャリング）
+          <Moon size={22} strokeWidth={2.5} /> 休眠（ナーチャリング）
         </div>
 
         {/* 失注エリア */}
@@ -176,12 +217,13 @@ export default function KanbanBoard({ customers = [], statuses = [], onRefresh, 
           onDrop={(e) => onDrop(e, "失注")}
           style={{ 
             ...styles.specialZone, 
-            backgroundColor: "#FEF2F2", color: THEME.danger,
-            borderColor: draggingId ? THEME.danger : "transparent",
-            boxShadow: draggingId ? "0 0 20px rgba(239, 68, 68, 0.2)" : "none"
+            backgroundColor: draggingId ? "#FEF2F2" : "#F9FAFB", 
+            color: THEME.danger,
+            borderColor: draggingId ? THEME.danger : THEME.border,
+            boxShadow: draggingId ? "0 10px 15px -3px rgba(239, 68, 68, 0.2)" : "none"
           }}
         >
-          <Trash2 size={24} /> 失注（履歴を残す）
+          <Trash2 size={22} strokeWidth={2.5} /> 失注（履歴を残す）
         </div>
       </div>
     </div>

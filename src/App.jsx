@@ -19,6 +19,7 @@ import TrackingDashboard from "./pages/TrackingDashboard";
 import AnalysisReport from "./pages/AnalysisReport.jsx";
 import UserManager from "./pages/UserManager.jsx";
 import KanbanBoard from "./pages/KanbanBoard.jsx";
+import StatusSettings from "./pages/StatusSettings.jsx";
 
 // ==========================================
 // 🔑 1. 環境設定・テーマ定義 [仕様書 1.1 準拠]
@@ -951,6 +952,7 @@ function App() {
     <Route path="/users/add" element={<UserForm masterUrl={MASTER_WHITELIST_API} />} />
     <Route path="/users/edit/:id" element={<UserForm masterUrl={MASTER_WHITELIST_API} />} />
     <Route path="/tracking" element={<TrackingDashboard />} />
+    <Route path="/status-settings" element={  <StatusSettings statuses={d?.statuses} onRefresh={refresh}  gasUrl={import.meta.env.VITE_GAS_URL}/> } />
   </Routes></div></Router></GoogleOAuthProvider>);
 }
 
@@ -1203,97 +1205,6 @@ function ImportErrorList({ errors = [], onRefresh }) {
   );
 }
 
-
-
-/**
- * (17) StatusSettings コンポーネント (V18.2 ドラッグ＆ドロップ対応版)
- * 役割: カンバンボードの列順序を直感的に管理。
- */
-function StatusSettings({ statuses = [], onRefresh }) {
-  const [items, setItems] = useState(statuses.map(s => s.name) || []);
-  const [drag, setDrag] = useState(null); // 🆕 ドラッグ中のインデックスを保持
-
-  useEffect(() => { 
-    if (statuses.length > 0) {
-      setItems(statuses.map(s => s.name)); 
-    }
-  }, [statuses]);
-
-  // 🆕 並び替えロジック
-  const onDragOver = (e, i) => {
-    e.preventDefault();
-    if (drag === null || drag === i) return;
-    const n = [...items];
-    const d = n.splice(drag, 1)[0]; // ドラッグ中の要素を削除
-    n.splice(i, 0, d); // 重なっている位置に挿入
-    setDrag(i); // ドラッグ中インデックスを更新
-    setItems(n); // ステート更新
-  };
-
-  return (
-    <Page title="ステータス管理" subtitle="ドラッグでカンバンの列順を入れ替え、保存して反映してください">
-      <div style={{ maxWidth: "500px" }}>
-        <div style={{marginBottom: 24, padding: 16, backgroundColor: "#EEF2FF", borderRadius: 12, fontSize: 13, color: THEME.primary, fontWeight: 600}}>
-          左側のアイコンを掴んで上下に動かすと、カンバンの左からの並び順が変わります。
-        </div>
-
-        {items.map((it, i) => (
-          <div 
-            key={i} 
-            draggable // 🆕 ドラッグ可能に設定
-            onDragStart={() => setDrag(i)} // 🆕 ドラッグ開始
-            onDragOver={(e) => onDragOver(e, i)} // 🆕 要素が重なった時
-            onDragEnd={() => setDrag(null)} // 🆕 ドラッグ終了
-            style={{ 
-              ...styles.card, 
-              marginBottom: "12px", 
-              display: "flex", 
-              gap: "12px", 
-              alignItems: "center",
-              cursor: "grab", // 🆕 掴めることを示すカーソル
-              border: `1px solid ${drag === i ? THEME.primary : THEME.border}`, // 🆕 ドラッグ中を目立たせる
-              backgroundColor: drag === i ? "#F5F3FF" : "white",
-              transition: "0.2s"
-            }}
-          >
-            <GripVertical size={18} color={THEME.textMuted} style={{ cursor: "grab" }} />
-            <input 
-              style={{ ...styles.input, backgroundColor: drag === i ? "#F5F3FF" : "white" }} 
-              value={it} 
-              onChange={e => { const n = [...items]; n[i] = e.target.value; setItems(n); }} 
-              placeholder="ステータス名を入力"
-            />
-            <button 
-              onClick={() => setItems(items.filter((_, idx) => idx !== i))} 
-              style={{ color: THEME.danger, background: "none", border: "none", cursor: "pointer", padding: "8px" }}
-            >
-              <Trash2 size={18}/>
-            </button>
-          </div>
-        ))}
-
-        <button 
-          onClick={() => setItems([...items, ""])} 
-          style={{ ...styles.btn, ...styles.btnSecondary, width: "100%", borderStyle: "dashed", marginTop: "12px", height: "54px" }}
-        >
-          <Plus size={20}/> 新しいステータスを追加
-        </button>
-
-        <button 
-          onClick={async () => { 
-            if(items.some(x => !x.trim())) return alert("空のステータス名があります");
-            await apiCall.post(GAS_URL, { action: "saveStatuses", statuses: items }); 
-            onRefresh(); 
-            alert("並び順と設定を保存しました。カンバンボードに反映されます。"); 
-          }} 
-          style={{ ...styles.btn, ...styles.btnPrimary, width: "100%", marginTop: "40px", height: "54px" }}
-        >
-          設定を保存して反映
-        </button>
-      </div>
-    </Page>
-  );
-}
 
 /**
  * (18) ResponseImportPortal コンポーネント (🆕 新設)
