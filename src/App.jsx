@@ -21,6 +21,7 @@ import UserManager from "./pages/UserManager.jsx";
 import KanbanBoard from "./pages/KanbanBoard.jsx";
 import StatusSettings from "./pages/StatusSettings.jsx";
 import CustomerList from "./pages/CustomerList.jsx";
+import ColumnSettings from "./pages/ColumnSettings.jsx";
 
 // ==========================================
 // 🔑 1. 環境設定・テーマ定義 [仕様書 1.1 準拠]
@@ -679,28 +680,6 @@ function ScenarioForm({ scenarios = [], onRefresh }) {
     </Page>);
 }
 
-// --- (10) 表示設定 [ドラッグ＆ドロップ復元] ---
-function ColumnSettings({ displaySettings = [], formSettings = [], onRefresh }) {
-  const nav = useNavigate(); const [items, setItems] = useState([]); const [drag, setDrag] = useState(null);
-  useEffect(() => { 
-    const base = ["姓", "名", "電話番号", "シナリオID", "登録日"]; 
-    const all = [...base, ...(formSettings || []).map(f => f.name)]; 
-    let init; if (displaySettings?.length > 0) {
-      const ex = displaySettings.map(d => d.name);
-      const mis = all.filter(p => !ex.includes(p)).map(n => ({ name: n, visible: true, searchable: true }));
-      init = [...displaySettings, ...mis];
-    } else { init = all.map(n => ({ name: n, visible: true, searchable: true })); }
-    setItems(init);
-  }, [displaySettings, formSettings]);
-
-  const onDragOver = (e, i) => { e.preventDefault(); if (drag===null||drag===i) return; const n = [...items]; const d = n.splice(drag, 1)[0]; n.splice(i, 0, d); setDrag(i); setItems(n); };
-  
-  return (<Page title="表示項目の調整" topButton={<button onClick={() => nav("/")} style={styles.btnSecondary}>ダッシュボードへ戻る</button>}><div style={{ maxWidth: "700px" }}>
-    <div style={{marginBottom:24, padding:16, backgroundColor:"#EEF2FF", borderRadius:12, fontSize:13, color:THEME.primary, fontWeight:600}}>ドラッグ＆ドロップで表示順を並び替え、チェックボックスで表示/非表示を切り替えられます。</div>
-    {items.map((it, i) => (<div key={it.name} draggable onDragStart={()=>setDrag(i)} onDragOver={(e)=>onDragOver(e,i)} onDragEnd={()=>setDrag(null)} style={{ display: "flex", alignItems: "center", gap: "16px", padding: "14px 20px", backgroundColor: "white", border: `1px solid ${drag === i ? THEME.primary : THEME.border}`, borderRadius: "12px", marginBottom: "8px", cursor: "grab" }}><GripVertical size={18} color={THEME.textMuted} /><div style={{ flex: 1, fontWeight: "600" }}>{it.name}</div><label style={{fontSize:12}}><input type="checkbox" checked={it.visible} onChange={()=>{const n=[...items];n[i].visible=!n[i].visible;setItems(n)}} /> 表示</label><label style={{fontSize:12, marginLeft:16}}><input type="checkbox" checked={it.searchable} onChange={()=>{const n=[...items];n[i].searchable=!n[i].searchable;setItems(n)}} /> 検索</label></div>))}
-    <button onClick={async()=>{await apiCall.post(GAS_URL,{action:"saveDisplaySettings",settings:items}); alert("保存完了"); nav("/"); onRefresh(); }} style={{...styles.btn, ...styles.btnPrimary, width:"100%", marginTop:"32px"}}>設定を保存して反映</button>
-  </div></Page>);
-}
 
 // --- (11) 項目定義 [仕様書 3.6 復旧・強化版] ---
 function FormSettings({ formSettings = [], onRefresh }) {
@@ -735,37 +714,9 @@ return (
           <Sidebar onLogout={() => { setUser(null); localStorage.removeItem("sf_user"); }} />
           
           <Routes>
-            {/* 🆕 トップページ（/）にアクセスした際、顧客ダッシュボードを表示する設定を追加 */}
-            <Route path="/" element={
-              <CustomerList 
-                customers={d?.customers} 
-                displaySettings={d?.displaySettings} 
-                formSettings={d?.formSettings} 
-                scenarios={d?.scenarios} 
-                statuses={d?.statuses} 
-                masterUrl={MASTER_WHITELIST_API} 
-                gasUrl={import.meta.env.VITE_GAS_URL} 
-                companyName={CLIENT_COMPANY_NAME} 
-                onRefresh={refresh} 
-              /> 
-            } />
-
-            {/* 以下、各ページへのルート設定 */}
-            <Route path="/customers" element={
-              <CustomerList 
-                customers={d?.customers} 
-                displaySettings={d?.displaySettings} 
-                formSettings={d?.formSettings} 
-                scenarios={d?.scenarios} 
-                statuses={d?.statuses} 
-                masterUrl={MASTER_WHITELIST_API} 
-                gasUrl={import.meta.env.VITE_GAS_URL} 
-                companyName={CLIENT_COMPANY_NAME} 
-                onRefresh={refresh} 
-              /> 
-            } />
-
-            <Route path="/column-settings" element={<ColumnSettings displaySettings={d?.displaySettings} formSettings={d?.formSettings} onRefresh={refresh} />} />
+            <Route path="/" element={<CustomerList customers={d?.customers} displaySettings={d?.displaySettings} formSettings={d?.formSettings} scenarios={d?.scenarios} statuses={d?.statuses} masterUrl={MASTER_WHITELIST_API} gasUrl={import.meta.env.VITE_GAS_URL} companyName={CLIENT_COMPANY_NAME} onRefresh={refresh} />} />
+            <Route path="/customers" element={<CustomerList customers={d?.customers} displaySettings={d?.displaySettings} formSettings={d?.formSettings} scenarios={d?.scenarios} statuses={d?.statuses} masterUrl={MASTER_WHITELIST_API} gasUrl={import.meta.env.VITE_GAS_URL} companyName={CLIENT_COMPANY_NAME} onRefresh={refresh} />} />
+            <Route path="/column-settings" element={<ColumnSettings displaySettings={d?.displaySettings} formSettings={d?.formSettings} onRefresh={refresh} gasUrl={import.meta.env.VITE_GAS_URL} />} />
             <Route path="/add" element={<CustomerForm scenarios={d?.scenarios} formSettings={d?.formSettings} statuses={d?.statuses} masterUrl={MASTER_WHITELIST_API} onRefresh={refresh} />} />
             <Route path="/edit/:id" element={<CustomerEdit customers={d?.customers} scenarios={d?.scenarios} formSettings={d?.formSettings} statuses={d?.statuses} masterUrl={MASTER_WHITELIST_API} onRefresh={refresh} />} />
             <Route path="/schedule/:id" element={<CustomerSchedule customers={d?.customers} deliveryLogs={d?.deliveryLogs} onRefresh={refresh} />} />
