@@ -17,6 +17,7 @@ import { GoogleOAuthProvider, GoogleLogin } from '@react-oauth/google';
 import { jwtDecode } from "jwt-decode";
 import TrackingDashboard from "./pages/TrackingDashboard";
 import AnalysisReport from "./pages/AnalysisReport.jsx";
+import UserManager from "./pages/UserManager.jsx";
 
 // ==========================================
 // 🔑 1. 環境設定・テーマ定義 [仕様書 1.1 準拠]
@@ -913,99 +914,6 @@ function FormSettings({ formSettings = [], onRefresh }) {
   </div></Page>);
 }
 
-// --- (12) ユーザー管理 ---
-/**
- *  UserManager コンポーネント (V23.0 設計刷新版)
- * 役割: ユーザー一覧の表示と削除管理。登録・編集は別画面へ遷移。
- */
-function UserManager({ masterUrl }) {
-  const navigate = useNavigate();
-  const [users, setUsers] = useState([]);
-  const [loading, setLoading] = useState(true);
-
-  const fetchUsers = useCallback(async () => {
-    setLoading(true);
-    try {
-      const res = await axios.get(`${masterUrl}?action=list&company=${CLIENT_COMPANY_NAME}&_t=${Date.now()}`);
-      setUsers(res.data.users || []);
-    } catch (e) {
-      console.error("データ取得エラー", e);
-    } finally {
-      setLoading(false);
-    }
-  }, [masterUrl]);
-
-  useEffect(() => { fetchUsers(); }, [fetchUsers]);
-
-  const handleDelete = async (id) => {
-    if (!window.confirm("このユーザーを完全に削除しますか？この操作は取り消せません。")) return;
-    try {
-      // 🆕 削除失敗解消の鍵: MASTERプロキシへの認証として company を含める
-      const payload = { 
-        action: "delete", 
-        id: String(id), 
-        company: CLIENT_COMPANY_NAME 
-      };
-      
-      const res = await axios.post(masterUrl, 
-        JSON.stringify(payload), 
-        { headers: { 'Content-Type': 'text/plain;charset=utf-8' } }
-      );
-
-      if (res.data.status === "success") {
-        fetchUsers();
-      } else {
-        alert("削除に失敗しました: " + (res.data.message || "Action not handled"));
-      }
-    } catch (e) {
-      alert("マスターサーバーとの通信に失敗しました");
-    }
-  };
-
-  return (
-    <Page title="ユーザー管理" topButton={
-      <button onClick={() => navigate("/users/add")} style={{ ...styles.btn, ...styles.btnPrimary, height: 44, padding: "0 24px" }}>
-        <UserPlus size={18} /> 新規ユーザーを登録
-      </button>
-    }>
-      <div style={{ ...styles.card, padding: 0, overflow: "hidden", border: `1px solid ${THEME.border}` }}>
-        <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: 0 }}>
-          <thead>
-            <tr style={{ backgroundColor: "#F8FAFC" }}>
-              <th style={{ ...styles.tableTh, borderBottom: `1px solid ${THEME.border}` }}>氏名</th>
-              <th style={{ ...styles.tableTh, borderBottom: `1px solid ${THEME.border}` }}>メールアドレス</th>
-              <th style={{ ...styles.tableTh, borderBottom: `1px solid ${THEME.border}` }}>電話番号</th>
-              <th style={{ ...styles.tableTh, borderBottom: `1px solid ${THEME.border}`, textAlign: "center", width: "140px" }}>操作</th>
-            </tr>
-          </thead>
-          <tbody>
-            {loading ? (
-              <tr><td colSpan="4" style={{ padding: 40, textAlign: "center" }}><Loader2 className="animate-spin" color={THEME.primary} /></td></tr>
-            ) : users.length > 0 ? users.map((u, idx) => (
-              <tr key={u.id} style={{ backgroundColor: idx % 2 === 0 ? "white" : "#FCFDFF" }}>
-                <td style={{ ...styles.tableTd, fontWeight: "700" }}>{u.lastName} {u.firstName}</td>
-                <td style={styles.tableTd}>{u.email}</td>
-                <td style={styles.tableTd}>{String(u.phone || "-").replace(/'/g, "")}</td>
-                <td style={{ ...styles.tableTd, textAlign: "center" }}>
-                  <div style={{ display: "flex", gap: "16px", justifyContent: "center" }}>
-                    <button onClick={() => navigate(`/users/edit/${u.id}`, { state: { user: u } })} title="編集" style={{ background: "none", border: "none", color: THEME.primary, cursor: "pointer" }}>
-                      <Edit3 size={18}/>
-                    </button>
-                    <button onClick={() => handleDelete(u.id)} title="削除" style={{ background: "none", border: "none", color: THEME.danger, cursor: "pointer" }}>
-                      <Trash2 size={18}/>
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            )) : (
-              <tr><td colSpan="4" style={{ padding: 40, textAlign: "center", color: THEME.textMuted }}>登録済みのスタッフはいません。</td></tr>
-            )}
-          </tbody>
-        </table>
-      </div>
-    </Page>
-  );
-}
 
 // --- (13) Appメイン [認証 & ルーティング] ---
 function App() {
@@ -1037,7 +945,7 @@ function App() {
     <Route path="/scenarios" element={<ScenarioList scenarios={d?.scenarios} onRefresh={refresh} />} />
     <Route path="/scenarios/new" element={<ScenarioForm scenarios={d?.scenarios} onRefresh={refresh} />} />
     <Route path="/scenarios/edit/:id" element={<ScenarioForm scenarios={d?.scenarios} onRefresh={refresh} />} />
-    <Route path="/users" element={<UserManager masterUrl={MASTER_WHITELIST_API} />} />
+    <Route path="/users" element={<UserManager masterUrl={MASTER_WHITELIST_API} companyName={CLIENT_COMPANY_NAME}/>} />
     <Route path="/users/add" element={<UserForm masterUrl={MASTER_WHITELIST_API} />} />
     <Route path="/users/edit/:id" element={<UserForm masterUrl={MASTER_WHITELIST_API} />} />
     <Route path="/tracking" element={<TrackingDashboard />} />

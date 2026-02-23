@@ -31,17 +31,26 @@ export default function AnalysisReport({ customers = [], statuses = [], masterUr
     if (masterUrl) fetchStaff();
   }, [masterUrl]);
 
-  // 集計ロジック
-  const reportData = useMemo(() => {
-    const filtered = customers.filter(c => !filterStaff || c["担当者メール"] === filterStaff);
-    const total = filtered.length;
+// AnalysisReport.jsx (集計ロジック部分の抜粋)
+const reportData = useMemo(() => {
+  // 🆕 フィルターロジックの強化
+  const filtered = customers.filter(c => {
+    if (!filterStaff) return true;
+    // 比較対象を両方小文字・空白除去して判定
+    const staffEmail = String(filterStaff).trim().toLowerCase();
+    const customerStaffEmail = String(c["担当者メール"] || "").trim().toLowerCase();
+    return staffEmail === customerStaffEmail;
+  });
 
-    return statuses.map((st, i) => {
-      const count = filtered.filter(c => (c["対応ステータス"] || "未対応") === st.name).length;
-      const ratio = total > 0 ? ((count / total) * 100).toFixed(1) : 0;
-      return { name: st.name, count, ratio: parseFloat(ratio), color: THEME.colors[i % THEME.colors.length] };
-    });
-  }, [customers, statuses, filterStaff]);
+  const total = filtered.length;
+
+  return statuses.map((st, i) => {
+    const count = filtered.filter(c => (c["対応ステータス"] || "未対応") === st.name).length;
+    // 0件でもグラフの軸が消えないよう、計算を安定化
+    const ratio = total > 0 ? ((count / total) * 100).toFixed(1) : 0;
+    return { name: st.name, count, ratio: parseFloat(ratio), color: THEME.colors[i % THEME.colors.length] };
+  });
+}, [customers, statuses, filterStaff]);
 
   const maxCount = Math.max(...reportData.map(d => d.count), 1);
   const totalCases = reportData.reduce((sum, d) => sum + d.count, 0);
