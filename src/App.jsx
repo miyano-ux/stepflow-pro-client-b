@@ -20,6 +20,7 @@ import AnalysisReport from "./pages/AnalysisReport.jsx";
 import UserManager from "./pages/UserManager.jsx";
 import KanbanBoard from "./pages/KanbanBoard.jsx";
 import StatusSettings from "./pages/StatusSettings.jsx";
+import CustomerList from "./pages/CustomerList.jsx";
 
 // ==========================================
 // 🔑 1. 環境設定・テーマ定義 [仕様書 1.1 準拠]
@@ -199,206 +200,6 @@ function Page({ title, subtitle, children, topButton }) {
 // 📺 4. 画面コンポーネント (全13個・完全収録)
 // ==========================================
 
-
-// --- (1) 顧客ダッシュボード [V23.0 検索グリッド整理 & 操作列右固定版] ---
-function CustomerList({ customers = [], displaySettings = [], formSettings = [], scenarios = [], statuses = [], masterUrl, onRefresh }) {
-  const navigate = useNavigate(); 
-  const [search, setSearch] = useState({}); 
-  const [sort, setSort] = useState({ key: null, dir: 'asc' });
-  const [staffList, setStaffList] = useState([]);
-  const [confirmModal, setConfirmModal] = useState({ open: false, customer: null, field: "", newValue: "", oldValue: "" });
-  const [localCustomers, setLocalCustomers] = useState(customers);
-
-  useEffect(() => { setLocalCustomers(customers); }, [customers]);
-  useEffect(() => {
-    const fetchStaff = async () => {
-      if (!masterUrl) return;
-      try {
-        const res = await axios.get(`${masterUrl}?action=list&company=${CLIENT_COMPANY_NAME}`);
-        setStaffList(res?.data?.users || []);
-      } catch(e) { console.error(e); }
-    };
-    fetchStaff();
-  }, [masterUrl]);
-
-  const vCols = useMemo(() => {
-    let cols = displaySettings?.length > 0 ? displaySettings.filter(i => i.visible).map(i => i.name) : ["姓", "名", "対応ステータス", "担当者メール", "電話番号", "シナリオID", "日付", "登録日"];
-    if (!cols.includes("対応ステータス")) cols.splice(2, 0, "対応ステータス");
-    if (!cols.includes("担当者メール")) cols.splice(3, 0, "担当者メール");
-    return cols;
-  }, [displaySettings]);
-
-  const sCols = useMemo(() => {
-    const defaultSearch = ["姓", "シナリオID", "日付", "登録日"];
-    return displaySettings?.length > 0 ? displaySettings.filter(i => i.searchable).map(i => i.name) : defaultSearch;
-  }, [displaySettings]);
-  
-  const filtered = useMemo(() => {
-    let res = [...(localCustomers || [])].filter(c => Object.keys(search).every(k => {
-      const q = search[k]; if (!q || q === "") return true;
-      if (formSettings?.find(x => x.name === k)?.type === "date" || k === "登録日" || k === "日付") {
-        if (!q.start && !q.end) return true;
-        if (!c[k] || c[k] === "-" || c[k] === "") return false;
-        const targetTime = new Date(c[k]).getTime();
-        if (q.start && targetTime < parseLocalDate(q.start)) return false;
-        if (q.end && targetTime > parseLocalDate(q.end, true)) return false;
-        return true;
-      }
-      return String(c[k] || "").toLowerCase().includes(String(q).toLowerCase());
-    }));
-    if (sort.key) {
-      res.sort((a, b) => {
-        const aV = a[sort.key] || "", bV = b[sort.key] || "";
-        return sort.dir === 'asc' ? String(aV).localeCompare(String(bV), 'ja') : String(bV).localeCompare(String(aV), 'ja');
-      });
-    }
-    return res;
-  }, [localCustomers, search, formSettings, sort]);
-
-  const handleExecuteChange = async () => {
-    const { customer, field, newValue } = confirmModal;
-    const optimisticData = localCustomers.map(c => c.id === customer.id ? { ...c, [field]: newValue } : c);
-    setLocalCustomers(optimisticData);
-    setConfirmModal({ open: false, customer: null, field: "", newValue: "", oldValue: "" });
-    try {
-      const updatedData = { ...customer, [field]: newValue };
-      await apiCall.post(GAS_URL, { 
-        action: "update", id: customer.id, lastName: customer["姓"], firstName: customer["名"], 
-        phone: customer["電話番号"], scenarioID: customer["シナリオID"], status: customer["配信ステータス"], data: updatedData 
-      });
-      onRefresh();
-    } catch (e) { alert("更新に失敗しました"); onRefresh(); }
-  };
-
-  return (<Page title="顧客ダッシュボード" subtitle={`全 ${filtered.length} 名のリストを表示中`} topButton={
-    <div style={{ display: "flex", gap: "12px" }}>
-      <button onClick={() => downloadCSV([vCols, ...filtered.map(c => vCols.map(col => c[col]))], "customers.csv")} style={{ ...styles.btn, ...styles.btnSecondary, height: 40 }}><Download size={16} /> CSV出力</button>
-      <button onClick={() => navigate("/column-settings")} style={{ ...styles.btn, ...styles.btnPrimary, height: 40 }}><SlidersHorizontal size={16} /> 表示設定</button>
-    </div>
-  }>
-    {/* 🆕 4カラム固定の安定した検索パネル */}
-    <div style={{ ...styles.card, padding: "28px", marginBottom: "32px", backgroundColor: "white", border: "none", boxShadow: "0 2px 10px rgba(0,0,0,0.05)" }}>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "24px", alignItems: "flex-end" }}>
-        {sCols.map(col => (
-          <div key={col} style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            <label style={{ fontSize: "12px", fontWeight: "800", color: THEME.textMuted }}>{col}</label>
-            {formSettings?.find(x => x.name === col)?.type === "date" || col === "登録日" || col === "日付" ? (
-              <DateRangePicker value={search[col] || {}} onChange={v => setSearch({ ...search, [col]: v })} />
-            ) : col === "シナリオID" ? (
-              <select style={{ ...styles.input, height: 42, width: "100%" }} value={search[col] || ""} onChange={e => setSearch({...search, [col]: e.target.value})}>
-                <option value="">すべて表示</option>
-                {[...new Set(scenarios?.map(x => x["シナリオID"]))].map(id => <option key={id} value={id}>{id}</option>)}
-              </select>
-            ) : (
-              <div style={{ position: "relative" }}>
-                <Search size={14} style={{ position: "absolute", left: 12, top: 14, color: "#94A3B8" }} />
-                <input placeholder={`${col}で検索...`} style={{ ...styles.input, paddingLeft: 38, height: 42, width: "100%" }} value={search[col] || ""} onChange={e => setSearch({...search, [col]: e.target.value})} />
-              </div>
-            )}
-          </div>
-        ))}
-        {/* リセットボタンを常に最後のグリッドに配置するか、空いたスペースに配置 */}
-        <div style={{ display: "flex", justifyContent: "flex-start" }}>
-          <button onClick={() => setSearch({})} style={{ background: "none", border: "none", color: THEME.primary, fontWeight: "900", fontSize: "14px", cursor: "pointer", padding: "10px 0" }}>
-            条件をクリア
-          </button>
-        </div>
-      </div>
-    </div>
-    
-    {/* 🆕 右側固定（操作列）対応テーブル */}
-    <div style={{ ...styles.card, padding: 0, overflow: "hidden", border: `1px solid ${THEME.border}`, position: "relative" }}>
-      <div style={{ overflowX: "auto", maxHeight: "calc(100vh - 420px)" }} className="custom-scrollbar">
-        <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: 0, tableLayout: "auto" }}>
-          <thead>
-            <tr>
-              {vCols.map(c => (
-                <th key={c} 
-                  onClick={() => setSort({ key: c, dir: (sort.key === c && sort.dir === 'asc') ? 'desc' : 'asc' })}
-                  style={{ 
-                    ...styles.tableTh, 
-                    position: "sticky", top: 0, zIndex: 10, backgroundColor: "#F8FAFC", 
-                    cursor: "pointer", whiteSpace: "nowrap", minWidth: 140,
-                    borderBottom: `1px solid ${THEME.border}`
-                  }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                    {c} {sort.key === c ? (sort.dir === 'asc' ? <ArrowUp size={12}/> : <ArrowDown size={12}/>) : <ArrowUpDown size={12} opacity={0.2}/>}
-                  </div>
-                </th>
-              ))}
-              {/* 🆕 操作列のヘッダーも固定 */}
-              <th style={{ 
-                ...styles.tableTh, 
-                position: "sticky", top: 0, right: 0, zIndex: 20, 
-                backgroundColor: "#F8FAFC", borderLeft: `1px solid ${THEME.border}`, borderBottom: `1px solid ${THEME.border}`,
-                width: 160, textAlign: "center", fontWeight: "900"
-              }}>操作</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.map((c, idx) => (
-              <tr key={c.id} style={{ backgroundColor: "white" }} onMouseEnter={e => e.currentTarget.style.backgroundColor = "#F8FAFC"} onMouseLeave={e => e.currentTarget.style.backgroundColor = "white"}>
-                {vCols.map(col => {
-                  if (col === "対応ステータス") return (
-                    <td key={col} style={styles.tableTd}>
-                      <select style={{ background: "#EEF2FF", border: "none", padding: "6px 12px", borderRadius: 8, fontSize: 12, fontWeight: 800, color: THEME.primary, cursor: "pointer", outline: "none" }}
-                        value={c[col] || "未対応"} onChange={e => setConfirmModal({ open: true, customer: c, field: col, newValue: e.target.value, oldValue: c[col] || "未対応" })}>
-                        {statuses.map(st => <option key={st.name} value={st.name}>{st.name}</option>)}
-                      </select>
-                    </td>
-                  );
-                  if (col === "担当者メール") return (
-                    <td key={col} style={styles.tableTd}>
-                      <select style={{ background: "#F1F5F9", border: "none", padding: "6px 12px", borderRadius: 8, fontSize: 12, fontWeight: 600, color: THEME.textMain, cursor: "pointer", outline: "none" }}
-                        value={c[col] || ""} onChange={e => setConfirmModal({ open: true, customer: c, field: col, newValue: e.target.value, oldValue: c[col] || "未設定" })}>
-                        <option value="">未割当</option>
-                        {staffList.map(s => <option key={s.email} value={s.email}>{s.lastName} {s.firstName}</option>)}
-                      </select>
-                    </td>
-                  );
-                  return (
-                    <td key={col} style={{ ...styles.tableTd, whiteSpace: "nowrap" }}>
-                      {col === "シナリオID" ? <span style={{ ...styles.badge, backgroundColor: "#EEF2FF", color: THEME.primary }}>{c[col]}</span> : (col === "登録日" || col === "日付" ? formatDate(c[col]) : c[col])}
-                    </td>
-                  );
-                })}
-                {/* 🆕 操作列のセルを固定（Sticky Right） */}
-                <td style={{ 
-                  ...styles.tableTd, 
-                  position: "sticky", right: 0, zIndex: 5, 
-                  backgroundColor: "inherit", borderLeft: `1px solid ${THEME.border}`,
-                  textAlign: "center", padding: "12px"
-                }}>
-                  <div style={{ display: "flex", gap: "10px", justifyContent: "center" }}>
-                    <Link to={`/direct-sms/${c.id}`} title="SMS送信" style={{ ...styles.btn, padding: "8px", backgroundColor: THEME.primary, color: "white", borderRadius: "10px", display: "flex", alignItems: "center", justifyContent: "center" }}><Send size={14}/></Link>
-                    <Link to={`/schedule/${c.id}`} title="配信状況" style={{ ...styles.btn, padding: "8px", backgroundColor: "white", color: THEME.primary, border: `1px solid ${THEME.primary}`, borderRadius: "10px", display: "flex", alignItems: "center", justifyContent: "center" }}><Clock size={14}/></Link>
-                    <button onClick={async () => { if(window.confirm("顧客情報を削除しますか？")) { await apiCall.post(GAS_URL, { action: "delete", id: c.id }); onRefresh(); } }} style={{ ...styles.btn, padding: "8px", backgroundColor: "transparent", color: THEME.danger, borderRadius: "10px" }}><Trash2 size={16}/></button>
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
-    
-    {/* 確認モーダルは既存のまま維持 */}
-    {confirmModal.open && (
-      /* モーダルコード（前回の優れたデザインを継承） */
-      <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(15, 23, 42, 0.6)", display: "flex", justifyContent: "center", alignItems: "center", zIndex: 3000, backdropFilter: "blur(4px)" }}>
-        <div style={{ ...styles.card, width: "400px", textAlign: "center", padding: "40px", borderRadius: 24, border: "none" }}>
-          <div style={{ backgroundColor: "#EEF2FF", width: "64px", height: "64px", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 24px" }}><AlertCircle size={32} color={THEME.primary} /></div>
-          <h3 style={{ fontSize: 20, fontWeight: 900, marginBottom: 8 }}>変更を確認</h3>
-          <p style={{ fontSize: "14px", color: THEME.textMuted, marginBottom: 32 }}>{confirmModal.customer?.["姓"]}様の「{confirmModal.field === "担当者メール" ? "担当者" : "対応ステータス"}」を更新しますか？</p>
-          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            <button onClick={handleExecuteChange} style={{ ...styles.btn, ...styles.btnPrimary, height: 48, fontSize: 15 }}>変更を実行する</button>
-            <button onClick={() => setConfirmModal({ open: false, customer: null, field: "", newValue: "", oldValue: "" })} style={{ ...styles.btn, ...styles.btnSecondary, height: 48, border: "none" }}>キャンセル</button>
-          </div>
-        </div>
-      </div>
-    )}
-  </Page>);
-}
 
 // --- (2) 顧客詳細 ---
 function CustomerDetail({ customers = [] }) {
@@ -927,7 +728,8 @@ function App() {
   if(load) return <div style={{ height: "100vh", display: "flex", alignItems: "center", justifyContent: "center", backgroundColor: THEME.bg }}><Loader2 size={48} className="animate-spin" color={THEME.primary} /></div>;
   
   return (<GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID}><style>{globalStyle}</style><Router><div style={{ display: "flex" }}><Sidebar onLogout={() => { setUser(null); localStorage.removeItem("sf_user"); }} /><Routes>
-    <Route path="/" element={<CustomerList customers={d?.customers} displaySettings={d?.displaySettings} formSettings={d?.formSettings} scenarios={d?.scenarios} statuses={d?.statuses} masterUrl={MASTER_WHITELIST_API} onRefresh={refresh} />} />
+    <Route 
+  path="/customers" element={<CustomerList   customers={d?.customers}   displaySettings={d?.displaySettings}   formSettings={d?.formSettings} scenarios={d?.scenarios} statuses={d?.statuses}  masterUrl={MASTER_WHITELIST_API}  gasUrl={import.meta.env.VITE_GAS_URL} companyName={CLIENT_COMPANY_NAME}  onRefresh={refresh} /> } />
     <Route path="/column-settings" element={<ColumnSettings displaySettings={d?.displaySettings} formSettings={d?.formSettings} onRefresh={refresh} />} />
     <Route path="/add" element={<CustomerForm scenarios={d?.scenarios} formSettings={d?.formSettings} statuses={d?.statuses} masterUrl={MASTER_WHITELIST_API} onRefresh={refresh} />} />
     <Route path="/edit/:id" element={<CustomerEdit customers={d?.customers} scenarios={d?.scenarios} formSettings={d?.formSettings} statuses={d?.statuses} masterUrl={MASTER_WHITELIST_API} onRefresh={refresh} />} />
