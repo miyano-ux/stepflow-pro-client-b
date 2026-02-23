@@ -11,11 +11,12 @@ import {
   LayoutDashboard, UserPlus, Settings, MessageSquare, Trash2, 
   Plus, Loader2, LogOut, Users, GripVertical, ListFilter, Edit3, Lock, Save, Search, Clock, ArrowUpDown, ArrowUp, ArrowDown, Download, Upload, FileSpreadsheet, Eye, Send, Copy, Calendar, AlertCircle, ChevronRight, SlidersHorizontal, 
   UserCheck, Mail, Columns, ListTodo, UserCircle,
-  ChevronLeft, Check, X ,Activity, Zap
+  ChevronLeft, Check, X ,Activity, Zap,BarChart3
 } from "lucide-react";
 import { GoogleOAuthProvider, GoogleLogin } from '@react-oauth/google';
 import { jwtDecode } from "jwt-decode";
 import TrackingDashboard from "./pages/TrackingDashboard";
+import AnalysisReport from "./pages/AnalysisReport.js";
 
 // ==========================================
 // 🔑 1. 環境設定・テーマ定義 [仕様書 1.1 準拠]
@@ -1025,7 +1026,7 @@ function App() {
     <Route path="/detail/:id" element={<CustomerDetail customers={d?.customers} />} />
     <Route path="/direct-sms/:id" element={<DirectSms customers={d?.customers} templates={d?.templates} onRefresh={refresh} masterUrl={MASTER_WHITELIST_API} currentUserEmail={user?.email} />} />
     <Route path="/templates" element={<TemplateManager templates={d?.templates} onRefresh={refresh} />} />
-    
+    <Route path="/analysis" element={<AnalysisReport customers={d?.customers} statuses={d?.statuses} masterUrl={MASTER_WHITELIST_API} />} />
     {/* 🆕 統合された反響取り込みポータル */}
     <Route path="/response-import" element={<ResponseImportPortal />} />
     <Route path="/gmail-settings" element={<GmailSettings gmailSettings={d?.gmailSettings} scenarios={d?.scenarios} formSettings={d?.formSettings} onRefresh={refresh} />} />
