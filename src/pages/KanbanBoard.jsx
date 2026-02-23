@@ -11,14 +11,10 @@ const THEME = {
   textMuted: "#64748B", border: "#E2E8F0", success: "#10B981", warning: "#F59E0B", danger: "#EF4444"
 };
 
-// 🆕 システムで予約する終着ステータス名
-const TERMINAL_STATUS_NAMES = ["成約", "休眠", "失注"];
-
 const styles = {
   main: { marginLeft: "260px", width: "calc(100% - 260px)", minHeight: "100vh", backgroundColor: THEME.bg, display: "flex", flexDirection: "column" },
   wrapper: { padding: "40px 40px 0", flex: 1, display: "flex", flexDirection: "column" },
   
-  // 🆕 プレミアム・セレクトスタイル (AnalysisReportと統一)
   selectContainer: {
     position: "relative", display: "flex", alignItems: "center", backgroundColor: "#FFFFFF",
     padding: "0 14px", borderRadius: "12px", border: `1px solid ${THEME.border}`,
@@ -66,8 +62,14 @@ export default function KanbanBoard({ customers = [], statuses = [], onRefresh, 
     if (masterUrl) fetchStaff();
   }, [masterUrl, companyName]);
 
-  // 🆕 ステータスを「進行中」と「終着」に分離
-  const flowingStatuses = statuses.filter(st => !TERMINAL_STATUS_NAMES.includes(st.name));
+  // 🆕 ステータス配列の「最後から3つ」を動的に取得（ラベル変更に対応）
+  // 順序: [..., 成約, 休眠, 失注] を前提とする
+  const wonLabel = statuses[statuses.length - 3]?.name || "成約";
+  const dormantLabel = statuses[statuses.length - 2]?.name || "休眠";
+  const lostLabel = statuses[statuses.length - 1]?.name || "失注";
+
+  // 🆕 上部のカラムには「最後から3つ」を除いた営業フェーズのみを表示
+  const flowingStatuses = statuses.slice(0, statuses.length - 3);
 
   const onDragStart = (e, customerId) => {
     e.dataTransfer.setData("customerId", customerId);
@@ -77,35 +79,33 @@ export default function KanbanBoard({ customers = [], statuses = [], onRefresh, 
   const onDragEnd = () => setDraggingId(null);
   const onDragOver = (e) => e.preventDefault();
 
-const onDrop = async (e, newStatus) => {
-  const cid = e.dataTransfer.getData("customerId");
-  if (!cid) return;
-  setDraggingId(null);
+  const onDrop = async (e, newStatus) => {
+    const cid = e.dataTransfer.getData("customerId");
+    if (!cid) return;
+    setDraggingId(null);
 
-  // 1. 楽観的更新
-  const updated = localCustomers.map(c => 
-    String(c.id) === String(cid) ? { ...c, "対応ステータス": newStatus } : c
-  );
-  setLocalCustomers(updated);
-
-  try {
-    // 🆕 2. 同期エラーを解消する送信設定
-    // GAS側が JSON.parse できるように text/plain で JSON文字列を送信
-    await axios.post(gasUrl, 
-      JSON.stringify({ 
-        action: "updateStatus", 
-        id: String(cid), 
-        status: newStatus 
-      }), 
-      { headers: { 'Content-Type': 'text/plain;charset=utf-8' } }
+    // 1. 楽観的更新
+    const updated = localCustomers.map(c => 
+      String(c.id) === String(cid) ? { ...c, "対応ステータス": newStatus } : c
     );
-    onRefresh();
-  } catch (err) {
-    console.error("Sync error:", err);
-    // alert("同期に失敗しました"); // ユーザー体験のため、裏でリフレッシュする運用に変更
-    onRefresh();
-  }
-};
+    setLocalCustomers(updated);
+
+    try {
+      // 2. 同期エラーを解消する送信設定 (text/plain で送信)
+      await axios.post(gasUrl, 
+        JSON.stringify({ 
+          action: "updateStatus", 
+          id: String(cid), 
+          status: newStatus 
+        }), 
+        { headers: { 'Content-Type': 'text/plain;charset=utf-8' } }
+      );
+      onRefresh();
+    } catch (err) {
+      console.error("Sync error:", err);
+      onRefresh();
+    }
+  };
 
   const filtered = localCustomers.filter(c => !filterStaff || c["担当者メール"] === filterStaff);
 
@@ -141,7 +141,6 @@ const onDrop = async (e, newStatus) => {
           </div>
         </header>
 
-        {/* 1. カンバンメインエリア（進行中のみ表示） */}
         <div style={styles.kanbanContainer}>
           {flowingStatuses.map(st => {
             const colCustomers = filtered.filter(c => (c["対応ステータス"] || "未対応") === st.name);
@@ -183,51 +182,45 @@ const onDrop = async (e, newStatus) => {
         </div>
       </div>
 
-      {/* 2. 最終結果スペシャルゾーン (Sticky Bottom) */}
       <div style={styles.bottomBar}>
-        {/* 成約エリア */}
+        {/* 🆕 設定画面で変えたラベルをそのまま表示し、同期に使用する */}
         <div 
           onDragOver={onDragOver} 
-          onDrop={(e) => onDrop(e, "成約")}
+          onDrop={(e) => onDrop(e, wonLabel)}
           style={{ 
             ...styles.specialZone, 
             backgroundColor: draggingId ? "#ECFDF5" : "#F9FAFB", 
             color: THEME.success,
             borderColor: draggingId ? THEME.success : THEME.border,
-            boxShadow: draggingId ? "0 10px 15px -3px rgba(16, 185, 129, 0.2)" : "none"
           }}
         >
-          <Trophy size={22} strokeWidth={2.5} /> 成約（売上確定）
+          <Trophy size={22} strokeWidth={2.5} /> {wonLabel}
         </div>
 
-        {/* 休眠エリア */}
         <div 
           onDragOver={onDragOver} 
-          onDrop={(e) => onDrop(e, "休眠")}
+          onDrop={(e) => onDrop(e, dormantLabel)}
           style={{ 
             ...styles.specialZone, 
             backgroundColor: draggingId ? "#FFFBEB" : "#F9FAFB", 
             color: THEME.warning,
             borderColor: draggingId ? THEME.warning : THEME.border,
-            boxShadow: draggingId ? "0 10px 15px -3px rgba(245, 158, 11, 0.2)" : "none"
           }}
         >
-          <Moon size={22} strokeWidth={2.5} /> 休眠（ナーチャリング）
+          <Moon size={22} strokeWidth={2.5} /> {dormantLabel}
         </div>
 
-        {/* 失注エリア */}
         <div 
           onDragOver={onDragOver} 
-          onDrop={(e) => onDrop(e, "失注")}
+          onDrop={(e) => onDrop(e, lostLabel)}
           style={{ 
             ...styles.specialZone, 
             backgroundColor: draggingId ? "#FEF2F2" : "#F9FAFB", 
             color: THEME.danger,
             borderColor: draggingId ? THEME.danger : THEME.border,
-            boxShadow: draggingId ? "0 10px 15px -3px rgba(239, 68, 68, 0.2)" : "none"
           }}
         >
-          <Trash2 size={22} strokeWidth={2.5} /> 失注（履歴を残す）
+          <Trash2 size={22} strokeWidth={2.5} /> {lostLabel}
         </div>
       </div>
     </div>
