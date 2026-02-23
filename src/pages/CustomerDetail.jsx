@@ -1,16 +1,15 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import axios from "axios";
-// 🆕 LayoutGrid をインポートに追加しました
 import { 
   ArrowLeft, User, Mail, Phone, Calendar, Save, 
-  MessageSquare, History, Loader2, AlertCircle, ExternalLink,
-  ChevronRight, CheckCircle2, UserCircle, LayoutGrid
+  MessageSquare, History, Loader2, Edit3, X, 
+  Clock, LayoutGrid, UserCircle, ExternalLink
 } from "lucide-react";
 
 const THEME = { 
   primary: "#4F46E5", bg: "#F8FAFC", card: "#FFFFFF", textMain: "#1E293B", 
-  textMuted: "#64748B", border: "#E2E8F0", success: "#10B981"
+  textMuted: "#64748B", border: "#E2E8F0", success: "#10B981", danger: "#EF4444"
 };
 
 const styles = {
@@ -20,20 +19,22 @@ const styles = {
   card: { backgroundColor: THEME.card, borderRadius: "20px", border: `1px solid ${THEME.border}`, padding: "32px", boxShadow: "0 10px 25px -5px rgba(0,0,0,0.03)" },
   sectionTitle: { fontSize: "18px", fontWeight: "900", color: THEME.textMain, marginBottom: "24px", display: "flex", alignItems: "center", gap: "10px" },
   inputGroup: { marginBottom: "20px" },
-  label: { display: "block", fontSize: "13px", fontWeight: "800", color: THEME.textMuted, marginBottom: "8px" },
-  input: { width: "100%", padding: "12px 16px", borderRadius: "12px", border: `1px solid ${THEME.border}`, fontSize: "15px", outline: "none", transition: "0.2s" },
+  label: { display: "block", fontSize: "12px", fontWeight: "800", color: THEME.textMuted, marginBottom: "6px", textTransform: "uppercase", letterSpacing: "0.05em" },
+  input: { width: "100%", padding: "12px 16px", borderRadius: "12px", border: `1px solid ${THEME.border}`, fontSize: "15px", outline: "none", transition: "0.2s", backgroundColor: "#FFFFFF" },
+  viewValue: { padding: "12px 0", fontSize: "16px", fontWeight: "700", color: THEME.textMain, borderBottom: `1px solid ${THEME.bg}`, minHeight: "45px", display: "flex", alignItems: "center" },
   timelineItem: { paddingLeft: "24px", borderLeft: `2px solid ${THEME.border}`, position: "relative", marginBottom: "24px" },
-  timelineDot: { position: "absolute", left: "-7px", top: "0", width: "12px", height: "12px", borderRadius: "50%", backgroundColor: THEME.primary, border: "2px solid white" }
+  timelineDot: { position: "absolute", left: "-7px", top: "0", width: "12px", height: "12px", borderRadius: "50%", backgroundColor: THEME.primary, border: "2px solid white" },
+  btnSecondary: { padding: "10px 20px", borderRadius: "12px", border: `1px solid ${THEME.border}`, backgroundColor: "white", fontSize: "14px", fontWeight: "800", cursor: "pointer", display: "flex", alignItems: "center", gap: 8, color: THEME.textMain, transition: "0.2s" }
 };
 
 export default function CustomerDetail({ customers = [], formSettings = [], statuses = [], trackingLogs = [], masterUrl, gasUrl, companyName, onRefresh }) {
   const { id } = useParams();
   const navigate = useNavigate();
+  const [isEditing, setIsEditing] = useState(false); // 🆕 編集モード管理
   const [syncingCount, setSyncingCount] = useState(0);
   const [staffList, setStaffList] = useState([]);
   const [formData, setFormData] = useState(null);
 
-  // 顧客データの特定と初期化
   const customer = useMemo(() => customers.find(c => String(c.id) === String(id)), [customers, id]);
 
   useEffect(() => {
@@ -42,7 +43,6 @@ export default function CustomerDetail({ customers = [], formSettings = [], stat
     }
   }, [customer, syncingCount]);
 
-  // 担当者リスト取得
   useEffect(() => {
     const fetchStaff = async () => {
       try {
@@ -58,16 +58,11 @@ export default function CustomerDetail({ customers = [], formSettings = [], stat
   const handleSave = async () => {
     setSyncingCount(prev => prev + 1);
     try {
-      await axios.post(gasUrl, JSON.stringify({ 
-        action: "update", 
-        id: id, 
-        data: formData 
-      }), { headers: { 'Content-Type': 'text/plain;charset=utf-8' } });
-      
+      await axios.post(gasUrl, JSON.stringify({ action: "update", id: id, data: formData }), { headers: { 'Content-Type': 'text/plain;charset=utf-8' } });
       setTimeout(() => {
         onRefresh();
         setSyncingCount(prev => Math.max(0, prev - 1));
-        alert("顧客情報を更新しました");
+        setIsEditing(false); // 🆕 保存後に閲覧モードへ戻る
       }, 1500);
     } catch (e) {
       alert("更新に失敗しました");
@@ -75,102 +70,124 @@ export default function CustomerDetail({ customers = [], formSettings = [], stat
     }
   };
 
-  // この顧客に関連するログを抽出
-  const customerLogs = (trackingLogs || [])
-    .filter(log => String(log.customerId) === String(id))
-    .sort((a, b) => new Date(b.time) - new Date(a.time));
+  const customerLogs = (trackingLogs || []).filter(log => String(log.customerId) === String(id)).sort((a, b) => new Date(b.time) - new Date(a.time));
+
+  // フィールド表示用コンポーネント
+  const Field = ({ label, value, fieldName, type = "text", options = null }) => (
+    <div style={styles.inputGroup}>
+      <label style={styles.label}>{label}</label>
+      {isEditing ? (
+        options || type === "select" ? (
+          <select style={styles.input} value={formData[fieldName] || ""} onChange={e => setFormData({...formData, [fieldName]: e.target.value})}>
+            <option value="">未選択</option>
+            {options ? options.map(opt => <option key={opt} value={opt}>{opt}</option>) : null}
+          </select>
+        ) : (
+          <input type={type} style={styles.input} value={formData[fieldName] || ""} onChange={e => setFormData({...formData, [fieldName]: e.target.value})} />
+        )
+      ) : (
+        <div style={styles.viewValue}>{value || <span style={{color: THEME.border, fontWeight: 400}}>未設定</span>}</div>
+      )}
+    </div>
+  );
 
   return (
     <div style={styles.main}>
       <div style={styles.wrapper}>
         {/* ヘッダーエリア */}
-        <header style={{ marginBottom: "32px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <header style={{ marginBottom: "40px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <div>
-            <button onClick={() => navigate(-1)} style={{ background: "none", border: "none", color: THEME.textMuted, cursor: "pointer", display: "flex", alignItems: "center", gap: 8, fontWeight: "800", marginBottom: 12 }}>
-              <ArrowLeft size={18} /> 戻る
+            <button onClick={() => navigate("/customers")} style={{ background: "none", border: "none", color: THEME.textMuted, cursor: "pointer", display: "flex", alignItems: "center", gap: 8, fontWeight: "800", marginBottom: 8 }}>
+              <ArrowLeft size={18} /> 一覧に戻る
             </button>
             <h1 style={{ fontSize: "32px", fontWeight: "900", color: THEME.textMain, margin: 0 }}>
               {formData["姓"]} {formData["名"]} <span style={{ color: THEME.textMuted, fontWeight: "500", fontSize: "20px" }}>様</span>
             </h1>
           </div>
+
           <div style={{ display: "flex", gap: "12px" }}>
-            <Link to={`/direct-sms/${id}`} style={{ ...styles.input, backgroundColor: "white", textDecoration: "none", display: "flex", alignItems: "center", gap: 8, fontWeight: "800", color: THEME.primary }}>
-              <MessageSquare size={18} /> SMS送信
-            </Link>
-            <button onClick={handleSave} disabled={syncingCount > 0} style={{ ...styles.input, backgroundColor: THEME.primary, color: "white", border: "none", fontWeight: "900", cursor: "pointer", display: "flex", alignItems: "center", gap: 8, padding: "12px 24px" }}>
-              {syncingCount > 0 ? <Loader2 className="animate-spin" size={18} /> : <Save size={18} />} 変更を保存
-            </button>
+            {!isEditing ? (
+              <>
+                {/* 🆕 閲覧モード時のボタン群 */}
+                <button onClick={() => navigate(`/schedule/${id}`)} style={styles.btnSecondary}>
+                  <Clock size={18} color={THEME.primary} /> 配信スケジュール
+                </button>
+                <button onClick={() => navigate(`/direct-sms/${id}`)} style={styles.btnSecondary}>
+                  <MessageSquare size={18} color={THEME.primary} /> SMS送信
+                </button>
+                <button onClick={() => setIsEditing(true)} style={{ ...styles.btnSecondary, backgroundColor: THEME.primary, color: "white", border: "none" }}>
+                  <Edit3 size={18} /> 情報を編集
+                </button>
+              </>
+            ) : (
+              <>
+                {/* 🆕 編集モード時のボタン群 */}
+                <button onClick={() => { setIsEditing(false); setFormData({...customer}); }} style={{ ...styles.btnSecondary, color: THEME.danger }}>
+                  <X size={18} /> キャンセル
+                </button>
+                <button onClick={handleSave} disabled={syncingCount > 0} style={{ ...styles.btnSecondary, backgroundColor: THEME.primary, color: "white", border: "none" }}>
+                  {syncingCount > 0 ? <Loader2 className="animate-spin" size={18} /> : <Save size={18} />} 変更を保存
+                </button>
+              </>
+            )}
           </div>
         </header>
 
         <div style={styles.grid}>
-          {/* 左カラム：詳細編集フォーム */}
+          {/* 左カラム：詳細情報 */}
           <div style={styles.card}>
-            <h3 style={styles.sectionTitle}><User size={20} color={THEME.primary} /> 基本情報・管理設定</h3>
-            
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "24px" }}>
-              <div style={styles.inputGroup}>
-                <label style={styles.label}>対応ステータス</label>
-                <select 
-                  style={{ ...styles.input, backgroundColor: "#EEF2FF", border: "none", fontWeight: "800", color: THEME.primary }}
-                  value={formData["対応ステータス"] || ""}
-                  onChange={e => setFormData({ ...formData, "対応ステータス": e.target.value })}
-                >
-                  {statuses.map(st => <option key={st.name} value={st.name}>{st.name}</option>)}
-                </select>
-              </div>
-              <div style={styles.inputGroup}>
-                <label style={styles.label}>担当営業</label>
-                <select 
-                  style={{ ...styles.input, backgroundColor: "#F1F5F9", border: "none", fontWeight: "700" }}
-                  value={formData["担当者メール"] || ""}
-                  onChange={e => setFormData({ ...formData, "担当者メール": e.target.value })}
-                >
-                  <option value="">未割当</option>
-                  {staffList.map(s => <option key={s.email} value={s.email}>{s.lastName} {s.firstName}</option>)}
-                </select>
-              </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "32px", marginBottom: "32px" }}>
+              <Field 
+                label="対応ステータス" 
+                value={formData["対応ステータス"]} 
+                fieldName="対応ステータス" 
+                options={statuses.map(s => s.name)} 
+              />
+              <Field 
+                label="担当営業" 
+                value={staffList.find(s => s.email === formData["担当者メール"])?.lastName || formData["担当者メール"]} 
+                fieldName="担当者メール" 
+                options={staffList.map(s => s.email)}
+                // selectのラベル表示を考慮した特別対応はField内で行う
+              />
             </div>
 
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "24px" }}>
-              <div style={styles.inputGroup}><label style={styles.label}>姓</label><input style={styles.input} value={formData["姓"] || ""} onChange={e => setFormData({...formData, "姓": e.target.value})} /></div>
-              <div style={styles.inputGroup}><label style={styles.label}>名</label><input style={styles.input} value={formData["名"] || ""} onChange={e => setFormData({...formData, "名": e.target.value})} /></div>
-              <div style={styles.inputGroup}><label style={styles.label}>電話番号</label><input style={styles.input} value={formData["電話番号"] || ""} onChange={e => setFormData({...formData, "電話番号": e.target.value})} /></div>
+              <Field label="姓" value={formData["姓"]} fieldName="姓" />
+              <Field label="名" value={formData["名"]} fieldName="名" />
+              <Field label="電話番号" value={formData["電話番号"]} fieldName="電話番号" />
             </div>
 
-            <hr style={{ border: "none", borderTop: `1px solid ${THEME.border}`, margin: "24px 0" }} />
+            <hr style={{ border: "none", borderTop: `1px solid ${THEME.border}`, margin: "32px 0" }} />
             
-            <h3 style={styles.sectionTitle}><LayoutGrid size={20} color={THEME.primary} /> カスタム項目（項目設定準拠）</h3>
+            <h3 style={styles.sectionTitle}><LayoutGrid size={20} color={THEME.primary} /> カスタム項目</h3>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "24px" }}>
               {formSettings.map(field => (
-                <div key={field.name} style={styles.inputGroup}>
-                  <label style={styles.label}>{field.name}</label>
-                  {field.type === "dropdown" || field.type === "select" ? (
-                    <select style={styles.input} value={formData[field.name] || ""} onChange={e => setFormData({...formData, [field.name]: e.target.value})}>
-                      <option value="">未選択</option>
-                      {(field.options || "").split(",").map(opt => <option key={opt} value={opt}>{opt}</option>)}
-                    </select>
-                  ) : (
-                    <input type={field.type === "number" ? "number" : (field.type === "date" ? "date" : "text")} style={styles.input} value={formData[field.name] || ""} onChange={e => setFormData({...formData, [field.name]: e.target.value})} />
-                  )}
-                </div>
+                <Field 
+                  key={field.name}
+                  label={field.name}
+                  value={formData[field.name]}
+                  fieldName={field.name}
+                  type={field.type === "number" ? "number" : (field.type === "date" ? "date" : "text")}
+                  options={field.type === "dropdown" || field.type === "select" ? (field.options || "").split(",") : null}
+                />
               ))}
             </div>
           </div>
 
-          {/* 右カラム：アクティビティフィード */}
+          {/* 右カラム：活動ログ */}
           <div style={{ ...styles.card, backgroundColor: "transparent", border: "none", padding: 0 }}>
-            <h3 style={styles.sectionTitle}><History size={20} color={THEME.primary} /> 活動ログ</h3>
-            <div style={{ backgroundColor: "white", padding: "24px", borderRadius: "20px", border: `1px solid ${THEME.border}`, maxHeight: "600px", overflowY: "auto" }}>
+            <h3 style={styles.sectionTitle}><History size={20} color={THEME.primary} /> 最近のアクティビティ</h3>
+            <div style={{ backgroundColor: "white", padding: "28px", borderRadius: "20px", border: `1px solid ${THEME.border}`, maxHeight: "650px", overflowY: "auto", boxShadow: "0 4px 6px -1px rgba(0,0,0,0.05)" }}>
               {customerLogs.length === 0 ? (
-                <div style={{ textAlign: "center", color: THEME.textMuted, padding: "40px 0" }}>活動履歴はありません</div>
+                <div style={{ textAlign: "center", color: THEME.textMuted, padding: "40px 0" }}>活動履歴はまだありません</div>
               ) : (
                 customerLogs.map((log, i) => (
                   <div key={i} style={styles.timelineItem}>
                     <div style={styles.timelineDot} />
-                    <div style={{ fontSize: "12px", color: THEME.textMuted, fontWeight: "700", marginBottom: "4px" }}>{log.time}</div>
-                    <div style={{ fontSize: "14px", fontWeight: "800", color: THEME.textMain }}>{log.pageTitle || "ページ閲覧"}</div>
-                    {log.url && <div style={{ fontSize: "11px", color: THEME.primary, marginTop: "4px", overflow: "hidden", textOverflow: "ellipsis" }}>{log.url}</div>}
+                    <div style={{ fontSize: "11px", color: THEME.textMuted, fontWeight: "800", marginBottom: "4px" }}>{log.time}</div>
+                    <div style={{ fontSize: "14px", fontWeight: "900", color: THEME.textMain }}>{log.pageTitle || "ページ閲覧"}</div>
+                    {log.url && <div style={{ fontSize: "11px", color: THEME.primary, marginTop: "4px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{log.url}</div>}
                   </div>
                 ))
               )}
