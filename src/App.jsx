@@ -16,7 +16,7 @@ import {
 import { GoogleOAuthProvider, GoogleLogin } from '@react-oauth/google';
 import { jwtDecode } from "jwt-decode";
 import TrackingDashboard from "./pages/TrackingDashboard";
-import AnalysisReport from "./pages/AnalysisReport.js";
+import AnalysisReport from "./pages/AnalysisReport.jsx";
 
 // ==========================================
 // 🔑 1. 環境設定・テーマ定義 [仕様書 1.1 準拠]
