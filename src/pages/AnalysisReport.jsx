@@ -1,23 +1,20 @@
 import React, { useState, useEffect, useMemo } from "react";
 import axios from "axios";
-import { BarChart3, Users, Filter, ChevronRight, Loader2 } from "lucide-react";
+import { BarChart3, Users, Filter, LayoutGrid, Info, Loader2 } from "lucide-react";
 
 const THEME = {
   primary: "#4F46E5", bg: "#F8FAFC", card: "#FFFFFF", textMain: "#1E293B", 
-  textMuted: "#64748B", border: "#E2E8F0", success: "#10B981", danger: "#EF4444"
+  textMuted: "#64748B", border: "#E2E8F0", success: "#10B981", danger: "#EF4444",
+  colors: ["#4F46E5", "#6366F1", "#818CF8", "#A5B4FC", "#C7D2FE", "#E0E7FF", "#94A3B8"]
 };
 
 const styles = {
   main: { marginLeft: "260px", width: "calc(100% - 260px)", minHeight: "100vh", backgroundColor: THEME.bg },
   wrapper: { padding: "48px 64px", maxWidth: "1440px", margin: "0 auto" },
-  card: { backgroundColor: THEME.card, borderRadius: "16px", border: `1px solid ${THEME.border}`, padding: "32px", boxShadow: "0 4px 6px -1px rgba(0,0,0,0.05)" },
-  filterBar: { display: "flex", alignItems: "center", gap: "16px", marginBottom: "32px" },
-  chartContainer: { display: "flex", gap: "8px", alignItems: "flex-end", height: "400px", padding: "40px 0", overflowX: "auto" },
-  barWrapper: { flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: "12px", minWidth: "120px" },
-  bar: { width: "80%", borderRadius: "8px 8px 0 0", position: "relative", transition: "height 0.5s ease" },
-  table: { width: "100%", borderCollapse: "separate", borderSpacing: 0, marginTop: "40px" },
-  tableTh: { padding: "14px 20px", color: THEME.textMuted, fontSize: "11px", fontWeight: "800", borderBottom: `2px solid ${THEME.border}`, textAlign: "left", textTransform: "uppercase" },
-  tableTd: { padding: "18px 20px", fontSize: "14px", borderBottom: `1px solid ${THEME.border}`, color: THEME.textMain }
+  card: { backgroundColor: THEME.card, borderRadius: "16px", border: `1px solid ${THEME.border}`, padding: "32px", boxShadow: "0 4px 6px -1px rgba(0,0,0,0.05)", marginBottom: "32px" },
+  chartArea: { height: "350px", display: "flex", alignItems: "flex-end", gap: "20px", padding: "40px 20px 20px", borderBottom: `2px solid ${THEME.border}`, marginBottom: "12px" },
+  bar: { flex: 1, borderRadius: "8px 8px 0 0", position: "relative", transition: "all 0.6s cubic-bezier(0.4, 0, 0.2, 1)", display: "flex", justifyContent: "center" },
+  percentageBar: { display: "flex", height: "48px", borderRadius: "12px", overflow: "hidden", width: "100%", backgroundColor: "#E2E8F0" }
 };
 
 export default function AnalysisReport({ customers = [], statuses = [], masterUrl }) {
@@ -34,102 +31,89 @@ export default function AnalysisReport({ customers = [], statuses = [], masterUr
     if (masterUrl) fetchStaff();
   }, [masterUrl]);
 
-  // フィルタリングと集計
+  // 集計ロジック
   const reportData = useMemo(() => {
     const filtered = customers.filter(c => !filterStaff || c["担当者メール"] === filterStaff);
-    const totalCount = filtered.length;
+    const total = filtered.length;
 
-    return statuses.map((st, idx) => {
+    return statuses.map((st, i) => {
       const count = filtered.filter(c => (c["対応ステータス"] || "未対応") === st.name).length;
-      // Mazrica風の「維持率」計算（前のステップとの比率など）
-      const ratio = totalCount > 0 ? ((count / totalCount) * 100).toFixed(1) : 0;
-      return { ...st, count, ratio };
+      const ratio = total > 0 ? ((count / total) * 100).toFixed(1) : 0;
+      return { name: st.name, count, ratio: parseFloat(ratio), color: THEME.colors[i % THEME.colors.length] };
     });
   }, [customers, statuses, filterStaff]);
 
   const maxCount = Math.max(...reportData.map(d => d.count), 1);
+  const totalCases = reportData.reduce((sum, d) => sum + d.count, 0);
 
   return (
     <div style={styles.main}>
       <div style={styles.wrapper}>
         <header style={{ marginBottom: "40px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <div>
-            <h1 style={{ fontSize: "32px", fontWeight: "900", color: THEME.textMain, margin: 0, display: "flex", alignItems: "center", gap: "12px" }}>
-              <BarChart3 color={THEME.primary} /> 分析レポート
-            </h1>
-            <p style={{ color: THEME.textMuted, fontSize: "15px", marginTop: "6px" }}>全顧客のステータス遷移と担当者別パフォーマンスを可視化</p>
+            <h1 style={{ fontSize: "28px", fontWeight: "900", color: THEME.textMain, margin: 0 }}>分析レポート</h1>
+            <p style={{ color: THEME.textMuted, fontSize: "14px" }}>案件フェーズの分布と担当者別の成果を分析します</p>
           </div>
-          
-          <div style={styles.filterBar}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, backgroundColor: "white", padding: "8px 16px", borderRadius: "10px", border: `1px solid ${THEME.border}` }}>
-              <Users size={16} color={THEME.textMuted} />
-              <select 
-                style={{ border: "none", outline: "none", fontSize: "14px", fontWeight: "600", color: THEME.textMain }}
-                value={filterStaff} 
-                onChange={e => setFilterStaff(e.target.value)}
-              >
-                <option value="">全ての担当営業</option>
-                {staffList.map(s => <option key={s.email} value={s.email}>{s.lastName} {s.firstName}</option>)}
-              </select>
-            </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, backgroundColor: "white", padding: "10px 20px", borderRadius: "12px", border: `1px solid ${THEME.border}` }}>
+            <Users size={18} color={THEME.textMuted} />
+            <select style={{ border: "none", outline: "none", fontWeight: "700" }} value={filterStaff} onChange={e => setFilterStaff(e.target.value)}>
+              <option value="">全ての担当者</option>
+              {staffList.map(s => <option key={s.email} value={s.email}>{s.lastName} {s.firstName}</option>)}
+            </select>
           </div>
         </header>
 
+        {/* 1. 垂直棒グラフ (案件分布) */}
         <div style={styles.card}>
-          <h3 style={{ fontSize: "16px", fontWeight: "800", marginBottom: "32px", display: "flex", alignItems: "center", gap: 8 }}>
-            <Filter size={18} /> ステータス別案件分布
-          </h3>
-
-          {/* Mazrica風の遷移グラフ */}
-          <div style={styles.chartContainer}>
-            {reportData.map((d, i) => (
-              <div key={d.name} style={styles.barWrapper}>
-                <div style={{ fontSize: "12px", fontWeight: "800", color: THEME.primary }}>{d.count} 件</div>
-                <div 
-                  style={{ 
+          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "24px" }}>
+            <h3 style={{ fontSize: "16px", fontWeight: "800", margin: 0 }}>フェーズ別 案件数</h3>
+            <span style={{ fontSize: "14px", color: THEME.textMuted }}>合計: <strong>{totalCases}</strong> 件</span>
+          </div>
+          
+          <div style={styles.chartArea}>
+            {reportData.map(d => (
+              <div key={d.name} style={{ flex: 1, display: "flex", flexDirection: "column", height: "100%" }}>
+                <div style={{ flex: 1, display: "flex", alignItems: "flex-end", justifyContent: "center", paddingBottom: "8px" }}>
+                  <div style={{ 
                     ...styles.bar, 
-                    height: `${(d.count / maxCount) * 100}%`,
-                    backgroundColor: i % 2 === 0 ? THEME.primary : "#818CF8",
-                    opacity: 0.8 + (i * 0.05)
-                  }} 
-                >
-                  <div style={{ position: "absolute", top: "-25px", left: "50%", transform: "translateX(-50%)", fontSize: "10px", fontWeight: "900", color: THEME.textMuted }}>
-                    {d.ratio}%
+                    height: d.count > 0 ? `${(d.count / maxCount) * 100}%` : "4px",
+                    backgroundColor: d.color,
+                    minHeight: d.count > 0 ? "20px" : "4px"
+                  }}>
+                    <div style={{ position: "absolute", top: "-28px", fontWeight: "900", fontSize: "14px", color: d.color }}>{d.count}</div>
                   </div>
                 </div>
-                <div style={{ fontSize: "12px", fontWeight: "700", textAlign: "center", height: "40px", display: "flex", alignItems: "center" }}>
+                <div style={{ fontSize: "11px", fontWeight: "800", color: THEME.textMuted, textAlign: "center", height: "40px", display: "flex", alignItems: "center", justifyContent: "center", lineHeight: "1.2" }}>
                   {d.name}
                 </div>
               </div>
             ))}
           </div>
+        </div>
 
-          {/* 詳細データテーブル */}
-          <table style={styles.table}>
-            <thead>
-              <tr>
-                <th style={styles.tableTh}>フェーズ</th>
-                <th style={styles.tableTh}>案件維持率 (%)</th>
-                <th style={styles.tableTh}>件数</th>
-              </tr>
-            </thead>
-            <tbody>
-              {reportData.map(d => (
-                <tr key={d.name}>
-                  <td style={{ ...styles.tableTd, fontWeight: "700" }}>{d.name}</td>
-                  <td style={styles.tableTd}>
-                    <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-                      <div style={{ flex: 1, height: "8px", backgroundColor: "#E2E8F0", borderRadius: "4px", overflow: "hidden", maxWidth: "200px" }}>
-                        <div style={{ height: "100%", width: `${d.ratio}%`, backgroundColor: THEME.primary }} />
-                      </div>
-                      <span style={{ fontWeight: "800" }}>{d.ratio}%</span>
-                    </div>
-                  </td>
-                  <td style={{ ...styles.tableTd, fontWeight: "800" }}>{d.count} <span style={{ fontSize: "12px", fontWeight: "400" }}>件</span></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        {/* 2. 100%内訳グラフ (ステータス比率) */}
+        <div style={styles.card}>
+          <h3 style={{ fontSize: "16px", fontWeight: "800", marginBottom: "24px" }}>ステータス構成比 (100%)</h3>
+          <div style={styles.percentageBar}>
+            {reportData.map(d => d.ratio > 0 && (
+              <div 
+                key={d.name} 
+                style={{ width: `${d.ratio}%`, backgroundColor: d.color, display: "flex", alignItems: "center", justifyContent: "center", color: "white", fontSize: "11px", fontWeight: "900", transition: "0.5s" }}
+                title={`${d.name}: ${d.ratio}%`}
+              >
+                {d.ratio > 5 && `${d.ratio}%`}
+              </div>
+            ))}
+          </div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: "20px", marginTop: "24px" }}>
+            {reportData.map(d => (
+              <div key={d.name} style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                <div style={{ width: "12px", height: "12px", borderRadius: "3px", backgroundColor: d.color }} />
+                <span style={{ fontSize: "13px", fontWeight: "700", color: THEME.textMain }}>{d.name}</span>
+                <span style={{ fontSize: "13px", color: THEME.textMuted }}>{d.count}件 ({d.ratio}%)</span>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
     </div>
