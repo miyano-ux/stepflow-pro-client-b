@@ -22,6 +22,7 @@ import KanbanBoard from "./pages/KanbanBoard.jsx";
 import StatusSettings from "./pages/StatusSettings.jsx";
 import CustomerList from "./pages/CustomerList.jsx";
 import ColumnSettings from "./pages/ColumnSettings.jsx";
+import CustomerDetail from "./pages/CustomerDetail.jsx";
 
 // ==========================================
 // 🔑 1. 環境設定・テーマ定義 [仕様書 1.1 準拠]
@@ -201,13 +202,6 @@ function Page({ title, subtitle, children, topButton }) {
 // 📺 4. 画面コンポーネント (全13個・完全収録)
 // ==========================================
 
-
-// --- (2) 顧客詳細 ---
-function CustomerDetail({ customers = [] }) {
-  const { id } = useParams(); const c = customers?.find(x => x.id === Number(id));
-  if (!c) return <Page title="読込中..."><Loader2 size={24} className="animate-spin" /></Page>;
-  return (<Page title="顧客詳細"><Link to="/" style={{ display: "block", marginBottom: "24px", color: THEME.primary, textDecoration: "none", fontWeight: "700" }}>← 戻る</Link><div style={styles.card}><pre>{JSON.stringify(c, null, 2)}</pre></div></Page>);
-}
 
 // --- (3) 顧客登録 [テンプレートDL・項目設定ボタン統合] ---
 // --- (3) 顧客登録 [営業進捗・担当紐付け版] ---
@@ -720,7 +714,7 @@ return (
             <Route path="/add" element={<CustomerForm scenarios={d?.scenarios} formSettings={d?.formSettings} statuses={d?.statuses} masterUrl={MASTER_WHITELIST_API} onRefresh={refresh} />} />
             <Route path="/edit/:id" element={<CustomerEdit customers={d?.customers} scenarios={d?.scenarios} formSettings={d?.formSettings} statuses={d?.statuses} masterUrl={MASTER_WHITELIST_API} onRefresh={refresh} />} />
             <Route path="/schedule/:id" element={<CustomerSchedule customers={d?.customers} deliveryLogs={d?.deliveryLogs} onRefresh={refresh} />} />
-            <Route path="/detail/:id" element={<CustomerDetail customers={d?.customers} />} />
+            <Route path="/detail/:id" element={<CustomerDetail customers={d?.customers} formSettings={d?.formSettings} statuses={d?.statuses} trackingLogs={d?.trackingLogs} masterUrl={MASTER_WHITELIST_API} gasUrl={import.meta.env.VITE_GAS_URL} companyName={CLIENT_COMPANY_NAME} onRefresh={refresh} />} />
             <Route path="/direct-sms/:id" element={<DirectSms customers={d?.customers} templates={d?.templates} onRefresh={refresh} masterUrl={MASTER_WHITELIST_API} currentUserEmail={user?.email} />} />
             <Route path="/templates" element={<TemplateManager templates={d?.templates} onRefresh={refresh} />} />
             <Route path="/analysis" element={<AnalysisReport customers={d?.customers} statuses={d?.statuses} masterUrl={MASTER_WHITELIST_API} />} />
