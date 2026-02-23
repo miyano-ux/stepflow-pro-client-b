@@ -46,9 +46,20 @@ export default function TrackingDashboard() {
     return () => clearInterval(timer);
   }, []);
 
-  const totalSent = logs.length;
-  const totalClicked = logs.filter(l => parseInt(l.click_count) > 0).length;
-  const ctr = totalSent > 0 ? ((totalClicked / totalSent) * 100).toFixed(1) : 0;
+// 1. 総送信数（リンクの発行総数）
+const totalSent = logs.length;
+
+// 2. ユニーククリック数（クリックした「人」の数）
+// クリックが1回以上あるログの中から、customer_idを重複なく数える
+const clickedCustomerIds = new Set(
+  logs
+    .filter(l => parseInt(l.click_count) > 0)
+    .map(l => l.customer_id || l.customer_name) // IDがない場合は名前で代用
+);
+const totalClicked = clickedCustomerIds.size;
+
+// 3. クリック率 (CTR)
+const ctr = totalSent > 0 ? ((totalClicked / totalSent) * 100).toFixed(1) : 0;
 
   const isHot = (dateStr) => {
     if (!dateStr) return false;
