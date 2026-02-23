@@ -1,6 +1,6 @@
 // api/t/[id].js
 // インポートパス：api/t/ から見て 2つ上の階層の src/lib/googleSheets.js を指定
-import { googleSheets } from '../../src/lib/googleSheets';
+import { googleSheets } from '../../src/lib/googleSheets.js';
 
 export default async function handler(req, res) {
   // 1. URLからハッシュIDを抽出

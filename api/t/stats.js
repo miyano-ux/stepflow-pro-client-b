@@ -1,4 +1,4 @@
-import { googleSheets } from '../../src/lib/googleSheets';
+import { googleSheets } from '../../src/lib/googleSheets.js';
 
 export default async function handler(req, res) {
   if (req.method !== 'GET') return res.status(405).json({ message: 'Method not allowed' });

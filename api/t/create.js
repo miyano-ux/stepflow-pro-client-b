@@ -1,5 +1,5 @@
 // api/t/create.js
-import { googleSheets } from '../../src/lib/googleSheets';
+import { googleSheets } from '../../src/lib/googleSheets.js';
 
 // 8文字のランダムなハッシュIDを生成する関数
 const generateHash = () => {
