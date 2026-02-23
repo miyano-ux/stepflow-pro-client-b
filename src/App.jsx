@@ -939,7 +939,7 @@ function App() {
     <Route path="/analysis" element={<AnalysisReport customers={d?.customers} statuses={d?.statuses} masterUrl={MASTER_WHITELIST_API} />} />
     {/* 🆕 統合された反響取り込みポータル */}
     <Route path="/response-import" element={<ResponseImportPortal />} />
-    <Route path="/kanban" element={<KanbanBoard customers={d?.customers} statuses={d?.statuses} onRefresh={refresh} masterUrl={MASTER_WHITELIST_API} gasUrl={VITE_GAS_URL} companyName={CLIENT_COMPANY_NAME}/> } />
+    <Route path="/kanban" element={<KanbanBoard customers={d?.customers} statuses={d?.statuses} onRefresh={refresh} masterUrl={MASTER_WHITELIST_API} gasUrl={import.meta.env.VITE_GAS_URL} companyName={CLIENT_COMPANY_NAME}/> } />
     <Route path="/gmail-settings" element={<GmailSettings gmailSettings={d?.gmailSettings} scenarios={d?.scenarios} formSettings={d?.formSettings} onRefresh={refresh} />} />
     <Route path="/import-errors" element={<ImportErrorList errors={d?.importErrors} onRefresh={refresh} />} />
     
