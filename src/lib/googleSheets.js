@@ -1,33 +1,39 @@
 import { google } from 'googleapis';
 
-/**
- * Google Sheets API 認証設定
- */
-const auth = new google.auth.JWT(
-  process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
-  null,
-  // 秘密鍵の改行文字（\n）を正しく処理して復元する
-  process.env.GOOGLE_PRIVATE_KEY ? process.env.GOOGLE_PRIVATE_KEY.replace(/\\n/g, '\n') : undefined,
-  ['https://www.googleapis.com/auth/spreadsheets']
-);
+// 1. 環境変数がちゃんと存在するかチェック（デバッグ用）
+if (!process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL || !process.env.GOOGLE_PRIVATE_KEY) {
+  console.error('❌ 環境変数が読み込めていません。Vercelの設定を確認してください。');
+}
+
+// 2. 認証オブジェクトの作成（より安定した GoogleAuth 方式に変更）
+const auth = new google.auth.GoogleAuth({
+  credentials: {
+    client_email: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
+    // \n または ¥n を本物の改行コードに置換するよう修正
+    private_key: process.env.GOOGLE_PRIVATE_KEY 
+      ? process.env.GOOGLE_PRIVATE_KEY.replace(/\\n|¥n/g, '\n') 
+      : undefined,
+  },
+  scopes: ['https://www.googleapis.com/auth/spreadsheets'],
+});
 
 const sheets = google.sheets({ version: 'v4', auth });
 const SPREADSHEET_ID = process.env.TRACKING_SPREADSHEET_ID;
 
 export const googleSheets = {
   /**
-   * トラッキングIDを元に特定の行データを取得する
+   * トラッキングIDを元にデータを1件取得する
    */
   getLogById: async (id) => {
-    const range = 'TrackingLogs!A:I';
+    // 認証を確実に通すために auth を明示的に指定
     const response = await sheets.spreadsheets.values.get({
       spreadsheetId: SPREADSHEET_ID,
-      range,
+      range: 'TrackingLogs!A:I',
+      auth // 👈 追加
     });
     const rows = response.data.values;
     if (!rows) return null;
 
-    // A列 (tracking_id) と一致する行を検索
     const rowIndex = rows.findIndex(r => r[0] === id);
     if (rowIndex === -1) return null;
 
@@ -38,65 +44,56 @@ export const googleSheets = {
       customer_id: row[2],
       customer_name: row[3],
       click_count: parseInt(row[7] || '0'),
-      rowIndex: rowIndex + 1 // スプレッドシートの行番号（1始まり）
+      rowIndex: rowIndex + 1 
     };
   },
 
   /**
-   * 新規URL発行時にデータを1行追記する
+   * 新規ログ追記
    */
   appendLog: async (data) => {
     await sheets.spreadsheets.values.append({
       spreadsheetId: SPREADSHEET_ID,
       range: 'TrackingLogs!A:I',
       valueInputOption: 'USER_ENTERED',
+      auth, // 👈 追加
       requestBody: {
         values: [[
           data.tracking_id,
           data.original_url,
           data.customer_id,
           data.customer_name,
-          new Date().toLocaleString('ja-JP'), // sent_at (JST)
-          '', // clicked_at
-          '', // last_clicked_at
-          0,  // click_count
-          ''  // user_agent
+          new Date().toLocaleString('ja-JP'),
+          '', '', 0, ''
         ]],
       },
     });
   },
 
   /**
-   * クリック時のログ更新（回数増加と時刻・デバイス情報の記録）
+   * クリックログ更新
    */
   updateClickLog: async (rowIndex, currentCount, userAgent) => {
     const now = new Date().toLocaleString('ja-JP');
-    const updateRange = `TrackingLogs!F${rowIndex}:I${rowIndex}`;
-    
     await sheets.spreadsheets.values.update({
       spreadsheetId: SPREADSHEET_ID,
-      range: updateRange,
+      range: `TrackingLogs!F${rowIndex}:I${rowIndex}`,
       valueInputOption: 'USER_ENTERED',
+      auth, // 👈 追加
       requestBody: {
-        values: [[
-          // 初回クリック時刻(F)は本来保持すべきですが、簡易的に現在時刻で更新
-          now, 
-          now,             // G列: last_clicked_at
-          currentCount + 1, // H列: click_count
-          userAgent         // I列: user_agent
-        ]],
+        values: [[now, now, currentCount + 1, userAgent]],
       },
     });
   },
 
   /**
-   * 実況画面（ダッシュボード）用に全ログを取得する
+   * 全ログ取得
    */
   getAllLogs: async () => {
-    const range = 'TrackingLogs!A:I';
     const response = await sheets.spreadsheets.values.get({
       spreadsheetId: SPREADSHEET_ID,
-      range,
+      range: 'TrackingLogs!A:I',
+      auth // 👈 追加
     });
     const rows = response.data.values;
     if (!rows || rows.length <= 1) return [];
@@ -104,9 +101,7 @@ export const googleSheets = {
     const headers = rows[0];
     return rows.slice(1).map(row => {
       const obj = {};
-      headers.forEach((header, index) => {
-        obj[header] = row[index];
-      });
+      headers.forEach((header, index) => { obj[header] = row[index]; });
       return obj;
     });
   }
