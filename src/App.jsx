@@ -18,6 +18,7 @@ import { jwtDecode } from "jwt-decode";
 import TrackingDashboard from "./pages/TrackingDashboard";
 import AnalysisReport from "./pages/AnalysisReport.jsx";
 import UserManager from "./pages/UserManager.jsx";
+import KanbanBoard from "./pages/KanbanBoard.jsx";
 
 // ==========================================
 // 🔑 1. 環境設定・テーマ定義 [仕様書 1.1 準拠]
@@ -938,6 +939,7 @@ function App() {
     <Route path="/analysis" element={<AnalysisReport customers={d?.customers} statuses={d?.statuses} masterUrl={MASTER_WHITELIST_API} />} />
     {/* 🆕 統合された反響取り込みポータル */}
     <Route path="/response-import" element={<ResponseImportPortal />} />
+    <Route path="/kanban" element={<KanbanBoard customers={d?.customers} statuses={d?.statuses} onRefresh={refresh} masterUrl={MASTER_WHITELIST_API} gasUrl={VITE_GAS_URL} companyName={CLIENT_COMPANY_NAME}/> } />
     <Route path="/gmail-settings" element={<GmailSettings gmailSettings={d?.gmailSettings} scenarios={d?.scenarios} formSettings={d?.formSettings} onRefresh={refresh} />} />
     <Route path="/import-errors" element={<ImportErrorList errors={d?.importErrors} onRefresh={refresh} />} />
     
@@ -1201,87 +1203,7 @@ function ImportErrorList({ errors = [], onRefresh }) {
   );
 }
 
-/**
- * (16) KanbanBoard コンポーネント (V18.3 楽観的更新・リアルタイムUI版)
- * 役割: 営業進捗を視覚的に管理。ドロップと同時にUIを即時反映し、バックグラウンドでGAS同期を行う。
- */
-function KanbanBoard({ customers = [], statuses = [], onRefresh, masterUrl }) {
-  const navigate = useNavigate(); // 🆕 遷移用
-  const [filterStaff, setFilterStaff] = useState("");
-  const [staffList, setStaffList] = useState([]);
-  const [localCustomers, setLocalCustomers] = useState(customers);
 
-  useEffect(() => { setLocalCustomers(customers); }, [customers]);
-  useEffect(() => {
-    const fetchStaff = async () => {
-      try {
-        const res = await axios.get(`${masterUrl}?action=list&company=${CLIENT_COMPANY_NAME}`);
-        setStaffList(res?.data?.users || []);
-      } catch(e) { console.error(e); }
-    };
-    if (masterUrl) fetchStaff();
-  }, [masterUrl]);
-
-  const onDragStart = (e, customerId) => e.dataTransfer.setData("customerId", customerId);
-  const onDragOver = (e) => e.preventDefault();
-  const onDrop = async (e, newStatus) => {
-    const cid = e.dataTransfer.getData("customerId");
-    const updated = localCustomers.map(c => String(c.id) === String(cid) ? { ...c, "対応ステータス": newStatus } : c);
-    setLocalCustomers(updated);
-    try {
-      await apiCall.post(GAS_URL, { action: "updateStatus", id: cid, status: newStatus });
-      onRefresh();
-    } catch (err) { alert("通信エラー"); onRefresh(); }
-  };
-
-  const filtered = localCustomers.filter(c => !filterStaff || c["担当者メール"] === filterStaff);
-
-  return (
-    <Page title="案件管理カンバン" topButton={
-      <div style={{display:"flex", gap:16, alignItems:"center"}}>
-        {/* 🆕 ステータス管理への導線ボタン */}
-        <button onClick={() => navigate("/status-settings")} style={{ ...styles.btn, ...styles.btnSecondary }}>
-          <ListTodo size={18} /> ステータス項目の調整
-        </button>
-        
-        <div style={{ width: "1px", height: "24px", backgroundColor: THEME.border }}></div>
-
-        <span style={{fontSize:12, fontWeight:800, color:THEME.textMuted}}>担当で絞り込み:</span>
-        <select style={{...styles.input, width:200}} value={filterStaff} onChange={e=>setFilterStaff(e.target.value)}>
-          <option value="">全ての担当者</option>
-          {staffList.map(s => <option key={s.email} value={s.email}>{s.lastName} {s.firstName}</option>)}
-        </select>
-      </div>
-    }>
-      <div style={{ display: "flex", gap: "20px", overflowX: "auto", paddingBottom: "20px", alignItems: "flex-start" }}>
-        {statuses.map(st => {
-          const colCustomers = filtered.filter(c => (c["対応ステータス"] || "未対応") === st.name);
-          return (
-            <div key={st.name} onDragOver={onDragOver} onDrop={(e) => onDrop(e, st.name)} style={{ minWidth: "320px", backgroundColor: "#F1F5F9", borderRadius: "16px", padding: "16px", minHeight: "70vh" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px", padding: "0 8px" }}>
-                <h3 style={{ fontSize: "15px", fontWeight: "900", margin: 0 }}>{st.name}</h3>
-                <span style={styles.badge}>{colCustomers.length}</span>
-              </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-                {colCustomers.map(c => (
-                  <div key={c.id} draggable onDragStart={(e) => onDragStart(e, c.id)} style={{ ...styles.card, padding: "16px", cursor: "grab", border: "1px solid transparent" }} onMouseEnter={e=>e.currentTarget.style.borderColor=THEME.primary} onMouseLeave={e=>e.currentTarget.style.borderColor="transparent"}>
-                    <div style={{ fontWeight: "800", marginBottom: "8px", fontSize: "14px" }}>{c["姓"]} {c["名"]} 様</div>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                      <div style={{ fontSize: "11px", color: THEME.textMuted, display: "flex", alignItems: "center", gap: 4 }}>
-                        <UserCircle size={12}/> {staffList.find(s => s.email === c["担当者メール"])?.lastName || "未割当"}
-                      </div>
-                      <Link to={`/direct-sms/${c.id}`} style={{ color: THEME.primary }}><MessageSquare size={14}/></Link>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </Page>
-  );
-}
 
 /**
  * (17) StatusSettings コンポーネント (V18.2 ドラッグ＆ドロップ対応版)
