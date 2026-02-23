@@ -23,6 +23,9 @@ import StatusSettings from "./pages/StatusSettings.jsx";
 import CustomerList from "./pages/CustomerList.jsx";
 import ColumnSettings from "./pages/ColumnSettings.jsx";
 import CustomerDetail from "./pages/CustomerDetail.jsx";
+import TemplateManager from "./pages/TemplateManager.jsx";
+import ScenarioList from "./pages/ScenarioList.jsx";
+import ScenarioForm from "./pages/ScenarioForm.jsx";
 
 // ==========================================
 // 🔑 1. 環境設定・テーマ定義 [仕様書 1.1 準拠]
@@ -566,114 +569,6 @@ function DirectSms({ customers = [], templates = [], onRefresh, masterUrl, curre
     </div></Page>);
 }
 
-// --- (7) テンプレート管理 ---
-function TemplateManager({ templates = [], onRefresh }) {
-  const [modal, setModal] = useState({ open: false, data: { id: "", name: "", content: "" } });
-  
-  // 🆕 プリセットテキストをプロ仕様に拡充
-  const PRESET_CONTENT = 
-    "{{姓}} {{名}} 様\n\n[ここにメッセージ本文を入力してください]\n\n" +
-    "--------------------------\n" +
-    "担当：{{担当者姓}}\n" +
-    "電話：{{担当者電話}}\n" +
-    "メール：{{担当者メール}}";
-
-  return (<Page title="テンプレート管理" topButton={<button onClick={() => setModal({ open: true, data: { id: "", name: "", content: PRESET_CONTENT } })} style={{ ...styles.btn, ...styles.btnPrimary }}><Plus size={18}/> 新規追加</button>}>
-    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(350px, 1fr))", gap: "24px" }}>{templates.map(t => (<div key={t.id} style={styles.card}><div style={{ display: "flex", justifyContent: "space-between", marginBottom: "12px" }}><h3 style={{ margin: 0, fontSize: "16px" }}>{t.name}</h3><div style={{ display: "flex", gap: "8px" }}><button onClick={() => setModal({ open: true, data: t })} style={{ background: "none", border: "none", color: THEME.textMuted, cursor: "pointer" }}><Edit3 size={16}/></button><button onClick={async() => { if(window.confirm("削除？")){ await apiCall.post(GAS_URL, { action: "deleteTemplate", id: t.id }); onRefresh(); }}} style={{ background: "none", border: "none", color: THEME.danger, cursor: "pointer" }}><Trash2 size={16}/></button></div></div><pre style={{ fontSize: "13px", color: THEME.textMuted, whiteSpace: "pre-wrap", background: "#F8FAFC", padding: "12px", borderRadius: "8px", lineHeight: "1.6" }}>{t.content}</pre></div>))}</div>
-    {modal.open && (<div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(0,0,0,0.5)", display: "flex", justifyContent: "center", alignItems: "center", zIndex: 2000 }}>
-      <div style={{ ...styles.card, width: "600px" }}>
-        <h3>テンプレートの編集</h3>
-        <form onSubmit={async(e)=>{e.preventDefault(); await apiCall.post(GAS_URL,{action:"saveTemplate",...modal.data}); setModal({open:false}); onRefresh();}}>
-          <label style={{fontSize: 11, fontWeight: 800, color: THEME.textMuted, marginBottom: 6, display: "block"}}>テンプレート名</label>
-          <input style={{ ...styles.input, marginBottom: "16px" }} value={modal.data.name} onChange={e => setModal({...modal, data: {...modal.data, name: e.target.value}})} placeholder="例：反響御礼" required />
-          
-          <label style={{fontSize: 11, fontWeight: 800, color: THEME.textMuted, marginBottom: 6, display: "block"}}>本文（[...] の部分を書き換えてください）</label>
-          <textarea style={{ ...styles.input, height: "300px", resize: "none", marginBottom: "20px", lineHeight: "1.6" }} value={modal.data.content} onChange={e => setModal({...modal, data: {...modal.data, content: e.target.value}})} required />
-          
-          <div style={{ display: "flex", gap: "12px" }}>
-            <button type="submit" style={{ ...styles.btn, ...styles.btnPrimary, flex: 1 }}>テンプレートを保存</button>
-            <button type="button" onClick={() => setModal({ open: false })} style={{ ...styles.btn, ...styles.btnSecondary, flex: 1 }}>キャンセル</button>
-          </div>
-        </form>
-      </div>
-    </div>)}</Page>);
-}
-
-// --- (8) シナリオ一覧 ---
-function ScenarioList({ scenarios = [], onRefresh }) {
-  const g = (scenarios || []).reduce((acc, item) => { (acc[item["シナリオID"]] = acc[item["シナリオID"]] || []).push(item); return acc; }, {});
-  return (<Page title="シナリオ管理" topButton={<Link to="/scenarios/new" style={{...styles.btn, ...styles.btnPrimary, textDecoration:"none"}}><Plus size={18}/> 新規作成</Link>}><div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(360px, 1fr))", gap: "32px" }}>
-    {Object.entries(g).map(([id, steps]) => (
-      <div key={id} style={{ ...styles.card, display: "flex", flexDirection: "column", padding: 0, overflow: "hidden" }}>
-        <div style={{ padding: "32px", flexGrow: 1 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "20px" }}>
-            <div style={{ backgroundColor: "#F5F3FF", color: THEME.primary, padding: "8px 16px", borderRadius: "12px", fontWeight: "900", fontSize: "18px" }}>{id}</div>
-            <button onClick={async()=>{if(window.confirm("削除？")){await apiCall.post(GAS_URL,{action:"deleteScenario",scenarioID:id});onRefresh();}}} style={{ color: THEME.danger, background: "#FEF2F2", padding: "8px", borderRadius: "8px", border: "none" }}><Trash2 size={18}/></button>
-          </div>
-          <div style={{ display: "flex", alignItems: "center", gap: "10px", color: THEME.textMuted, fontSize: "14px", marginBottom: "24px" }}><Clock size={16} /> {steps.length} ステップ</div>
-          <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-            {steps.sort((a,b)=>a["ステップ数"]-b["ステップ数"]).slice(0,3).map((st, i) => (
-              <div key={i} style={{ display: "flex", alignItems: "center", gap: "12px", fontSize: "13px" }}>
-                <div style={{ width: "6px", height: "6px", borderRadius: "50%", backgroundColor: THEME.primary }}></div>
-                <span style={{ fontWeight: "800", minWidth: "40px" }}>{st["経過日数"]}日後</span>
-                <span style={{ color: THEME.textMuted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{st["message"]}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-        <div style={{ padding: "0 24px 24px 24px" }}>
-          <Link to={`/scenarios/edit/${encodeURIComponent(id)}`} style={{ ...styles.btn, ...styles.btnSecondary, width: "100%", textDecoration: "none", justifyContent: "space-between" }}>
-            <span>配信ステップを編集</span><ChevronRight size={18} />
-          </Link>
-        </div>
-      </div>
-    ))}</div></Page>);
-}
-
-// --- (9) シナリオ編集 ---
-function ScenarioForm({ scenarios = [], onRefresh }) {
-  const { id } = useParams(); const nav = useNavigate();
-  const [name, setName] = useState("");
-  const [st, setSt] = useState([{ elapsedDays: 1, deliveryHour: 10, message: "" }]);
-  const [saving, setSaving] = useState(false);
-
-  useEffect(() => {
-    if (id) {
-      const dId = decodeURIComponent(id); setName(dId);
-      const ex = (scenarios || []).filter(item => item["シナリオID"] === dId).sort((a,b)=>a["ステップ数"]-b["ステップ数"]);
-      if (ex.length) setSt(ex.map(item => ({ elapsedDays: item["経過日数"], deliveryHour: item["配信時間"], message: item["message"] })));
-    }
-  }, [id, scenarios]);
-
-  return (<Page title={id ? "シナリオ編集" : "新規作成"} topButton={<button onClick={async()=>{setSaving(true); try{await apiCall.post(GAS_URL,{action:"saveScenario",scenarioID:name,steps:st}); onRefresh(); nav("/scenarios");}catch(e){alert(e.message)}finally{setSaving(false)}}} disabled={saving} style={{...styles.btn, ...styles.btnPrimary}}>{saving ? <Loader2 className="animate-spin" size={18}/> : <Save size={18}/>} 保存</button>}>
-      <div style={{ maxWidth: "850px", margin: "0 auto" }}>
-        <div style={{ ...styles.card, marginBottom: "40px" }}>
-          <label style={{ fontSize: "13px", fontWeight: "900", color: THEME.textMuted, display: "block", marginBottom: "12px" }}>シナリオID</label>
-          <input style={{ ...styles.input, fontSize: "18px", fontWeight: "700" }} value={name} onChange={e=>setName(e.target.value)} disabled={!!id} placeholder="ID..." />
-        </div>
-        <div style={{ display: "flex", flexDirection: "column", gap: "32px" }}>
-          {st.map((item, idx) => (
-            <div key={idx} style={{ ...styles.card, padding: 0, overflow: "hidden", border: `1px solid ${THEME.border}` }}>
-              <div style={{ backgroundColor: "#1E293B", padding: "14px 24px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <span style={{ color: "white", fontWeight: "900" }}>STEP {idx+1}</span>
-                <button onClick={()=>setSt(st.filter((_, i)=>i !== idx))} style={{ color: "#94A3B8", background: "none", border: "none" }}><Trash2 size={20}/></button>
-              </div>
-              <div style={{ padding: "32px" }}>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "24px", marginBottom: "32px" }}>
-                  <div><label style={{fontWeight:900, fontSize:12}}><Calendar size={14}/> 経過日数</label><div style={{position:"relative"}}><input style={{...styles.input, fontWeight:700}} type="number" value={item.elapsedDays} onChange={e=>{const n=[...st];n[idx].elapsedDays=e.target.value;setSt(n)}}/><span style={{position:"absolute", right:16, top:12, color:THEME.textMuted}}>日後</span></div></div>
-                  <div><label style={{fontWeight:900, fontSize:12}}><Clock size={14}/> 配信時間</label><div style={{position:"relative"}}><input style={{...styles.input, fontWeight:700}} type="number" min="0" max="23" value={item.deliveryHour} onChange={e=>{const n=[...st];n[idx].deliveryHour=e.target.value;setSt(n)}}/><span style={{position:"absolute", right:16, top:12, color:THEME.textMuted}}>時</span></div></div>
-                </div>
-                <textarea style={{ ...styles.input, height: "140px", resize: "none" }} value={item.message} onChange={e=>{const n=[...st];n[idx].message=e.target.value;setSt(n)}} placeholder="メッセージ..." />
-                <div style={{ textAlign: "right", marginTop: 10, fontSize: 12, fontWeight: 800, color: item.message.length > 70 ? THEME.danger : THEME.textMuted }}>{item.message.length}文字 {item.message.length > 70 && "(長文SMS)"}</div>
-              </div>
-            </div>
-          ))}
-        </div>
-        <button onClick={()=>setSt([...st,{elapsedDays:1,deliveryHour:10,message:""}])} style={{ ...styles.btn, ...styles.btnSecondary, width: "100%", height: "64px", borderStyle: "dashed", marginTop: "40px" }}><Plus size={24}/> ステップ追加</button>
-      </div>
-    </Page>);
-}
-
 
 // --- (11) 項目定義 [仕様書 3.6 復旧・強化版] ---
 function FormSettings({ formSettings = [], onRefresh }) {
@@ -716,16 +611,16 @@ return (
             <Route path="/schedule/:id" element={<CustomerSchedule customers={d?.customers} deliveryLogs={d?.deliveryLogs} onRefresh={refresh} />} />
             <Route path="/detail/:id" element={<CustomerDetail customers={d?.customers} formSettings={d?.formSettings} statuses={d?.statuses} trackingLogs={d?.trackingLogs} masterUrl={MASTER_WHITELIST_API} gasUrl={import.meta.env.VITE_GAS_URL} companyName={CLIENT_COMPANY_NAME} onRefresh={refresh} />} />
             <Route path="/direct-sms/:id" element={<DirectSms customers={d?.customers} templates={d?.templates} onRefresh={refresh} masterUrl={MASTER_WHITELIST_API} currentUserEmail={user?.email} />} />
-            <Route path="/templates" element={<TemplateManager templates={d?.templates} onRefresh={refresh} />} />
+            <Route path="/templates" element={<TemplateManager templates={d?.templates} onRefresh={refresh} gasUrl={import.meta.env.VITE_GAS_URL} />} />
             <Route path="/analysis" element={<AnalysisReport customers={d?.customers} statuses={d?.statuses} masterUrl={MASTER_WHITELIST_API} />} />
             <Route path="/response-import" element={<ResponseImportPortal />} />
             <Route path="/kanban" element={<KanbanBoard customers={d?.customers} statuses={d?.statuses} onRefresh={refresh} masterUrl={MASTER_WHITELIST_API} gasUrl={import.meta.env.VITE_GAS_URL} companyName={CLIENT_COMPANY_NAME}/> } />
             <Route path="/gmail-settings" element={<GmailSettings gmailSettings={d?.gmailSettings} scenarios={d?.scenarios} formSettings={d?.formSettings} onRefresh={refresh} />} />
             <Route path="/import-errors" element={<ImportErrorList errors={d?.importErrors} onRefresh={refresh} />} />
             <Route path="/form-settings" element={<FormSettings formSettings={d?.formSettings} onRefresh={refresh} />} />
-            <Route path="/scenarios" element={<ScenarioList scenarios={d?.scenarios} onRefresh={refresh} />} />
-            <Route path="/scenarios/new" element={<ScenarioForm scenarios={d?.scenarios} onRefresh={refresh} />} />
-            <Route path="/scenarios/edit/:id" element={<ScenarioForm scenarios={d?.scenarios} onRefresh={refresh} />} />
+            <Route path="/scenarios" element={<ScenarioList scenarios={d?.scenarios} onRefresh={refresh} gasUrl={import.meta.env.VITE_GAS_URL} />} />
+            <Route path="/scenarios/new" element={<ScenarioForm scenarios={d?.scenarios} onRefresh={refresh} gasUrl={import.meta.env.VITE_GAS_URL} />} />
+            <Route path="/scenarios/edit/:id" element={<ScenarioForm scenarios={d?.scenarios} onRefresh={refresh} gasUrl={import.meta.env.VITE_GAS_URL} />} />
             <Route path="/users" element={<UserManager masterUrl={MASTER_WHITELIST_API} companyName={CLIENT_COMPANY_NAME}/>} />
             <Route path="/users/add" element={<UserForm masterUrl={MASTER_WHITELIST_API} />} />
             <Route path="/users/edit/:id" element={<UserForm masterUrl={MASTER_WHITELIST_API} />} />
