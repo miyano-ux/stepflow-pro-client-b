@@ -488,7 +488,7 @@ function CustomerEdit({ customers = [], scenarios = [], formSettings = [], statu
       // 既存データをセット。対応ステータスや担当者が未設定の場合のフォールバック
       setFd({ 
         ...c, 
-        "対応ステータス": c["対応ステータス"] || "未対応",
+        "対応ステータス": c["対応ステータス"] || flowingStatuses[0]?.name || "未対応",
         "担当者メール": c["担当者メール"] || ""
       }); 
       setSc(c["シナリオID"]); 

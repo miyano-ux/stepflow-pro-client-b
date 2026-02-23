@@ -1,9 +1,9 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import axios from "axios";
 import { 
   Columns, ListTodo, UserCircle, MessageSquare, 
-  Trophy, Moon, Trash2, ChevronDown, Loader2, Users, CheckCircle2
+  Trophy, Moon, Trash2, ChevronDown, Loader2, Users 
 } from "lucide-react";
 
 const THEME = {
@@ -18,7 +18,6 @@ const styles = {
   select: { width: "100%", border: "none", outline: "none", backgroundColor: "transparent", fontSize: "13px", fontWeight: "800", color: THEME.textMain, appearance: "none", cursor: "pointer", zIndex: 1 },
   kanbanContainer: { display: "flex", gap: "20px", overflowX: "auto", paddingBottom: "24px", flex: 1, alignItems: "flex-start" },
   column: { minWidth: "310px", width: "310px", backgroundColor: "#EDF2F7", borderRadius: "20px", padding: "16px", minHeight: "60vh", border: "1px solid #E2E8F0" },
-  // 🆕 transitionを追加して滑らかな動きに
   card: { backgroundColor: "#FFF", borderRadius: "14px", padding: "16px", boxShadow: "0 4px 6px -1px rgba(0,0,0,0.05)", cursor: "grab", transition: "transform 0.2s, box-shadow 0.2s, opacity 0.2s", border: "2px solid transparent" },
   bottomBar: { position: "sticky", bottom: 0, left: 0, right: 0, backgroundColor: "rgba(255, 255, 255, 0.95)", backdropFilter: "blur(12px)", padding: "20px 40px", borderTop: `1px solid ${THEME.border}`, display: "flex", gap: "24px", justifyContent: "center", zIndex: 10 },
   specialZone: { flex: 1, maxWidth: "320px", height: "74px", borderRadius: "18px", display: "flex", alignItems: "center", justifyContent: "center", gap: "12px", fontWeight: "900", fontSize: "16px", border: "3px dashed transparent", transition: "all 0.3s cubic-bezier(0.4, 0, 0.2, 1)" }
@@ -30,10 +29,9 @@ export default function KanbanBoard({ customers = [], statuses = [], onRefresh, 
   const [staffList, setStaffList] = useState([]);
   const [localCustomers, setLocalCustomers] = useState(customers);
   const [draggingId, setDraggingId] = useState(null);
-  const [syncingCount, setSyncingCount] = useState(0); // 🆕 実行中の通信数
+  const [syncingCount, setSyncingCount] = useState(0);
 
-  // 🆕 賢い同期ロジック
-  // 通信中（syncingCount > 0）の間は、親からの props で localState を上書きしない
+  // 1. 同期ガードロジック
   useEffect(() => {
     if (syncingCount === 0) {
       setLocalCustomers(customers);
@@ -50,7 +48,7 @@ export default function KanbanBoard({ customers = [], statuses = [], onRefresh, 
     if (masterUrl) fetchStaff();
   }, [masterUrl, companyName]);
 
-  // ステータス動的取得（最後から3つを終着ラベルとする）
+  // 2. ステータス動的取得（最後から3つを目的別ラベルとする）
   const wonLabel = statuses[statuses.length - 3]?.name || "成約";
   const dormantLabel = statuses[statuses.length - 2]?.name || "休眠";
   const lostLabel = statuses[statuses.length - 1]?.name || "失注";
@@ -63,28 +61,24 @@ export default function KanbanBoard({ customers = [], statuses = [], onRefresh, 
   const onDragEnd = () => setDraggingId(null);
   const onDragOver = (e) => e.preventDefault();
 
-  // 🆕 改良版 onDrop
   const onDrop = async (e, newStatus) => {
     const cid = e.dataTransfer.getData("customerId");
     if (!cid) return;
     setDraggingId(null);
 
-    // 1. UIを即座に更新（楽観的更新）
+    // UIを即座に更新
     setLocalCustomers(prev => prev.map(c => 
       String(c.id) === String(cid) ? { ...c, "対応ステータス": newStatus } : c
     ));
 
-    // 2. 通信開始（カウンタアップ）
     setSyncingCount(prev => prev + 1);
 
     try {
-      // 3. GAS同期
       await axios.post(gasUrl, 
         JSON.stringify({ action: "updateStatus", id: String(cid), status: newStatus }), 
         { headers: { 'Content-Type': 'text/plain;charset=utf-8' } }
       );
       
-      // 🆕 4. 少し待ってからリフレッシュ（GASの書き込み完了を待つ）
       setTimeout(() => {
         onRefresh();
         setSyncingCount(prev => Math.max(0, prev - 1));
@@ -93,7 +87,7 @@ export default function KanbanBoard({ customers = [], statuses = [], onRefresh, 
     } catch (err) {
       console.error("Sync error:", err);
       setSyncingCount(prev => Math.max(0, prev - 1));
-      onRefresh(); // エラー時は強制リフレッシュ
+      onRefresh();
     }
   };
 
@@ -104,7 +98,7 @@ export default function KanbanBoard({ customers = [], statuses = [], onRefresh, 
       <div style={styles.wrapper}>
         <header style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "32px" }}>
           <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
-            <h1 style={{ fontSize: "32px", fontWeight: "900", color: THEME.textMain, margin: 0 }}>案件管理カンバン</h1>
+            <h1 style={{ fontSize: "32px", fontWeight: "900", color: THEME.textMain, margin: 0, letterSpacing: "-0.02em" }}>案件管理カンバン</h1>
             {syncingCount > 0 && (
               <div style={{ display: "flex", alignItems: "center", gap: "8px", color: THEME.primary, backgroundColor: "#EEF2FF", padding: "6px 12px", borderRadius: "20px", fontSize: "12px", fontWeight: "800" }}>
                 <Loader2 className="animate-spin" size={14} /> 同期中 ({syncingCount})
@@ -112,7 +106,7 @@ export default function KanbanBoard({ customers = [], statuses = [], onRefresh, 
             )}
           </div>
           <div style={{ display: "flex", gap: 16, alignItems: "center" }}>
-            <button onClick={() => navigate("/status-settings")} style={{ backgroundColor: "#FFF", border: `1px solid ${THEME.border}`, padding: "10px 20px", borderRadius: "10px", fontWeight: "800", display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}><ListTodo size={18} /> ステータス調整</button>
+            <button onClick={() => navigate("/status-settings")} style={{ backgroundColor: "#FFF", border: `1px solid ${THEME.border}`, padding: "10px 20px", borderRadius: "10px", fontWeight: "800", display: "flex", alignItems: "center", gap: 8, cursor: "pointer", color: THEME.textMain }}><ListTodo size={18} /> ステータス調整</button>
             <div style={styles.selectContainer}>
               <Users size={16} color={THEME.textMuted} style={{ marginRight: 8 }} />
               <select style={styles.select} value={filterStaff} onChange={e => setFilterStaff(e.target.value)}>
@@ -125,12 +119,26 @@ export default function KanbanBoard({ customers = [], statuses = [], onRefresh, 
         </header>
 
         <div style={styles.kanbanContainer}>
-          {flowingStatuses.map(st => {
-            const colCustomers = filtered.filter(c => (c["対応ステータス"] || "未対応") === st.name);
+          {flowingStatuses.map((st, idx) => {
+            // 🆕 迷子（空欄・定義外）の顧客を1番左に救い上げる最新ロジック
+            const colCustomers = filtered.filter(c => {
+              const currentStatus = (c["対応ステータス"] || "").trim();
+              
+              // 1. カラム名と完全一致する場合
+              if (currentStatus === st.name.trim()) return true;
+
+              // 2. ステータスが空、または「ステータス設定」に存在しない名前の場合
+              // かつ、今描画しているのが「一番左」の列であれば表示する
+              const isKnown = statuses.some(s => s.name.trim() === currentStatus);
+              if (idx === 0 && (!currentStatus || !isKnown)) return true;
+
+              return false;
+            });
+
             return (
               <div key={st.name} onDragOver={onDragOver} onDrop={(e) => onDrop(e, st.name)} style={styles.column}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px", padding: "0 8px" }}>
-                  <h3 style={{ fontSize: "14px", fontWeight: "900", color: THEME.textMain, textTransform: "uppercase" }}>{st.name}</h3>
+                  <h3 style={{ fontSize: "14px", fontWeight: "900", color: THEME.textMain, textTransform: "uppercase", letterSpacing: "0.05em" }}>{st.name}</h3>
                   <span style={{ backgroundColor: THEME.primary, color: "white", padding: "2px 10px", borderRadius: "20px", fontSize: "12px", fontWeight: "900" }}>{colCustomers.length}</span>
                 </div>
                 <div style={{ display: "flex", flexDirection: "column", gap: "12px", minHeight: "100px" }}>
@@ -163,6 +171,7 @@ export default function KanbanBoard({ customers = [], statuses = [], onRefresh, 
         </div>
       </div>
 
+      {/* 終着スペシャルゾーン */}
       <div style={styles.bottomBar}>
         <div onDragOver={onDragOver} onDrop={(e) => onDrop(e, wonLabel)} style={{ ...styles.specialZone, backgroundColor: draggingId ? "#ECFDF5" : "#F9FAFB", color: THEME.success, borderColor: draggingId ? THEME.success : THEME.border }}>
           <Trophy size={24} /> {wonLabel}
