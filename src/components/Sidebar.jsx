@@ -82,7 +82,7 @@ const styles = {
     display: "flex",
     flexDirection: "column",
     padding: "24px 16px",
-    backgroundColor: "#0D0B1F",           // ロゴ背景色に統一
+    backgroundColor: "#3730A3",           // ロゴの暗い文字が映えるネイビーパープル
     boxSizing: "border-box",
     zIndex: 1000,
     borderRight: "1px solid rgba(255,255,255,0.05)",
@@ -92,7 +92,7 @@ const styles = {
     paddingLeft: "8px",
   },
   logoImg: {
-    height: "56px",                        // 32px → 56px に拡大
+    height: "56px",
     width: "auto",
     maxWidth: "220px",
     display: "block",
