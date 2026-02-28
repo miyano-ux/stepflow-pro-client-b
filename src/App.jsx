@@ -51,6 +51,7 @@ function App() {
     importErrors: [],
     statuses: [],
     trackingLogs: [],
+    scenarioSettings: {},
   });
   const [load, setLoad] = useState(true);
   const [user, setUser] = useState(() => {
@@ -186,7 +187,7 @@ function App() {
 
               {/* テンプレート・シナリオ */}
               <Route path="/templates" element={<TemplateManager templates={d?.templates} onRefresh={refresh} gasUrl={GAS_URL} />} />
-              <Route path="/scenarios" element={<ScenarioList scenarios={d?.scenarios} onRefresh={refresh} gasUrl={GAS_URL} />} />
+              <Route path="/scenarios" element={<ScenarioList scenarios={d?.scenarios} scenarioSettings={d?.scenarioSettings} statuses={d?.statuses} onRefresh={refresh} gasUrl={GAS_URL} />} />
               <Route path="/scenarios/new" element={<ScenarioForm scenarios={d?.scenarios} onRefresh={refresh} gasUrl={GAS_URL} />} />
               <Route path="/scenarios/edit/:id" element={<ScenarioForm scenarios={d?.scenarios} onRefresh={refresh} gasUrl={GAS_URL} />} />
 
@@ -205,7 +206,7 @@ function App() {
               <Route path="/tracking" element={<TrackingDashboard />} />
 
               {/* カンバン */}
-              <Route path="/kanban" element={<KanbanBoard customers={d?.customers} statuses={d?.statuses} onRefresh={refresh} masterUrl={MASTER_WHITELIST_API} gasUrl={GAS_URL} companyName={CLIENT_COMPANY_NAME} />} />
+              <Route path="/kanban" element={<KanbanBoard customers={d?.customers} statuses={d?.statuses} scenarios={d?.scenarios} scenarioSettings={d?.scenarioSettings} onRefresh={refresh} masterUrl={MASTER_WHITELIST_API} gasUrl={GAS_URL} companyName={CLIENT_COMPANY_NAME} />} />
             </Routes>
           </main>
 
