@@ -163,7 +163,6 @@ function App() {
           {/* メインコンテンツ */}
           <main
             style={{
-              marginLeft: "260px",
               flex: 1,
               minWidth: 0,
               backgroundColor: THEME.bg,
