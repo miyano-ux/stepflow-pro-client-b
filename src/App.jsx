@@ -51,7 +51,7 @@ const globalStyle = `
 
 const styles = {
   sidebar: { width: "260px", backgroundColor: THEME.sidebar, color: "white", height: "100vh", position: "fixed", top: 0, left: 0, padding: "32px 24px", boxSizing: "border-box", zIndex: 1000, display: "flex", flexDirection: "column" },
-  main: {  width: "calc(100% - 260px)", minHeight: "100vh", backgroundColor: THEME.bg, boxSizing: "border-box" },
+  main: {  width: "100%", minHeight: "100vh", backgroundColor: THEME.bg, boxSizing: "border-box" },
   card: { backgroundColor: THEME.card, borderRadius: "16px", border: `1px solid ${THEME.border}`, padding: "24px", boxShadow: "0 4px 6px -1px rgba(0,0,0,0.05)", boxSizing: "border-box", width: "100%" },
   input: { width: "100%", padding: "12px 16px", borderRadius: "10px", border: `1px solid ${THEME.border}`, fontSize: "14px", outline: "none", boxSizing: "border-box", backgroundColor: "white", transition: "0.2s" },
   btn: { display: "flex", alignItems: "center", justifyContent: "center", gap: "8px", padding: "12px 20px", borderRadius: "10px", border: "none", fontWeight: "700", cursor: "pointer", transition: "0.2s", fontSize: "14px", boxSizing: "border-box" },
