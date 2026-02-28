@@ -40,11 +40,11 @@ const Sidebar = ({ onLogout }) => {
               src="/logo_beta.png"
               alt="SMOOSy"
               style={{
-                height: "36px",
+                height: "65px",
                 width: "auto",
-                maxWidth: expanded ? "160px" : "36px",
+                maxWidth: expanded ? "200px" : "40px",
                 objectFit: "contain",
-                objectPosition: "left",
+                objectPosition: "left center",
                 transition: "max-width 0.25s ease",
               }}
             />
@@ -117,7 +117,10 @@ const Sidebar = ({ onLogout }) => {
         <button
           onClick={() => setExpanded(!expanded)}
           title={expanded ? "閉じる" : "開く"}
-          style={styles.toggleBtn}
+          style={{
+            ...styles.toggleBtn,
+            justifyContent: expanded ? "flex-end" : "center",
+          }}
         >
           {expanded
             ? <ChevronLeft size={16} color="#5B4FCE" />
@@ -184,19 +187,14 @@ const styles = {
   toggleBtn: {
     display: "flex",
     alignItems: "center",
-    justifyContent: "center",
-    position: "absolute",
-    bottom: "88px",
-    right: "-12px",
-    width: "24px",
-    height: "24px",
-    borderRadius: "50%",
-    backgroundColor: "#FFFFFF",
-    border: "1px solid #E4E2F5",
-    boxShadow: "0 2px 8px rgba(91, 79, 206, 0.15)",
+    padding: "8px 16px",
+    background: "transparent",
+    color: "#5B4FCE",
+    border: "none",
+    borderTop: "1px solid #F0EFF9",
     cursor: "pointer",
-    padding: 0,
-    zIndex: 1001,
+    width: "100%",
+    marginTop: "4px",
   },
 };
 
