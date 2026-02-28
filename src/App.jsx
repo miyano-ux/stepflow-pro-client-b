@@ -170,7 +170,18 @@ function DateRangePicker({ label, value = {}, onChange }) {
 
 
 function Page({ title, subtitle, children, topButton }) {
-  return (<div style={styles.main}><div style={{ padding: "48px 64px", maxWidth: "1440px", margin: "0 auto" }}><div style={{ marginBottom: "40px", display: "flex", justifyContent: "space-between", alignItems: "center" }}><div><h1 style={{ fontSize: "32px", fontWeight: "900", color: THEME.textMain, margin: 0 }}>{title}</h1>{subtitle && <p style={{ color: THEME.textMuted, fontSize: "15px", marginTop: "6px" }}>{subtitle}</p>}</div>{topButton}</div>{children}</div></div>);
+  return (<div style={{ width: "100%", minHeight: "100vh" }}>
+      <div style={{ padding: "48px 32px", maxWidth: "1440px", margin: "0 auto" }}>
+        <div style={{ marginBottom: "40px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <div>
+            <h1 style={{ fontSize: "32px", fontWeight: "900", color: THEME.textMain, margin: 0 }}>{title}</h1>
+            {subtitle && <p style={{ color: THEME.textMuted, fontSize: "15px", marginTop: "6px" }}>{subtitle}</p>}
+          </div>
+          {topButton}
+        </div>
+        {children}
+      </div>
+    </div>);
 }
 
 // ==========================================
