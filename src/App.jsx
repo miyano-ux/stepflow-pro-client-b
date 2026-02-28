@@ -28,6 +28,7 @@ import ScenarioList from "./pages/ScenarioList.jsx";
 import ScenarioForm from "./pages/ScenarioForm.jsx";
 import Sidebar from './components/Sidebar';
 import { CLIENT_COMPANY_NAME, GAS_URL, MASTER_WHITELIST_API, GOOGLE_CLIENT_ID, THEME } from "../lib/constants";
+import { globalStyle, styles } from "../lib/styles";
 
 // ==========================================
 // 🛠️ 2. ヘルパー関数 [仕様書 4.1 準拠]
