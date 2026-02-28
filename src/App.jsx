@@ -27,20 +27,13 @@ import TemplateManager from "./pages/TemplateManager.jsx";
 import ScenarioList from "./pages/ScenarioList.jsx";
 import ScenarioForm from "./pages/ScenarioForm.jsx";
 import Sidebar from './components/Sidebar';
+import { CLIENT_COMPANY_NAME, GAS_URL, MASTER_WHITELIST_API, GOOGLE_CLIENT_ID, THEME } from "../lib/constants";
 
 
 // ==========================================
 // 🔑 1. 環境設定・テーマ定義 [仕様書 1.1 準拠]
 // ==========================================
-const CLIENT_COMPANY_NAME = "B社"; 
-const GAS_URL = import.meta.env.VITE_GAS_URL; 
-const MASTER_WHITELIST_API = import.meta.env.VITE_MASTER_WHITELIST_API;
-const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID;
 
-const THEME = {
-  primary: "#4F46E5", bg: "#F8FAFC", card: "#FFFFFF", textMain: "#1E293B", 
-  textMuted: "#64748B", border: "#E2E8F0", success: "#10B981", danger: "#EF4444", locked: "#F1F5F9", sidebar: "#0F172A"
-};
 
 const globalStyle = `
   * { box-sizing: border-box !important; }
