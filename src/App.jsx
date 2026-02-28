@@ -619,8 +619,9 @@ function App() {
           
           {/* メインコンテンツ領域: サイドバーとの干渉を遮断 */}
           <main style={{ 
-            flex: 1, 
-            marginLeft: "260px", // 物理的な空白を確保
+            marginLeft: "260px",
+            flex: 1,
+            minWidth: 0,        // ← オーバーフロー防止
             backgroundColor: THEME.bg,
             minHeight: "100vh"
           }}>

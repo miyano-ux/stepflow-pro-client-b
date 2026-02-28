@@ -96,7 +96,8 @@ const styles = {
     height: "32px",
     width: "auto",
     maxWidth: "220px",
-    display: "block"
+    display: "block",
+    filter: "brightness(0) invert(1)"
   },
   navLink: {
     display: "flex", 
