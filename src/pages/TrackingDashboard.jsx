@@ -9,7 +9,7 @@ const THEME = {
 };
 
 const styles = {
-  main: { marginLeft: "260px", width: "calc(100% - 260px)", minHeight: "100vh", backgroundColor: THEME.bg },
+  main: { minHeight: "100vh", backgroundColor: THEME.bg },
   wrapper: { padding: "48px 64px", maxWidth: "1440px", margin: "0 auto" },
   grid: { display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "24px", marginBottom: "40px" },
   statCard: { backgroundColor: THEME.card, padding: "24px", borderRadius: "16px", border: `1px solid ${THEME.border}`, boxShadow: "0 4px 6px -1px rgba(0,0,0,0.05)" },

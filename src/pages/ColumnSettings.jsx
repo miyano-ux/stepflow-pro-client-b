@@ -18,7 +18,7 @@ const THEME = {
 };
 
 const styles = {
-  main: { marginLeft: "260px", width: "calc(100% - 260px)", minHeight: "100vh", backgroundColor: THEME.bg, padding: "40px 64px" },
+  main: { minHeight: "100vh", backgroundColor: THEME.bg, padding: "40px 64px" },
   card: { 
     backgroundColor: THEME.card, borderRadius: "16px", border: `1px solid ${THEME.border}`, 
     padding: "16px 20px", display: "flex", gap: "16px", alignItems: "center", 

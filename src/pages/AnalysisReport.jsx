@@ -13,7 +13,7 @@ const THEME = {
 };
 
 const styles = {
-  main: { marginLeft: "260px", width: "calc(100% - 260px)", minHeight: "100vh", backgroundColor: THEME.bg },
+  main: { minHeight: "100vh", backgroundColor: THEME.bg },
   wrapper: { padding: "40px 64px", maxWidth: "1600px", margin: "0 auto" },
   card: { backgroundColor: THEME.card, borderRadius: "20px", border: `1px solid ${THEME.border}`, padding: "32px", boxShadow: "0 10px 25px -5px rgba(0,0,0,0.03)", marginBottom: "32px" },
   grid: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: "32px", marginBottom: "32px" },

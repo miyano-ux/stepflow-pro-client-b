@@ -19,8 +19,6 @@ const THEME = {
 const styles = {
   // 🆕 重要：サイドバーとの重なりを防ぐメインコンテナ設定
   main: { 
-    marginLeft: "260px", 
-    width: "calc(100% - 260px)", 
     minHeight: "100vh", 
     backgroundColor: THEME.bg 
   },

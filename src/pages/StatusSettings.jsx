@@ -13,7 +13,7 @@ const THEME = {
 
 // 🆕 ホワイトアウトを防止するため styles を確実に定義
 const styles = {
-  main: { marginLeft: "260px", width: "calc(100% - 260px)", minHeight: "100vh", backgroundColor: THEME.bg },
+  main: { minHeight: "100vh", backgroundColor: THEME.bg },
   wrapper: { padding: "48px 64px", maxWidth: "840px", margin: "0 auto" },
   section: { marginBottom: "40px" },
   sectionTitle: { fontSize: "18px", fontWeight: "900", color: THEME.textMain, marginBottom: "20px", display: "flex", alignItems: "center", gap: "10px" },

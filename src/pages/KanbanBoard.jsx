@@ -12,7 +12,7 @@ const THEME = {
 };
 
 const styles = {
-  main: { marginLeft: "260px", width: "calc(100% - 260px)", minHeight: "100vh", backgroundColor: THEME.bg, display: "flex", flexDirection: "column" },
+  main: { minHeight: "100vh", backgroundColor: THEME.bg, display: "flex", flexDirection: "column" },
   wrapper: { padding: "40px 40px 0", flex: 1, display: "flex", flexDirection: "column" },
   selectContainer: { position: "relative", display: "flex", alignItems: "center", backgroundColor: "#FFFFFF", padding: "0 14px", borderRadius: "12px", border: `1px solid ${THEME.border}`, height: "42px", minWidth: "220px", boxShadow: "0 2px 4px rgba(0,0,0,0.05)" },
   select: { width: "100%", border: "none", outline: "none", backgroundColor: "transparent", fontSize: "13px", fontWeight: "800", color: THEME.textMain, appearance: "none", cursor: "pointer", zIndex: 1 },

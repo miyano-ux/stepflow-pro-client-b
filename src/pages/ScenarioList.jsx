@@ -6,7 +6,7 @@ import { Plus, Trash2, Clock, ChevronRight, ListTree } from "lucide-react";
 const THEME = { primary: "#4F46E5", bg: "#F8FAFC", card: "#FFFFFF", textMain: "#1E293B", textMuted: "#64748B", border: "#E2E8F0", danger: "#EF4444" };
 
 const styles = {
-  main: { marginLeft: "260px", width: "calc(100% - 260px)", minHeight: "100vh", backgroundColor: THEME.bg, padding: "40px 64px" },
+  main: {  minHeight: "100vh", backgroundColor: THEME.bg, padding: "40px 64px" },
   card: { backgroundColor: THEME.card, borderRadius: "20px", border: `1px solid ${THEME.border}`, overflow: "hidden", transition: "0.2s" }
 };
 
