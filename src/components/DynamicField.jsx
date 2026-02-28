@@ -1,5 +1,6 @@
 import React from "react";
 import { styles } from "../lib/styles";
+import DatePicker from "./DatePicker";
 
 // ==========================================
 // 🔧 DynamicField - フォーム項目動的レンダリングコンポーネント
@@ -31,15 +32,14 @@ function DynamicField({ f, value, onChange }) {
     );
   }
 
-  // 日付型
+  // 日付型 → カスタムDatePickerを使用
   if (f.type === "date") {
     return (
-      <input
-        type="date"
-        style={styles.input}
-        required={f.required}
+      <DatePicker
         value={value || ""}
-        onChange={(e) => onChange(e.target.value)}
+        onChange={onChange}
+        required={f.required}
+        placeholder={`${f.name}を選択`}
       />
     );
   }
