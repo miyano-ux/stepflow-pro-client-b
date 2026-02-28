@@ -27,9 +27,9 @@ import TemplateManager from "./pages/TemplateManager.jsx";
 import ScenarioList from "./pages/ScenarioList.jsx";
 import ScenarioForm from "./pages/ScenarioForm.jsx";
 import Sidebar from './components/Sidebar';
-import { CLIENT_COMPANY_NAME, GAS_URL, MASTER_WHITELIST_API, GOOGLE_CLIENT_ID, THEME } from "../lib/constants";
-import { globalStyle, styles } from "../lib/styles";
-import { formatDate, smartNormalizePhone, parseLocalDate, apiCall, replaceVariables, downloadCSV } from "../lib/utils";
+import { CLIENT_COMPANY_NAME, GAS_URL, MASTER_WHITELIST_API, GOOGLE_CLIENT_ID, THEME } from "./lib/constants";
+import { globalStyle, styles } from "./lib/styles";
+import { formatDate, smartNormalizePhone, parseLocalDate, apiCall, replaceVariables, downloadCSV } from "./lib/utils";
 
 // ==========================================
 // 🧩 3. 共通UIパーツ
