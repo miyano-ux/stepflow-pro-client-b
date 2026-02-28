@@ -101,8 +101,8 @@ function DatePicker({ value, onChange, required, placeholder = "日付を選択"
           cursor: "pointer",
           userSelect: "none",
           color: displayText ? THEME.textMain : THEME.textMuted,
-          borderColor: open ? THEME.primary : undefined,
-          boxShadow: open ? `0 0 0 3px ${THEME.primary}22` : undefined,
+          borderColor: open ? THEME.primary : THEME.border,
+          boxShadow: open ? `0 0 0 3px ${THEME.primary}22` : "none",
         }}
       >
         <Calendar size={16} color={open ? THEME.primary : THEME.textMuted} />
