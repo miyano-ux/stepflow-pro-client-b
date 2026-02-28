@@ -1,86 +1,60 @@
 import React from "react";
-import { Calendar } from "lucide-react";
-import { THEME } from "../lib/constants";
 import { styles } from "../lib/styles";
 
 // ==========================================
-// 📅 SmartDateTimePicker - 日時選択コンポーネント
+// 🔧 DynamicField - フォーム項目動的レンダリングコンポーネント
 // ==========================================
 
 /**
- * クイック選択ボタン付きの日時入力コンポーネント
- * @param {string} value - 現在の日時値（"YYYY-MM-DDTHH:mm" 形式）
+ * 項目定義（formSettings）に基づいて適切な入力フィールドを動的に描画する
+ * @param {object} f - 項目定義オブジェクト { name, type, required, options }
+ * @param {string} value - 現在の値
  * @param {function} onChange - 値変更時のコールバック
  */
-function SmartDateTimePicker({ value, onChange }) {
-  /**
-   * 現在時刻から指定分後の日時をセットする
-   * @param {number} min - 加算する分数
-   */
-  const setQuick = (min) => {
-    const d = new Date(new Date().getTime() + min * 60000);
-    const jst = new Date(d.getTime() - d.getTimezoneOffset() * 60000)
-      .toISOString()
-      .slice(0, 16);
-    onChange(jst);
-  };
-
-  return (
-    <div
-      style={{
-        ...styles.card,
-        padding: "16px",
-        background: "#F1F5F9",
-        border: "none",
-      }}
-    >
-      {/* 日時入力フィールド */}
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: "10px",
-          marginBottom: "12px",
-        }}
+function DynamicField({ f, value, onChange }) {
+  // ドロップダウン（選択肢型）
+  if (f.type === "dropdown") {
+    return (
+      <select
+        style={styles.input}
+        required={f.required}
+        value={value || ""}
+        onChange={(e) => onChange(e.target.value)}
       >
-        <Calendar size={18} color={THEME.primary} />
-        <input
-          type="datetime-local"
-          style={{ ...styles.input, flex: 1 }}
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-        />
-      </div>
+        <option value="">選択してください</option>
+        {f?.options?.split(",").map((opt) => (
+          <option key={opt.trim()} value={opt.trim()}>
+            {opt.trim()}
+          </option>
+        ))}
+      </select>
+    );
+  }
 
-      {/* クイック選択ボタン */}
-      <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
-        <button
-          type="button"
-          onClick={() => setQuick(60)}
-          style={{
-            ...styles.btn,
-            ...styles.btnSecondary,
-            padding: "6px 12px",
-            fontSize: "11px",
-          }}
-        >
-          +1時間
-        </button>
-        <button
-          type="button"
-          onClick={() => setQuick(1440)}
-          style={{
-            ...styles.btn,
-            ...styles.btnSecondary,
-            padding: "6px 12px",
-            fontSize: "11px",
-          }}
-        >
-          明日
-        </button>
-      </div>
-    </div>
+  // 日付型
+  if (f.type === "date") {
+    return (
+      <input
+        type="date"
+        style={styles.input}
+        required={f.required}
+        value={value || ""}
+        onChange={(e) => onChange(e.target.value)}
+      />
+    );
+  }
+
+  // テキスト・email・その他 → すべて通常テキスト入力として扱う
+  return (
+    <input
+      style={styles.input}
+      type="text"
+      required={f.required}
+      value={value || ""}
+      onChange={(e) => onChange(e.target.value)}
+      placeholder={`${f.name}を入力`}
+    />
   );
 }
 
-export default SmartDateTimePicker;
+export default DynamicField;
