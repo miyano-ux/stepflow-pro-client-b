@@ -56,8 +56,8 @@ export default function CustomerDetail({
   const customerLogs = useMemo(
     () =>
       (trackingLogs || [])
-        .filter((log) => String(log.customerId) === String(id))
-        .sort((a, b) => new Date(b.time) - new Date(a.time)),
+        .filter((log) => String(log.customer_id) === String(id) && parseInt(log.click_count || 0) > 0)
+        .sort((a, b) => new Date(b.last_clicked_at) - new Date(a.last_clicked_at)),
     [trackingLogs, id]
   );
 
@@ -333,46 +333,67 @@ export default function CustomerDetail({
             </div>
           ) : (
             <div style={{ maxHeight: 560, overflowY: "auto" }}>
-              {customerLogs.map((log, i) => (
-                <div
-                  key={i}
-                  style={{
-                    paddingLeft: 20,
-                    borderLeft: `2px solid ${i === 0 ? THEME.primary : THEME.border}`,
-                    position: "relative",
-                    marginBottom: 20,
-                    paddingBottom: 4,
-                  }}
-                >
-                  {/* タイムラインドット */}
-                  <div style={{
-                    position: "absolute",
-                    left: -6,
-                    top: 3,
-                    width: 10,
-                    height: 10,
-                    borderRadius: "50%",
-                    backgroundColor: i === 0 ? THEME.primary : THEME.border,
-                    border: "2px solid white",
-                  }} />
-                  <div style={{ fontSize: 11, color: THEME.textMuted, fontWeight: 700, marginBottom: 3 }}>
-                    {formatDateJP(log.time) || log.time}
+              {customerLogs.map((log, i) => {
+                const isHot = log.last_clicked_at && (new Date() - new Date(log.last_clicked_at)) < 5 * 60 * 1000;
+                return (
+                  <div
+                    key={i}
+                    style={{
+                      paddingLeft: 20,
+                      borderLeft: `2px solid ${isHot ? THEME.danger : i === 0 ? THEME.primary : THEME.border}`,
+                      position: "relative",
+                      marginBottom: 20,
+                      paddingBottom: 4,
+                    }}
+                  >
+                    {/* タイムラインドット */}
+                    <div style={{
+                      position: "absolute",
+                      left: -6,
+                      top: 3,
+                      width: 10,
+                      height: 10,
+                      borderRadius: "50%",
+                      backgroundColor: isHot ? THEME.danger : i === 0 ? THEME.primary : THEME.border,
+                      border: "2px solid white",
+                    }} />
+
+                    {/* クリック日時 + HOTバッジ */}
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                      <span style={{ fontSize: 11, color: THEME.textMuted, fontWeight: 700 }}>
+                        最終クリック: {formatDateJP(log.last_clicked_at) || "-"}
+                      </span>
+                      {isHot && (
+                        <span style={{ backgroundColor: THEME.danger, color: "white", fontSize: 9, padding: "1px 6px", borderRadius: 4, fontWeight: 900 }}>
+                          HOT
+                        </span>
+                      )}
+                    </div>
+
+                    {/* クリック数 */}
+                    <div style={{ fontSize: 13, fontWeight: 800, color: THEME.textMain, marginBottom: 4 }}>
+                      {parseInt(log.click_count)}回クリック
+                    </div>
+
+                    {/* 送信日時 */}
+                    <div style={{ fontSize: 11, color: THEME.textMuted, marginBottom: 4 }}>
+                      送信: {formatDateJP(log.sent_at) || "-"}
+                    </div>
+
+                    {/* URL */}
+                    {log.original_url && (
+                      <a
+                        href={log.original_url}
+                        target="_blank"
+                        rel="noreferrer"
+                        style={{ fontSize: 11, color: THEME.primary, display: "flex", alignItems: "center", gap: 4, textDecoration: "none", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+                      >
+                        <ExternalLink size={10} /> {log.original_url}
+                      </a>
+                    )}
                   </div>
-                  <div style={{ fontSize: 13, fontWeight: 800, color: THEME.textMain }}>
-                    {log.pageTitle || "ページ閲覧"}
-                  </div>
-                  {log.url && (
-                    <a
-                      href={log.url}
-                      target="_blank"
-                      rel="noreferrer"
-                      style={{ fontSize: 11, color: THEME.primary, display: "flex", alignItems: "center", gap: 4, marginTop: 3, textDecoration: "none", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
-                    >
-                      <ExternalLink size={10} /> {log.url}
-                    </a>
-                  )}
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
