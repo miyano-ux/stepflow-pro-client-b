@@ -167,37 +167,7 @@ function DateRangePicker({ label, value = {}, onChange }) {
   );
 }
 
-function Sidebar({ onLogout }) {
-  const l = useLocation();
-  // 🆕 メニューを統合・整理
-  const m = [
-    { n: "ダッシュボード", p: "/", i: <LayoutDashboard size={18} /> },
-    { n: "案件カンバン", p: "/kanban", i: <Columns size={18} /> },
-    { n: "反響取り込み", p: "/response-import", i: <Mail size={18} /> }, // Gmail設定とエラーを統合
-    { n: "新規顧客登録", p: "/add", i: <UserPlus size={18} /> },
-    { n: "シナリオ管理", p: "/scenarios", i: <Settings size={18} /> },
-    { n: "テンプレート管理", p: "/templates", i: <Copy size={18} /> },
-    { n: "ユーザー管理", p: "/users", i: <Users size={18} /> },
-    { n: "トラッキング実況", p: "/tracking", i: <Activity size={18} /> },
-    { n: "分析レポート", p: "/analysis", i: <BarChart3 size={18} /> }
-  ];
-  return (
-    <div style={styles.sidebar}>
-      <div style={{ fontSize: "22px", fontWeight: "900", marginBottom: "48px", display: "flex", alignItems: "center", gap: "12px" }}>
-        <div style={{ backgroundColor: THEME.primary, width: "32px", height: "32px", borderRadius: "8px", display: "flex", alignItems: "center", justifyContent: "center" }}><MessageSquare size={18} color="white"/></div>
-        StepFlow
-      </div>
-      <div style={{ flex: 1 }}>{m.map(x => (
-        <Link key={x.p} to={x.p} style={{ display: "flex", alignItems: "center", gap: "12px", padding: "14px 18px", borderRadius: "10px", textDecoration: "none", color: (l.pathname === x.p || (x.p !== "/" && l.pathname.startsWith(x.p))) ? "white" : "#94A3B8", backgroundColor: (l.pathname === x.p || (x.p !== "/" && l.pathname.startsWith(x.p))) ? "rgba(255,255,255,0.08)" : "transparent", marginBottom: "6px", fontWeight: "600", fontSize: "14px" }}>
-          {x.i} {x.n}
-        </Link>
-      ))}</div>
-      <button onClick={onLogout} style={{ ...styles.btn, width: "100%", background: "transparent", color: "#94A3B8", border: "1px solid rgba(255,255,255,0.1)" }}>
-        <LogOut size={16}/> Logout
-      </button>
-    </div>
-  );
-}
+
 
 function Page({ title, subtitle, children, topButton }) {
   return (<div style={styles.main}><div style={{ padding: "48px 64px", maxWidth: "1440px", margin: "0 auto" }}><div style={{ marginBottom: "40px", display: "flex", justifyContent: "space-between", alignItems: "center" }}><div><h1 style={{ fontSize: "32px", fontWeight: "900", color: THEME.textMain, margin: 0 }}>{title}</h1>{subtitle && <p style={{ color: THEME.textMuted, fontSize: "15px", marginTop: "6px" }}>{subtitle}</p>}</div>{topButton}</div>{children}</div></div>);
