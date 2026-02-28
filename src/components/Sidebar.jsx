@@ -28,11 +28,11 @@ const Sidebar = ({ onLogout }) => {
 
   return (
     <div style={styles.sidebar}>
-      {/* 🆕 ロゴエリア: public/logo_beta.svg を使用 */}
+      {/* 🆕 ロゴエリア: public/logo_beta.png を使用 */}
       <div style={styles.logoContainer}>
   <Link to="/" style={{ textDecoration: 'none', display: 'block' }}>
     <img 
-      src="/logo_beta.svg" 
+      src="/logo_beta.png" 
       alt="StepFlow Logo" 
       style={styles.logoImg} 
     />
