@@ -69,7 +69,7 @@ export const styles = {
   btnPrimary: {
     backgroundColor: THEME.primary,
     color: "white",
-    boxShadow: "0 4px 14px 0 rgba(79, 70, 229, 0.3)",
+    boxShadow: "0 4px 14px 0 rgba(91, 79, 206, 0.35)",
   },
   btnSecondary: {
     backgroundColor: "white",
