@@ -26,6 +26,7 @@ import CustomerDetail from "./pages/CustomerDetail.jsx";
 import TemplateManager from "./pages/TemplateManager.jsx";
 import ScenarioList from "./pages/ScenarioList.jsx";
 import ScenarioForm from "./pages/ScenarioForm.jsx";
+import Sidebar from './components/Sidebar';
 
 
 // ==========================================
@@ -589,50 +590,90 @@ function FormSettings({ formSettings = [], onRefresh }) {
 
 // --- (13) Appメイン [認証 & ルーティング] ---
 function App() {
-  const [d, setD] = useState({ customers: [], scenarios: [], formSettings: [], displaySettings: [], deliveryLogs: [], templates: [] , gmailSettings: [], importErrors: [], statuses: []});
-  const [load, setLoad] = useState(true); const [user, setUser] = useState(() => { const sUser = localStorage.getItem("sf_user"); return sUser ? JSON.parse(sUser) : null; });
-  const refresh = useCallback(async () => { if(!user) return; try { const res = await axios.get(`${GAS_URL}`); setD(res?.data || {}); } finally { setLoad(false); } }, [user]);
-  useEffect(() => { refresh(); }, [refresh]);
-  if (!user) return (<div style={{ height: "100vh", display: "flex", alignItems: "center", justifyContent: "center", backgroundColor: THEME.bg }}><style>{globalStyle}</style><div style={{ ...styles.card, textAlign: "center", width: "400px", padding: "48px" }}><div style={{ backgroundColor: THEME.primary, width: "64px", height: "64px", borderRadius: "18px", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 32px", boxShadow: "0 10px 25px -5px rgba(79, 70, 229, 0.4)" }}><MessageSquare color="white" size={32} /></div><h1 style={{fontSize:28, fontWeight:900, marginBottom:10}}>StepFlow</h1><p style={{fontSize:14, color:THEME.textMuted, marginBottom:40}}>マーケティングSMS・配信管理 [V19.1]</p><GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID}><GoogleLogin onSuccess={(res) => { const dec = jwtDecode(res.credential); setUser(dec); localStorage.setItem("sf_user", JSON.stringify(dec)); }} /></GoogleOAuthProvider></div></div>);
-  if(load) return <div style={{ height: "100vh", display: "flex", alignItems: "center", justifyContent: "center", backgroundColor: THEME.bg }}><Loader2 size={48} className="animate-spin" color={THEME.primary} /></div>;
+  // --- 既存の State / ロジック維持 ---
+  const [d, setD] = useState({ customers: [], scenarios: [], formSettings: [], displaySettings: [], deliveryLogs: [], templates: [] , gmailSettings: [], importErrors: [], statuses: [], trackingLogs: []});
+  const [load, setLoad] = useState(true); 
+  const [user, setUser] = useState(() => { const sUser = localStorage.getItem("sf_user"); return sUser ? JSON.parse(sUser) : null; });
   
-return (
+  const refresh = useCallback(async () => { 
+    if(!user) return; 
+    try { 
+      const res = await axios.get(`${GAS_URL}`); 
+      setD(res?.data || {}); 
+    } finally { 
+      setLoad(false); 
+    } 
+  }, [user]);
+
+  useEffect(() => { refresh(); }, [refresh]);
+
+  // --- Auth Gate (ログイン画面) ---
+  if (!user) return (
+    <div style={{ height: "100vh", display: "flex", alignItems: "center", justifyContent: "center", backgroundColor: THEME.bg }}>
+      <style>{globalStyle}</style>
+      <div style={{ ...styles.card, textAlign: "center", width: "400px", padding: "48px" }}>
+        <div style={{ backgroundColor: THEME.primary, width: "64px", height: "64px", borderRadius: "18px", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 32px", boxShadow: "0 10px 25px -5px rgba(79, 70, 229, 0.4)" }}>
+          <MessageSquare color="white" size={32} />
+        </div>
+        <h1 style={{fontSize:28, fontWeight:900, marginBottom:10}}>StepFlow</h1>
+        <p style={{fontSize:14, color:THEME.textMuted, marginBottom:40}}>マーケティングSMS・配信管理 [V34.0]</p>
+        <GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID}>
+          <GoogleLogin onSuccess={(res) => { const dec = jwtDecode(res.credential); setUser(dec); localStorage.setItem("sf_user", JSON.stringify(dec)); }} />
+        </GoogleOAuthProvider>
+      </div>
+    </div>
+  );
+
+  // --- Loading State ---
+  if(load) return <div style={{ height: "100vh", display: "flex", alignItems: "center", justifyContent: "center", backgroundColor: THEME.bg }}><Loader2 size={48} className="animate-spin" color={THEME.primary} /></div>;
+
+  // --- メインレイアウト (仕様書 4.1 準拠) ---
+  return (
     <GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID}>
       <style>{globalStyle}</style>
       <Router>
-        <div style={{ display: "flex" }}>
+        <div style={{ display: "flex", minHeight: "100vh" }}>
+          {/* 独立したサイドバー (260px固定) */}
           <Sidebar onLogout={() => { setUser(null); localStorage.removeItem("sf_user"); }} />
           
-          <Routes>
-            <Route path="/" element={<CustomerList customers={d?.customers} displaySettings={d?.displaySettings} formSettings={d?.formSettings} scenarios={d?.scenarios} statuses={d?.statuses} masterUrl={MASTER_WHITELIST_API} gasUrl={import.meta.env.VITE_GAS_URL} companyName={CLIENT_COMPANY_NAME} onRefresh={refresh} />} />
-            <Route path="/customers" element={<CustomerList customers={d?.customers} displaySettings={d?.displaySettings} formSettings={d?.formSettings} scenarios={d?.scenarios} statuses={d?.statuses} masterUrl={MASTER_WHITELIST_API} gasUrl={import.meta.env.VITE_GAS_URL} companyName={CLIENT_COMPANY_NAME} onRefresh={refresh} />} />
-            <Route path="/column-settings" element={<ColumnSettings displaySettings={d?.displaySettings} formSettings={d?.formSettings} onRefresh={refresh} gasUrl={import.meta.env.VITE_GAS_URL} />} />
-            <Route path="/add" element={<CustomerForm scenarios={d?.scenarios} formSettings={d?.formSettings} statuses={d?.statuses} masterUrl={MASTER_WHITELIST_API} onRefresh={refresh} />} />
-            <Route path="/edit/:id" element={<CustomerEdit customers={d?.customers} scenarios={d?.scenarios} formSettings={d?.formSettings} statuses={d?.statuses} masterUrl={MASTER_WHITELIST_API} onRefresh={refresh} />} />
-            <Route path="/schedule/:id" element={<CustomerSchedule customers={d?.customers} deliveryLogs={d?.deliveryLogs} onRefresh={refresh} />} />
-            <Route path="/detail/:id" element={<CustomerDetail customers={d?.customers} formSettings={d?.formSettings} statuses={d?.statuses} trackingLogs={d?.trackingLogs} masterUrl={MASTER_WHITELIST_API} gasUrl={import.meta.env.VITE_GAS_URL} companyName={CLIENT_COMPANY_NAME} onRefresh={refresh} />} />
-            <Route path="/direct-sms/:id" element={<DirectSms customers={d?.customers} templates={d?.templates} onRefresh={refresh} masterUrl={MASTER_WHITELIST_API} gasUrl={import.meta.env.VITE_GAS_URL} currentUserEmail={user?.email} />} />
-            <Route path="/templates" element={<TemplateManager templates={d?.templates} onRefresh={refresh} gasUrl={import.meta.env.VITE_GAS_URL} />} />
-            <Route path="/analysis" element={<AnalysisReport customers={d?.customers} statuses={d?.statuses} trackingLogs={d?.trackingLogs} masterUrl={MASTER_WHITELIST_API} />} />
-            <Route path="/response-import" element={<ResponseImportPortal />} />
-            <Route path="/kanban" element={<KanbanBoard customers={d?.customers} statuses={d?.statuses} onRefresh={refresh} masterUrl={MASTER_WHITELIST_API} gasUrl={import.meta.env.VITE_GAS_URL} companyName={CLIENT_COMPANY_NAME}/> } />
-            <Route path="/gmail-settings" element={<GmailSettings gmailSettings={d?.gmailSettings} scenarios={d?.scenarios} formSettings={d?.formSettings} onRefresh={refresh} />} />
-            <Route path="/import-errors" element={<ImportErrorList errors={d?.importErrors} onRefresh={refresh} />} />
-            <Route path="/form-settings" element={<FormSettings formSettings={d?.formSettings} onRefresh={refresh} />} />
-            <Route path="/scenarios" element={<ScenarioList scenarios={d?.scenarios} onRefresh={refresh} gasUrl={import.meta.env.VITE_GAS_URL} />} />
-            <Route path="/scenarios/new" element={<ScenarioForm scenarios={d?.scenarios} onRefresh={refresh} gasUrl={import.meta.env.VITE_GAS_URL} />} />
-            <Route path="/scenarios/edit/:id" element={<ScenarioForm scenarios={d?.scenarios} onRefresh={refresh} gasUrl={import.meta.env.VITE_GAS_URL} />} />
-            <Route path="/users" element={<UserManager masterUrl={MASTER_WHITELIST_API} companyName={CLIENT_COMPANY_NAME}/>} />
-            <Route path="/users/add" element={<UserForm masterUrl={MASTER_WHITELIST_API} />} />
-            <Route path="/users/edit/:id" element={<UserForm masterUrl={MASTER_WHITELIST_API} />} />
-            <Route path="/tracking" element={<TrackingDashboard />} />
-            <Route path="/status-settings" element={ <StatusSettings statuses={d?.statuses} onRefresh={refresh} gasUrl={import.meta.env.VITE_GAS_URL}/> } />
-          </Routes>
+          {/* メインコンテンツ領域: サイドバーとの干渉を遮断 */}
+          <main style={{ 
+            flex: 1, 
+            marginLeft: "260px", // 物理的な空白を確保
+            backgroundColor: THEME.bg,
+            minHeight: "100vh"
+          }}>
+            <Routes>
+              <Route path="/" element={<CustomerList customers={d?.customers} displaySettings={d?.displaySettings} formSettings={d?.formSettings} scenarios={d?.scenarios} statuses={d?.statuses} masterUrl={MASTER_WHITELIST_API} gasUrl={import.meta.env.VITE_GAS_URL} companyName={CLIENT_COMPANY_NAME} onRefresh={refresh} />} />
+              <Route path="/customers" element={<CustomerList customers={d?.customers} displaySettings={d?.displaySettings} formSettings={d?.formSettings} scenarios={d?.scenarios} statuses={d?.statuses} masterUrl={MASTER_WHITELIST_API} gasUrl={import.meta.env.VITE_GAS_URL} companyName={CLIENT_COMPANY_NAME} onRefresh={refresh} />} />
+              <Route path="/column-settings" element={<ColumnSettings displaySettings={d?.displaySettings} formSettings={d?.formSettings} onRefresh={refresh} gasUrl={import.meta.env.VITE_GAS_URL} />} />
+              <Route path="/add" element={<CustomerForm scenarios={d?.scenarios} formSettings={d?.formSettings} statuses={d?.statuses} masterUrl={MASTER_WHITELIST_API} onRefresh={refresh} />} />
+              <Route path="/edit/:id" element={<CustomerEdit customers={d?.customers} scenarios={d?.scenarios} formSettings={d?.formSettings} statuses={d?.statuses} masterUrl={MASTER_WHITELIST_API} onRefresh={refresh} />} />
+              <Route path="/schedule/:id" element={<CustomerSchedule customers={d?.customers} deliveryLogs={d?.deliveryLogs} onRefresh={refresh} />} />
+              <Route path="/detail/:id" element={<CustomerDetail customers={d?.customers} formSettings={d?.formSettings} statuses={d?.statuses} trackingLogs={d?.trackingLogs} masterUrl={MASTER_WHITELIST_API} gasUrl={import.meta.env.VITE_GAS_URL} companyName={CLIENT_COMPANY_NAME} onRefresh={refresh} />} />
+              <Route path="/direct-sms/:id" element={<DirectSms customers={d?.customers} templates={d?.templates} onRefresh={refresh} masterUrl={MASTER_WHITELIST_API} gasUrl={import.meta.env.VITE_GAS_URL} currentUserEmail={user?.email} />} />
+              <Route path="/templates" element={<TemplateManager templates={d?.templates} onRefresh={refresh} gasUrl={import.meta.env.VITE_GAS_URL} />} />
+              <Route path="/analysis" element={<AnalysisReport customers={d?.customers} statuses={d?.statuses} trackingLogs={d?.trackingLogs} masterUrl={MASTER_WHITELIST_API} />} />
+              <Route path="/response-import" element={<ResponseImportPortal />} />
+              <Route path="/kanban" element={<KanbanBoard customers={d?.customers} statuses={d?.statuses} onRefresh={refresh} masterUrl={MASTER_WHITELIST_API} gasUrl={import.meta.env.VITE_GAS_URL} companyName={CLIENT_COMPANY_NAME}/> } />
+              <Route path="/gmail-settings" element={<GmailSettings gmailSettings={d?.gmailSettings} scenarios={d?.scenarios} formSettings={d?.formSettings} onRefresh={refresh} />} />
+              <Route path="/import-errors" element={<ImportErrorList errors={d?.importErrors} onRefresh={refresh} />} />
+              <Route path="/form-settings" element={<FormSettings formSettings={d?.formSettings} onRefresh={refresh} />} />
+              <Route path="/scenarios" element={<ScenarioList scenarios={d?.scenarios} onRefresh={refresh} gasUrl={import.meta.env.VITE_GAS_URL} />} />
+              <Route path="/scenarios/new" element={<ScenarioForm scenarios={d?.scenarios} onRefresh={refresh} gasUrl={import.meta.env.VITE_GAS_URL} />} />
+              <Route path="/scenarios/edit/:id" element={<ScenarioForm scenarios={d?.scenarios} onRefresh={refresh} gasUrl={import.meta.env.VITE_GAS_URL} />} />
+              <Route path="/users" element={<UserManager masterUrl={MASTER_WHITELIST_API} companyName={CLIENT_COMPANY_NAME}/>} />
+              <Route path="/users/add" element={<UserForm masterUrl={MASTER_WHITELIST_API} />} />
+              <Route path="/users/edit/:id" element={<UserForm masterUrl={MASTER_WHITELIST_API} />} />
+              <Route path="/tracking" element={<TrackingDashboard />} />
+              <Route path="/status-settings" element={ <StatusSettings statuses={d?.statuses} onRefresh={refresh} gasUrl={import.meta.env.VITE_GAS_URL}/> } />
+            </Routes>
+          </main>
         </div>
       </Router>
     </GoogleOAuthProvider>
   );
-  }
+}
 
 /**
  * (14) GmailSettings コンポーネント (V16.1 項目動的抽出版)
