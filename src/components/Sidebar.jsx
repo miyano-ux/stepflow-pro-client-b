@@ -31,10 +31,11 @@ const Sidebar = ({ onLogout }) => {
       {/* 🆕 ロゴエリア: public/logo_beta.svg を使用 */}
       <div style={styles.logoContainer}>
   <Link to="/" style={{ textDecoration: 'none', display: 'block' }}>
-    {/* 一時的にテキストロゴに差し替え */}
-    <div style={{ color: '#fff', fontWeight: 900, fontSize: 22 }}>
-      Step<span style={{ color: '#818CF8' }}>Flow</span>
-    </div>
+    <img 
+      src="/logo_beta.svg" 
+      alt="StepFlow Logo" 
+      style={styles.logoImg} 
+    />
   </Link>
       </div>
 
