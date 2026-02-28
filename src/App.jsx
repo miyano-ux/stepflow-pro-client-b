@@ -29,62 +29,7 @@ import ScenarioForm from "./pages/ScenarioForm.jsx";
 import Sidebar from './components/Sidebar';
 import { CLIENT_COMPANY_NAME, GAS_URL, MASTER_WHITELIST_API, GOOGLE_CLIENT_ID, THEME } from "../lib/constants";
 import { globalStyle, styles } from "../lib/styles";
-
-// ==========================================
-// 🛠️ 2. ヘルパー関数 [仕様書 4.1 準拠]
-// ==========================================
-const formatDate = (v) => {
-  if (!v || v === "-" || v === "undefined") return "-";
-  const d = new Date(v);
-  if (isNaN(d.getTime())) return v;
-  const p = (n) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}/${p(d.getMonth() + 1)}/${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
-};
-
-const smartNormalizePhone = (phone) => {
-  if (!phone) return "";
-  let p = String(phone).replace(/[="]/g, "").replace(/[^\d]/g, ""); 
-  if (p.length === 10 && /^[1-9]/.test(p)) p = "0" + p;
-  return p;
-};
-
-const parseLocalDate = (dateStr, isEnd = false) => {
-  if (!dateStr) return null;
-  const [y, m, d] = dateStr.split("-").map(Number);
-  const date = new Date(y, m - 1, d);
-  if (isEnd) date.setHours(23, 59, 59, 999); else date.setHours(0, 0, 0, 0);
-  return date.getTime();
-};
-
-const apiCall = {
-  post: async (url, data) => {
-    const res = await axios.post(url, data, { headers: { 'Content-Type': 'text/plain;charset=utf-8' } });
-    if (res.data.status !== "success") throw new Error(res.data.message);
-    return res.data;
-  }
-};
-
-const replaceVariables = (text, customer, staff = null) => {
-  if (!text) return "";
-  let res = text;
-  // 顧客変数の置換 ({{姓}} など)
-  Object.keys(customer || {}).forEach(key => { res = res.replaceAll(`{{${key}}}`, customer[key] || ""); });
-  // 担当者変数の置換 ({{担当者姓}} など)
-  if (staff) {
-    res = res.replaceAll(`{{担当者姓}}`, staff.lastName || "");
-    res = res.replaceAll(`{{担当者名}}`, staff.firstName || "");
-    res = res.replaceAll(`{{担当者メール}}`, staff.email || "");
-    res = res.replaceAll(`{{担当者電話}}`, staff.phone || "");
-  }
-  return res;
-};
-
-const downloadCSV = (rows, filename) => {
-  const content = rows.map(row => row.map(cell => `"${(cell || "").toString().replace(/"/g, '""')}"`).join(",")).join("\n");
-  const blob = new Blob([new Uint8Array([0xEF, 0xBB, 0xBF]), content], { type: "text/csv;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a"); link.href = url; link.download = filename; link.click();
-};
+import { formatDate, smartNormalizePhone, parseLocalDate, apiCall, replaceVariables, downloadCSV } from "../lib/utils";
 
 // ==========================================
 // 🧩 3. 共通UIパーツ
