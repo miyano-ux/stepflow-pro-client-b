@@ -132,6 +132,44 @@ export default function CustomerList({
   const renderSearchField = (col) => {
     const type = getFieldType(col, formSettings);
 
+    // 対応ステータス → status-settings の選択肢
+    if (col === "対応ステータス") {
+      return (
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          <label style={{ fontSize: "11px", fontWeight: "800", color: THEME.textMuted }}>対応ステータス</label>
+          <select
+            style={{ ...localStyles.input, width: "100%", color: search[col] ? THEME.textMain : THEME.textMuted }}
+            value={search[col] || ""}
+            onChange={(e) => setSearch({ ...search, [col]: e.target.value })}
+          >
+            <option value="">すべて</option>
+            {statuses.map((st) => (
+              <option key={st.name} value={st.name}>{st.name}</option>
+            ))}
+          </select>
+        </div>
+      );
+    }
+
+    // 担当者メール → users の担当者名一覧
+    if (col === "担当者メール") {
+      return (
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          <label style={{ fontSize: "11px", fontWeight: "800", color: THEME.textMuted }}>担当者</label>
+          <select
+            style={{ ...localStyles.input, width: "100%", color: search[col] ? THEME.textMain : THEME.textMuted }}
+            value={search[col] || ""}
+            onChange={(e) => setSearch({ ...search, [col]: e.target.value })}
+          >
+            <option value="">すべて</option>
+            {staffList.map((s) => (
+              <option key={s.email} value={s.email}>{s.lastName} {s.firstName}</option>
+            ))}
+          </select>
+        </div>
+      );
+    }
+
     if (type === "date") {
       return (
         <DateRangePicker
@@ -193,15 +231,22 @@ export default function CustomerList({
       );
     }
     if (col === "担当者メール") {
+      const staff = staffList.find((s) => s.email === c[col]);
+      const staffName = staff ? `${staff.lastName} ${staff.firstName}` : "";
       return (
-        <select
-          style={{ ...localStyles.input, padding: "4px 8px", fontSize: "12px", border: "none", backgroundColor: "#F1F5F9" }}
-          value={c[col] || ""}
-          onChange={(e) => setConfirmModal({ open: true, customer: c, field: col, newValue: e.target.value, oldValue: c[col] })}
-        >
-          <option value="">未割当</option>
-          {staffList.map((s) => <option key={s.email} value={s.email}>{s.lastName} {s.firstName}</option>)}
-        </select>
+        <div style={{ position: "relative" }}>
+          <select
+            style={{ ...localStyles.input, padding: "4px 30px 4px 12px", fontSize: "13px", border: "none", backgroundColor: "#F1F5F9", appearance: "none", color: staffName ? THEME.textMain : THEME.textMuted }}
+            value={c[col] || ""}
+            onChange={(e) => setConfirmModal({ open: true, customer: c, field: col, newValue: e.target.value, oldValue: c[col] })}
+          >
+            <option value="">未割当</option>
+            {staffList.map((s) => (
+              <option key={s.email} value={s.email}>{s.lastName} {s.firstName}</option>
+            ))}
+          </select>
+          <ChevronDown size={13} style={{ position: "absolute", right: 8, top: 10, pointerEvents: "none", color: THEME.textMuted }} />
+        </div>
       );
     }
     // 日付フィールドは人が読める形式に変換
