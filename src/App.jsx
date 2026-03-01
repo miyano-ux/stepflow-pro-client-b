@@ -34,6 +34,7 @@ import FormSettings          from "./pages/FormSettings";
 import GmailSettings         from "./pages/GmailSettings";
 import ImportErrorList       from "./pages/ImportErrorList";
 import ResponseImportPortal  from "./pages/ResponseImportPortal";
+import CustomerStatusList    from "./pages/CustomerStatusList";
 import UserForm              from "./pages/UserForm";
 
 // ==========================================
@@ -248,8 +249,11 @@ function App() {
               <Route path="/users/edit/:id" element={<UserForm masterUrl={MASTER_WHITELIST_API} onRefreshStaff={refreshStaff} />} />
 
               {/* 分析・トラッキング */}
-              <Route path="/analysis" element={<AnalysisReport customers={d?.customers} statuses={d?.statuses} trackingLogs={d?.trackingLogs} masterUrl={MASTER_WHITELIST_API} />} />
+              <Route path="/analysis" element={<AnalysisReport customers={d?.customers} statuses={d?.statuses} trackingLogs={d?.trackingLogs} staffList={staffList} />} />
               <Route path="/tracking" element={<TrackingDashboard />} />
+
+              {/* ステータス別リスト */}
+              <Route path="/status-list/:type" element={<CustomerStatusList customers={d?.customers} statuses={d?.statuses} staffList={staffList} />} />
 
               {/* カンバン */}
               <Route path="/kanban" element={<KanbanBoard customers={d?.customers} statuses={d?.statuses} scenarios={d?.scenarios} scenarioSettings={d?.scenarioSettings} staffList={staffList} onRefresh={refresh} gasUrl={GAS_URL} />} />

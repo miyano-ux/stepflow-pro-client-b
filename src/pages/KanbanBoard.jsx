@@ -3,99 +3,11 @@ import { Link, useNavigate } from "react-router-dom";
 import axios from "axios";
 import {
   ListTodo, UserCircle, MessageSquare,
-  Trophy, Moon, Trash2, ChevronDown, Loader2, Users, Check
+  Trophy, Moon, Trash2, ChevronDown, Loader2, Users, Check, ExternalLink
 } from "lucide-react";
 import { THEME } from "../lib/constants";
+import { StaffDropdown } from "../components/StaffDropdown";
 
-// ── カスタム担当者ドロップダウン ──────────────────────────
-function StaffDropdown({ staffList, value, onChange }) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef(null);
-
-  // 外側クリックで閉じる
-  useEffect(() => {
-    const handler = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, []);
-
-  const selected = staffList.find((s) => s.email === value);
-  const label = selected ? `${selected.lastName} ${selected.firstName}` : "全ての担当者";
-
-  const options = [{ email: "", label: "全ての担当者" }, ...staffList.map((s) => ({ email: s.email, label: `${s.lastName} ${s.firstName}` }))];
-
-  return (
-    <div ref={ref} style={{ position: "relative", userSelect: "none" }}>
-      {/* トリガーボタン */}
-      <button
-        onClick={() => setOpen((o) => !o)}
-        style={{
-          display: "flex", alignItems: "center", gap: 10,
-          backgroundColor: "#FFF", border: `1px solid ${open ? THEME.primary : THEME.border}`,
-          borderRadius: 12, padding: "0 14px", height: 42, minWidth: 200, cursor: "pointer",
-          boxShadow: open ? `0 0 0 3px ${THEME.primary}20` : "none",
-          transition: "all 0.15s",
-        }}
-      >
-        {selected ? (
-          <div style={{ width: 26, height: 26, borderRadius: "50%", backgroundColor: "#E0E7FF", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-            <UserCircle size={16} color={THEME.primary} />
-          </div>
-        ) : (
-          <Users size={15} color={THEME.textMuted} />
-        )}
-        <span style={{ flex: 1, textAlign: "left", fontSize: 13, fontWeight: 800, color: THEME.textMain, whiteSpace: "nowrap" }}>
-          {label}
-        </span>
-        <ChevronDown size={15} color={THEME.textMuted} style={{ transform: open ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.2s", flexShrink: 0 }} />
-      </button>
-
-      {/* ドロップダウンパネル */}
-      {open && (
-        <div style={{
-          position: "absolute", top: "calc(100% + 8px)", right: 0, zIndex: 1000,
-          backgroundColor: "#FFF", borderRadius: 16, border: `1px solid ${THEME.border}`,
-          boxShadow: "0 16px 32px rgba(0,0,0,0.12)", minWidth: 220, overflow: "hidden",
-          animation: "fadeIn 0.12s ease",
-        }}>
-          <div style={{ padding: "6px" }}>
-            {options.map((opt) => {
-              const isActive = opt.email === value;
-              return (
-                <button
-                  key={opt.email}
-                  onClick={() => { onChange(opt.email); setOpen(false); }}
-                  style={{
-                    width: "100%", display: "flex", alignItems: "center", gap: 10,
-                    padding: "10px 12px", borderRadius: 10, border: "none", cursor: "pointer",
-                    backgroundColor: isActive ? "#EEF2FF" : "transparent",
-                    transition: "background-color 0.1s",
-                  }}
-                  onMouseEnter={(e) => { if (!isActive) e.currentTarget.style.backgroundColor = "#F8FAFC"; }}
-                  onMouseLeave={(e) => { if (!isActive) e.currentTarget.style.backgroundColor = "transparent"; }}
-                >
-                  {opt.email ? (
-                    <div style={{ width: 28, height: 28, borderRadius: "50%", backgroundColor: isActive ? "#C7D2FE" : "#EEF2FF", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                      <UserCircle size={17} color={THEME.primary} />
-                    </div>
-                  ) : (
-                    <div style={{ width: 28, height: 28, borderRadius: "50%", backgroundColor: "#F1F5F9", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                      <Users size={14} color={THEME.textMuted} />
-                    </div>
-                  )}
-                  <span style={{ flex: 1, textAlign: "left", fontSize: 13, fontWeight: isActive ? 900 : 700, color: isActive ? THEME.primary : THEME.textMain }}>
-                    {opt.label}
-                  </span>
-                  {isActive && <Check size={14} color={THEME.primary} />}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
 
 // ==========================================
 // 📋 KanbanBoard - 案件管理カンバン
@@ -352,27 +264,62 @@ export default function KanbanBoard({
         {/* 終着ゾーン */}
         <div style={S.bottomBar}>
           {[
-            { label: wonLabel,     emoji: "🏆", color: THEME.success, bg: "#ECFDF5" },
-            { label: dormantLabel, emoji: "🌙", color: "#F59E0B",      bg: "#FFFBEB" },
-            { label: lostLabel,    emoji: "🗑",  color: THEME.danger,  bg: "#FEF2F2" },
-          ].map(({ label, emoji, color, bg }) => (
-            <div
-              key={label}
-              onDragOver={(e) => onDragOver(e, label)}
-              onDragLeave={onDragLeave}
-              onDrop={(e) => onDrop(e, label)}
-              style={{
-                ...S.zone,
-                backgroundColor: draggingId ? bg : "#F9FAFB",
-                color,
-                borderColor: overColumn === label ? color : draggingId ? `${color}60` : THEME.border,
-                transform:   overColumn === label ? "scale(1.05)" : "scale(1)",
-                boxShadow:   overColumn === label ? `0 0 0 3px ${color}30` : "none",
-              }}
-            >
-              <span style={{ fontSize: 24 }}>{emoji}</span> {label}
-            </div>
-          ))}
+            { label: wonLabel,     emoji: "🏆", color: THEME.success, bg: "#ECFDF5", border: "#86EFAC", type: "won"     },
+            { label: dormantLabel, emoji: "🌙", color: "#D97706",      bg: "#FFFBEB", border: "#FDE68A", type: "dormant" },
+            { label: lostLabel,    emoji: "🗑",  color: THEME.danger,  bg: "#FEE2E2", border: "#FCA5A5", type: "lost"    },
+          ].map(({ label, emoji, color, bg, border, type }) => {
+            const count = localCustomers.filter((c) => (c["対応ステータス"] || "").trim() === label.trim()).length;
+            return (
+              <div
+                key={label}
+                onDragOver={(e) => onDragOver(e, label)}
+                onDragLeave={onDragLeave}
+                onDrop={(e) => onDrop(e, label)}
+                style={{
+                  ...S.zone,
+                  flexDirection: "column",
+                  gap: 6,
+                  backgroundColor: overColumn === label ? bg : draggingId ? `${bg}99` : "#F9FAFB",
+                  color,
+                  borderColor: overColumn === label ? color : draggingId ? `${color}60` : THEME.border,
+                  transform:   overColumn === label ? "scale(1.05)" : "scale(1)",
+                  boxShadow:   overColumn === label ? `0 0 0 3px ${color}30` : "none",
+                  position: "relative",
+                  padding: "14px 24px",
+                }}
+              >
+                {/* メインラベル */}
+                <div style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 900, fontSize: 15 }}>
+                  <span style={{ fontSize: 22 }}>{emoji}</span>
+                  {label}
+                  {/* 人数バッジ */}
+                  <span style={{
+                    backgroundColor: count > 0 ? color : THEME.textMuted,
+                    color: "white", fontSize: 12, fontWeight: 900,
+                    padding: "2px 8px", borderRadius: 20, minWidth: 24, textAlign: "center",
+                  }}>
+                    {count}
+                  </span>
+                </div>
+                {/* リストへのリンク */}
+                <Link
+                  to={`/status-list/${type}`}
+                  onClick={(e) => e.stopPropagation()}
+                  style={{
+                    display: "flex", alignItems: "center", gap: 4,
+                    fontSize: 11, fontWeight: 800, color,
+                    backgroundColor: bg, border: `1px solid ${border}`,
+                    padding: "3px 10px", borderRadius: 8, textDecoration: "none",
+                    transition: "opacity 0.15s",
+                  }}
+                  onMouseEnter={(e) => (e.currentTarget.style.opacity = "0.7")}
+                  onMouseLeave={(e) => (e.currentTarget.style.opacity = "1")}
+                >
+                  <ExternalLink size={11} /> リストを見る
+                </Link>
+              </div>
+            );
+          })}
         </div>
       </div>
 
