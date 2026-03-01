@@ -2,8 +2,9 @@ import React, { useState, useEffect, useMemo } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import axios from "axios";
 import {
-  Search, SlidersHorizontal, Download, Send, Clock,
+  Search, SlidersHorizontal, Download, Send,
   Trash2, AlertCircle, ArrowUpDown, ChevronDown, Loader2,
+  UserRound, Check, ExternalLink,
 } from "lucide-react";
 import { THEME } from "../lib/constants";
 import { parseLocalDate } from "../lib/utils";
@@ -31,6 +32,67 @@ const getFieldType = (colName, formSettings = []) => {
   const f = formSettings.find((s) => s.name === colName);
   return f?.type || "text";
 };
+
+// ── カスタムインラインドロップダウン（テーブルセル用） ──────────────
+function InlineDropdown({ value, options, onChange, colorMap }) {
+  const [open, setOpen] = React.useState(false);
+  const ref = React.useRef(null);
+  React.useEffect(() => {
+    const h = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener("mousedown", h);
+    return () => document.removeEventListener("mousedown", h);
+  }, []);
+  const selected = options.find((o) => o.value === value) || options[0];
+  const chipColor = colorMap?.[selected?.value];
+  return (
+    <div ref={ref} style={{ position: "relative", display: "inline-block" }}>
+      <button
+        onClick={() => setOpen((o) => !o)}
+        style={{
+          display: "flex", alignItems: "center", gap: 6,
+          border: "none", borderRadius: 8, padding: "5px 10px 5px 12px",
+          backgroundColor: chipColor?.bg || "#F1F5F9",
+          color: chipColor?.text || THEME.textMain,
+          fontWeight: 800, fontSize: 13, cursor: "pointer", whiteSpace: "nowrap",
+        }}
+      >
+        {selected?.label}
+        <ChevronDown size={13} style={{ opacity: 0.6, transform: open ? "rotate(180deg)" : "none", transition: "0.15s" }} />
+      </button>
+      {open && (
+        <div style={{
+          position: "absolute", top: "calc(100% + 6px)", left: 0, zIndex: 200,
+          backgroundColor: "white", borderRadius: 12, border: `1px solid ${THEME.border}`,
+          boxShadow: "0 12px 28px rgba(0,0,0,0.12)", minWidth: 160, overflow: "hidden",
+        }}>
+          <div style={{ padding: 6 }}>
+            {options.map((o) => {
+              const c = colorMap?.[o.value];
+              const isActive = o.value === value;
+              return (
+                <button key={o.value} onClick={() => { onChange(o.value); setOpen(false); }}
+                  style={{
+                    width: "100%", display: "flex", alignItems: "center", gap: 8,
+                    padding: "9px 12px", border: "none", borderRadius: 8, cursor: "pointer",
+                    backgroundColor: isActive ? (c?.bg || "#EEF2FF") : "transparent",
+                    color: isActive ? (c?.text || THEME.primary) : THEME.textMain,
+                    fontWeight: isActive ? 900 : 700, fontSize: 13, textAlign: "left",
+                    transition: "background 0.1s",
+                  }}
+                  onMouseEnter={(e) => { if (!isActive) e.currentTarget.style.backgroundColor = "#F8FAFC"; }}
+                  onMouseLeave={(e) => { if (!isActive) e.currentTarget.style.backgroundColor = "transparent"; }}
+                >
+                  <span style={{ flex: 1 }}>{o.label}</span>
+                  {isActive && <Check size={13} />}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 const localStyles = {
   main:    { minHeight: "100vh", backgroundColor: THEME.bg },
@@ -107,6 +169,14 @@ export default function CustomerList({
     }
     return res;
   }, [localCustomers, search, dateRange, sort]);
+
+  const handleDelete = async (c) => {
+    if (!window.confirm(`${c["姓"]} ${c["名"]}様を削除しますか？\nこの操作は取り消せません。`)) return;
+    try {
+      await axios.post(gasUrl, JSON.stringify({ action: "delete", id: c.id }), { headers: { "Content-Type": "text/plain;charset=utf-8" } });
+      onRefresh();
+    } catch { alert("削除に失敗しました"); }
+  };
 
   const handleExecuteChange = async () => {
     const { customer, field, newValue } = confirmModal;
@@ -213,35 +283,30 @@ export default function CustomerList({
   const renderCell = (c, col) => {
     if (col === "対応ステータス") {
       return (
-        <div style={{ position: "relative" }}>
-          <select
-            style={{ ...localStyles.input, padding: "4px 30px 4px 12px", backgroundColor: "#EEF2FF", border: "none", fontWeight: "800", color: THEME.primary, appearance: "none" }}
-            value={c[col] || "未対応"}
-            onChange={(e) => setConfirmModal({ open: true, customer: c, field: col, newValue: e.target.value, oldValue: c[col] })}
-          >
-            {statuses.map((st) => <option key={st.name} value={st.name}>{st.name}</option>)}
-          </select>
-          <ChevronDown size={14} style={{ position: "absolute", right: 10, top: 10, pointerEvents: "none" }} />
-        </div>
+        <InlineDropdown
+          value={c[col] || "未対応"}
+          options={statuses.map((st) => ({ value: st.name, label: st.name }))}
+          onChange={(val) => setConfirmModal({ open: true, customer: c, field: col, newValue: val, oldValue: c[col] })}
+          colorMap={Object.fromEntries(statuses.map((st, i) => [
+            st.name,
+            i === statuses.length - 3 ? { bg: "#DCFCE7", text: "#166534" }   // 成約
+            : i === statuses.length - 2 ? { bg: "#FEF3C7", text: "#92400E" } // 休眠
+            : i === statuses.length - 1 ? { bg: "#FEE2E2", text: "#991B1B" } // 失注
+            : { bg: "#EEF2FF", text: THEME.primary },                         // 通常
+          ]))}
+        />
       );
     }
     if (col === "担当者メール") {
-      const staff = staffList.find((s) => s.email === c[col]);
-      const staffName = staff ? `${staff.lastName} ${staff.firstName}` : "";
       return (
-        <div style={{ position: "relative" }}>
-          <select
-            style={{ ...localStyles.input, padding: "4px 30px 4px 12px", fontSize: "13px", border: "none", backgroundColor: "#F1F5F9", appearance: "none", color: staffName ? THEME.textMain : THEME.textMuted }}
-            value={c[col] || ""}
-            onChange={(e) => setConfirmModal({ open: true, customer: c, field: col, newValue: e.target.value, oldValue: c[col] })}
-          >
-            <option value="">未割当</option>
-            {staffList.map((s) => (
-              <option key={s.email} value={s.email}>{s.lastName} {s.firstName}</option>
-            ))}
-          </select>
-          <ChevronDown size={13} style={{ position: "absolute", right: 8, top: 10, pointerEvents: "none", color: THEME.textMuted }} />
-        </div>
+        <InlineDropdown
+          value={c[col] || ""}
+          options={[
+            { value: "", label: "未割当" },
+            ...staffList.map((s) => ({ value: s.email, label: `${s.lastName} ${s.firstName}` })),
+          ]}
+          onChange={(val) => setConfirmModal({ open: true, customer: c, field: col, newValue: val, oldValue: c[col] })}
+        />
       );
     }
     // 日付フィールドは人が読める形式に変換
@@ -308,7 +373,7 @@ export default function CustomerList({
                       onClick={() => setSort({ key: col, dir: sort.key === col && sort.dir === "asc" ? "desc" : "asc" })}
                     >
                       <div style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", userSelect: "none" }}>
-                        {col}
+                        {col === "担当者メール" ? "担当者" : col}
                         <ArrowUpDown size={12} opacity={sort.key === col ? 1 : 0.3} color={sort.key === col ? THEME.primary : undefined} />
                       </div>
                     </th>
@@ -327,11 +392,32 @@ export default function CustomerList({
                     {vCols.map((col) => (
                       <td key={col} style={localStyles.tableTd}>{renderCell(c, col)}</td>
                     ))}
-                    <td style={{ ...localStyles.tableTd, position: "sticky", right: 0, backgroundColor: "white", borderLeft: `1px solid ${THEME.border}`, textAlign: "center" }}>
-                      <div style={{ display: "flex", gap: "8px", justifyContent: "center" }}>
-                        <Link to={`/direct-sms/${c.id}`} style={{ padding: "8px", color: THEME.primary, backgroundColor: "#EEF2FF", borderRadius: "8px", display: "flex" }}><Send size={16} /></Link>
-                        <Link to={`/schedule/${c.id}`}   style={{ padding: "8px", color: THEME.textMuted, backgroundColor: "#F1F5F9", borderRadius: "8px", display: "flex" }}><Clock size={16} /></Link>
-                        <button style={{ border: "none", background: "none", color: THEME.danger, cursor: "pointer" }}><Trash2 size={16} /></button>
+                    <td style={{ ...localStyles.tableTd, position: "sticky", right: 0, backgroundColor: "white", borderLeft: `1px solid ${THEME.border}`, textAlign: "center", minWidth: 148 }}>
+                      <div style={{ display: "flex", gap: 6, justifyContent: "center", alignItems: "center" }}>
+                        {/* 詳細 */}
+                        <Link
+                          to={`/detail/${c.id}`}
+                          title="顧客詳細"
+                          style={{ display: "flex", alignItems: "center", gap: 5, padding: "6px 10px", backgroundColor: "#EEF2FF", color: THEME.primary, borderRadius: 8, fontWeight: 800, fontSize: 12, textDecoration: "none", whiteSpace: "nowrap" }}
+                        >
+                          <ExternalLink size={14} /> 詳細
+                        </Link>
+                        {/* SMS */}
+                        <Link
+                          to={`/direct-sms/${c.id}`}
+                          title="SMS配信"
+                          style={{ display: "flex", alignItems: "center", gap: 5, padding: "6px 10px", backgroundColor: "#F0FDF4", color: "#16A34A", borderRadius: 8, fontWeight: 800, fontSize: 12, textDecoration: "none", whiteSpace: "nowrap" }}
+                        >
+                          <Send size={14} /> SMS
+                        </Link>
+                        {/* 削除 */}
+                        <button
+                          title="削除"
+                          onClick={() => handleDelete(c)}
+                          style={{ display: "flex", alignItems: "center", padding: "6px 8px", backgroundColor: "#FEF2F2", color: THEME.danger, border: "none", borderRadius: 8, cursor: "pointer" }}
+                        >
+                          <Trash2 size={14} />
+                        </button>
                       </div>
                     </td>
                   </tr>
