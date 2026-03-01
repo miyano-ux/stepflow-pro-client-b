@@ -105,7 +105,7 @@ const localStyles = {
 
 export default function CustomerList({
   customers = [], displaySettings = [], formSettings = [],
-  scenarios = [], statuses = [], staffList = [], gasUrl, onRefresh,
+  scenarios = [], statuses = [], staffList = [], scenarioSettings = {}, gasUrl, onRefresh,
 }) {
   const navigate = useNavigate();
   const [search, setSearch] = useState({});
@@ -373,7 +373,7 @@ export default function CustomerList({
                       onClick={() => setSort({ key: col, dir: sort.key === col && sort.dir === "asc" ? "desc" : "asc" })}
                     >
                       <div style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", userSelect: "none" }}>
-                        {col === "担当者メール" ? "担当者" : col}
+                        {col === "担当者メール" ? "担当者" : col === "シナリオID" ? "シナリオ" : col}
                         <ArrowUpDown size={12} opacity={sort.key === col ? 1 : 0.3} color={sort.key === col ? THEME.primary : undefined} />
                       </div>
                     </th>
@@ -437,23 +437,104 @@ export default function CustomerList({
       </div>
 
       {/* 確認モーダル */}
-      {confirmModal.open && (
-        <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(15,23,42,0.6)", display: "flex", justifyContent: "center", alignItems: "center", zIndex: 1000, backdropFilter: "blur(4px)" }}>
-          <div style={{ ...localStyles.card, width: "400px", textAlign: "center", marginBottom: 0 }}>
-            <div style={{ backgroundColor: "#EEF2FF", width: "64px", height: "64px", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 24px" }}>
-              <AlertCircle size={32} color={THEME.primary} />
-            </div>
-            <h3 style={{ fontSize: 20, fontWeight: 900, marginBottom: 8 }}>変更を確定しますか？</h3>
-            <p style={{ fontSize: "14px", color: THEME.textMuted, marginBottom: 32 }}>
-              {confirmModal.customer?.姓}様の「{confirmModal.field}」を更新します。
-            </p>
-            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-              <button onClick={handleExecuteChange} style={{ ...localStyles.input, backgroundColor: THEME.primary, color: "white", border: "none", fontWeight: "800", height: 48, cursor: "pointer" }}>実行する</button>
-              <button onClick={() => setConfirmModal({ open: false })} style={{ ...localStyles.input, border: "none", color: THEME.textMuted, fontWeight: "800", cursor: "pointer" }}>キャンセル</button>
+      {confirmModal.open && (() => {
+        const { customer, field, newValue, oldValue } = confirmModal;
+        // 成約・休眠ステータスのラベルと適用シナリオを取得
+        const wonLabel     = statuses[statuses.length - 3]?.name;
+        const dormantLabel = statuses[statuses.length - 2]?.name;
+        const isWon     = field === "対応ステータス" && newValue === wonLabel;
+        const isDormant = field === "対応ステータス" && newValue === dormantLabel;
+        const appliedScenarioId = isWon
+          ? scenarioSettings?.wonScenarioId
+          : isDormant
+          ? scenarioSettings?.dormantScenarioId
+          : null;
+        const scenarioStepCount = appliedScenarioId
+          ? scenarios.filter((s) => s["シナリオID"] === appliedScenarioId).length
+          : 0;
+        const accentColor = isWon ? "#16A34A" : isDormant ? "#D97706" : THEME.primary;
+        const accentBg    = isWon ? "#DCFCE7"  : isDormant ? "#FEF3C7"  : "#EEF2FF";
+
+        return (
+          <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(15,23,42,0.6)", display: "flex", justifyContent: "center", alignItems: "center", zIndex: 1000, backdropFilter: "blur(4px)" }}>
+            <div style={{ ...localStyles.card, width: 460, textAlign: "center", marginBottom: 0, padding: "40px 36px 32px" }}>
+
+              {/* アイコン */}
+              <div style={{ backgroundColor: accentBg, width: 64, height: 64, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 20px" }}>
+                <AlertCircle size={32} color={accentColor} />
+              </div>
+
+              <h3 style={{ fontSize: 20, fontWeight: 900, marginBottom: 6, color: THEME.textMain }}>変更を確定しますか？</h3>
+              <p style={{ fontSize: 13, color: THEME.textMuted, marginBottom: 24 }}>
+                {customer?.姓} {customer?.名} 様の「{field === "担当者メール" ? "担当者" : field}」を変更します
+              </p>
+
+              {/* 変更内容ボックス */}
+              <div style={{ backgroundColor: "#F8FAFC", borderRadius: 12, padding: "16px 20px", marginBottom: 20, textAlign: "left" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+                  {/* 変更前 */}
+                  <div style={{ flex: 1, textAlign: "center" }}>
+                    <div style={{ fontSize: 10, fontWeight: 800, color: THEME.textMuted, marginBottom: 6, letterSpacing: "0.05em" }}>変更前</div>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: THEME.textMuted, backgroundColor: "white", border: `1px solid ${THEME.border}`, borderRadius: 8, padding: "6px 12px" }}>
+                      {field === "担当者メール"
+                        ? (staffList.find(s => s.email === oldValue) ? `${staffList.find(s => s.email === oldValue).lastName} ${staffList.find(s => s.email === oldValue).firstName}` : "未割当")
+                        : oldValue || "（未設定）"
+                      }
+                    </div>
+                  </div>
+                  {/* 矢印 */}
+                  <div style={{ fontSize: 20, color: accentColor, fontWeight: 900, flexShrink: 0 }}>→</div>
+                  {/* 変更後 */}
+                  <div style={{ flex: 1, textAlign: "center" }}>
+                    <div style={{ fontSize: 10, fontWeight: 800, color: accentColor, marginBottom: 6, letterSpacing: "0.05em" }}>変更後</div>
+                    <div style={{ fontSize: 14, fontWeight: 900, color: accentColor, backgroundColor: accentBg, border: `1px solid ${accentColor}40`, borderRadius: 8, padding: "6px 12px" }}>
+                      {field === "担当者メール"
+                        ? (staffList.find(s => s.email === newValue) ? `${staffList.find(s => s.email === newValue).lastName} ${staffList.find(s => s.email === newValue).firstName}` : "未割当")
+                        : newValue
+                      }
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* 成約・休眠のシナリオ適用情報 */}
+              {(isWon || isDormant) && (
+                <div style={{ backgroundColor: appliedScenarioId ? "#F0FDF4" : "#FFFBEB", border: `1px solid ${appliedScenarioId ? "#BBF7D0" : "#FDE68A"}`, borderRadius: 12, padding: "14px 16px", marginBottom: 20, textAlign: "left" }}>
+                  <div style={{ fontSize: 11, fontWeight: 800, color: appliedScenarioId ? "#166534" : "#92400E", marginBottom: 6, display: "flex", alignItems: "center", gap: 6 }}>
+                    {appliedScenarioId ? "🚀 シナリオが自動適用されます" : "⚠️ 適用シナリオが未設定です"}
+                  </div>
+                  {appliedScenarioId ? (
+                    <p style={{ fontSize: 13, color: "#166534", margin: 0 }}>
+                      シナリオ <strong>「{appliedScenarioId}」</strong>（{scenarioStepCount} ステップ）の配信が自動で開始されます。
+                    </p>
+                  ) : (
+                    <p style={{ fontSize: 13, color: "#92400E", margin: 0 }}>
+                      シナリオ管理からこのステータス用のシナリオを設定できます。
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {/* ボタン */}
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                <button
+                  onClick={handleExecuteChange}
+                  style={{ backgroundColor: accentColor, color: "white", border: "none", borderRadius: 12, fontWeight: 900, height: 48, cursor: "pointer", fontSize: 15 }}
+                >
+                  確定する
+                </button>
+                <button
+                  onClick={() => setConfirmModal({ open: false })}
+                  style={{ background: "none", border: "none", color: THEME.textMuted, fontWeight: 800, cursor: "pointer", padding: "10px", fontSize: 14 }}
+                >
+                  キャンセル
+                </button>
+              </div>
+
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
     </div>
   );
 }
