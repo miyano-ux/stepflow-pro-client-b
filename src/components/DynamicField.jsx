@@ -12,11 +12,12 @@ import DatePicker from "./DatePicker";
  * @param {string} value - 現在の値
  * @param {function} onChange - 値変更時のコールバック
  */
-function DynamicField({ f, value, onChange }) {
+function DynamicField({ f, value, onChange, fieldId }) {
   // ドロップダウン（選択肢型）
   if (f.type === "dropdown") {
     return (
       <select
+        id={fieldId}
         style={styles.input}
         required={f.required}
         value={value || ""}
@@ -36,6 +37,7 @@ function DynamicField({ f, value, onChange }) {
   if (f.type === "date") {
     return (
       <DatePicker
+        id={fieldId}
         value={value || ""}
         onChange={onChange}
         required={f.required}
@@ -47,6 +49,7 @@ function DynamicField({ f, value, onChange }) {
   // テキスト・email・その他 → すべて通常テキスト入力として扱う
   return (
     <input
+      id={fieldId}
       style={styles.input}
       type="text"
       required={f.required}

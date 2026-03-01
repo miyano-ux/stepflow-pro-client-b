@@ -102,16 +102,18 @@ function CustomerEdit({
           {/* 姓・名 */}
           <div style={{ display: "flex", gap: "20px", marginBottom: "20px" }}>
             <div style={{ flex: 1 }}>
-              <label style={{ fontWeight: "700" }}>姓</label>
+              <label htmlFor="edit-ln" style={{ fontWeight: "700", userSelect: "none" }}>姓</label>
               <input
+                id="edit-ln"
                 style={styles.input}
                 value={ln}
                 onChange={(e) => setLn(e.target.value)}
               />
             </div>
             <div style={{ flex: 1 }}>
-              <label style={{ fontWeight: "700" }}>名</label>
+              <label htmlFor="edit-fn" style={{ fontWeight: "700", userSelect: "none" }}>名</label>
               <input
+                id="edit-fn"
                 style={styles.input}
                 value={fn}
                 onChange={(e) => setFn(e.target.value)}
@@ -120,8 +122,9 @@ function CustomerEdit({
           </div>
 
           {/* 電話番号 */}
-          <label style={{ fontWeight: "700" }}>電話番号</label>
+          <label htmlFor="edit-ph" style={{ fontWeight: "700", userSelect: "none" }}>電話番号</label>
           <input
+            id="edit-ph"
             style={styles.input}
             value={ph}
             onChange={(e) => setPh(e.target.value)}
@@ -141,10 +144,11 @@ function CustomerEdit({
             }}
           >
             <div>
-              <label style={{ fontWeight: 700, fontSize: 12, color: THEME.primary }}>
+              <label htmlFor="edit-staff" style={{ fontWeight: 700, fontSize: 12, color: THEME.primary, userSelect: "none" }}>
                 担当者
               </label>
               <select
+                id="edit-staff"
                 style={styles.input}
                 value={fd["担当者メール"] || ""}
                 onChange={(e) => setFd({ ...fd, "担当者メール": e.target.value })}
@@ -158,10 +162,11 @@ function CustomerEdit({
               </select>
             </div>
             <div>
-              <label style={{ fontWeight: 700, fontSize: 12, color: THEME.primary }}>
+              <label htmlFor="edit-status" style={{ fontWeight: 700, fontSize: 12, color: THEME.primary, userSelect: "none" }}>
                 対応ステータス
               </label>
               <select
+                id="edit-status"
                 style={styles.input}
                 value={fd["対応ステータス"] || "未対応"}
                 onChange={(e) =>
@@ -180,8 +185,9 @@ function CustomerEdit({
           {/* カスタム項目 */}
           {formSettings.map((f) => (
             <div key={f.name} style={{ marginTop: "20px" }}>
-              <label style={{ fontWeight: "700" }}>{f.name}</label>
+              <label htmlFor={`edit-field-${f.name}`} style={{ fontWeight: "700", userSelect: "none" }}>{f.name}</label>
               <DynamicField
+                fieldId={`edit-field-${f.name}`}
                 f={f}
                 value={fd[f.name]}
                 onChange={(v) => setFd({ ...fd, [f.name]: v })}
@@ -190,10 +196,11 @@ function CustomerEdit({
           ))}
 
           {/* シナリオ選択 */}
-          <label style={{ display: "block", marginTop: "20px", fontWeight: "700" }}>
+          <label htmlFor="edit-sc" style={{ display: "block", marginTop: "20px", fontWeight: "700", userSelect: "none" }}>
             シナリオ
           </label>
           <select
+            id="edit-sc"
             style={styles.input}
             value={sc}
             onChange={(e) => setSc(e.target.value)}

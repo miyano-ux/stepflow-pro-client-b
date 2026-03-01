@@ -42,7 +42,7 @@ function parseDate(value) {
  * @param {boolean} required - 必須かどうか
  * @param {string} placeholder - プレースホルダー
  */
-function DatePicker({ value, onChange, required, placeholder = "日付を選択" }) {
+function DatePicker({ value, onChange, required, placeholder = "日付を選択", id }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
 
@@ -114,7 +114,7 @@ function DatePicker({ value, onChange, required, placeholder = "日付を選択"
   };
 
   return (
-    <div ref={ref} style={{ position: "relative" }}>
+    <div ref={ref} id={id} style={{ position: "relative" }}>
       {/* 入力欄（クリックで開く） */}
       <div
         onClick={() => setOpen(o => !o)}
