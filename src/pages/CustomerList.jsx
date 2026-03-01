@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useLocation } from "react-router-dom";
 import axios from "axios";
 import {
   Search, SlidersHorizontal, Download, Send,
@@ -108,6 +108,8 @@ export default function CustomerList({
   scenarios = [], statuses = [], staffList = [], scenarioSettings = {}, gasUrl, onRefresh,
 }) {
   const navigate = useNavigate();
+  const location = useLocation();
+
   const [search, setSearch] = useState({});
   const [dateRange, setDateRange] = useState({});
   const [sort, setSort] = useState({ key: "登録日", dir: "desc" });
@@ -119,6 +121,20 @@ export default function CustomerList({
   useEffect(() => {
     if (syncingCount === 0) setLocalCustomers(customers);
   }, [customers, syncingCount]);
+
+  // 新規登録直後: navigation state から楽観的データを受け取り即時先頭に追加
+  // onRefresh()が完了してcustomersが更新されたら自動的に正式データに差し替わる
+  useEffect(() => {
+    const newCustomer = location.state?.newCustomer;
+    if (!newCustomer) return;
+    setLocalCustomers((prev) => {
+      // すでに追加済みなら何もしない
+      if (prev.some((c) => c.id === newCustomer.id)) return prev;
+      return [newCustomer, ...prev];
+    });
+    // stateをクリア（ブラウザバックで再追加されないように）
+    window.history.replaceState({}, "");
+  }, [location.state]);
 
 
 
@@ -385,9 +401,14 @@ export default function CustomerList({
                 {filtered.map((c) => (
                   <tr
                     key={c.id}
-                    onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#F8FAFC")}
-                    onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "white")}
-                    style={{ transition: "0.15s" }}
+                    onMouseEnter={(e) => { if (!c._optimistic) e.currentTarget.style.backgroundColor = "#F8FAFC"; }}
+                    onMouseLeave={(e) => { if (!c._optimistic) e.currentTarget.style.backgroundColor = c._optimistic ? "#F0FDF4" : "white"; }}
+                    style={{
+                      transition: "0.4s",
+                      backgroundColor: c._optimistic ? "#F0FDF4" : "white",
+                      outline: c._optimistic ? "2px solid #86EFAC" : "none",
+                      outlineOffset: "-2px",
+                    }}
                   >
                     {vCols.map((col) => (
                       <td key={col} style={localStyles.tableTd}>{renderCell(c, col)}</td>

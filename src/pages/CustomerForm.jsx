@@ -109,8 +109,21 @@ function CustomerForm({ formSettings = [], scenarios = [], statuses = [], staffL
         data: fd,
         scenarioID: sc,
       });
-      onRefresh();
-      navigate("/");
+      // 即時反映用のデータをnavigation stateに乗せてリストへ遷移
+      // CustomerList側でlocalCustomersに即追加し、楽観的UIを実現する
+      const optimisticCustomer = {
+        id: `optimistic_${Date.now()}`,   // 仮ID（refresh後に正式IDに差し替わる）
+        姓: ln, 名: fn, 電話番号: ph,
+        シナリオID: sc,
+        登録日: new Date().toISOString(),
+        対応ステータス: fd["対応ステータス"] || "未対応",
+        担当者メール: fd["担当者メール"] || "",
+        配信ステータス: "配信中",
+        ...fd,
+        _optimistic: true,                // 仮データフラグ
+      };
+      onRefresh(); // バックグラウンドで正式データを取得
+      navigate("/", { state: { newCustomer: optimisticCustomer } });
     } catch (err) {
       alert(err.message);
     }
