@@ -10,6 +10,31 @@ import { styles } from "../lib/styles";
 const WEEKDAYS = ["日", "月", "火", "水", "木", "金", "土"];
 const MONTHS = ["1月", "2月", "3月", "4月", "5月", "6月", "7月", "8月", "9月", "10月", "11月", "12月"];
 
+// 複数フォーマットに対応した日付パーサー
+// "YYYY-MM-DD" / "YYYY/MM/DD" / "YYYY年M月D日" などを吸収する
+function parseDate(value) {
+  if (!value) return null;
+  const s = String(value).trim();
+  // ISO形式: YYYY-MM-DD
+  if (/^\d{4}-\d{1,2}-\d{1,2}$/.test(s)) {
+    const d = new Date(s + "T00:00:00");
+    return isNaN(d.getTime()) ? null : d;
+  }
+  // スラッシュ形式: YYYY/MM/DD
+  if (/^\d{4}\/\d{1,2}\/\d{1,2}$/.test(s)) {
+    const [y, m, d] = s.split("/").map(Number);
+    const dt = new Date(y, m - 1, d);
+    return isNaN(dt.getTime()) ? null : dt;
+  }
+  // 日本語形式: YYYY年M月D日
+  const jpMatch = s.match(/^(\d{4})年(\d{1,2})月(\d{1,2})日$/);
+  if (jpMatch) {
+    const dt = new Date(Number(jpMatch[1]), Number(jpMatch[2]) - 1, Number(jpMatch[3]));
+    return isNaN(dt.getTime()) ? null : dt;
+  }
+  return null;
+}
+
 /**
  * テーマに合わせたカスタム日付ピッカー
  * @param {string} value - "YYYY-MM-DD" 形式の値
@@ -23,7 +48,7 @@ function DatePicker({ value, onChange, required, placeholder = "日付を選択"
 
   // 表示用の年月（カレンダーのナビゲーション用）
   const today = new Date();
-  const parsed = value ? new Date(value + "T00:00:00") : null;
+  const parsed = parseDate(value);
   const [viewYear, setViewYear] = useState(parsed?.getFullYear() || today.getFullYear());
   const [viewMonth, setViewMonth] = useState(parsed?.getMonth() ?? today.getMonth());
 
@@ -136,13 +161,13 @@ function DatePicker({ value, onChange, required, placeholder = "日付を選択"
 
           {/* ヘッダー：年月ナビゲーション */}
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
-            <button onClick={prevMonth} style={navBtnStyle}>
+            <button type="button" onClick={prevMonth} style={navBtnStyle}>
               <ChevronLeft size={16} color={THEME.textMuted} />
             </button>
             <span style={{ fontWeight: 800, fontSize: 15, color: THEME.textMain }}>
               {viewYear}年 {MONTHS[viewMonth]}
             </span>
-            <button onClick={nextMonth} style={navBtnStyle}>
+            <button type="button" onClick={nextMonth} style={navBtnStyle}>
               <ChevronRight size={16} color={THEME.textMuted} />
             </button>
           </div>
@@ -206,6 +231,7 @@ function DatePicker({ value, onChange, required, placeholder = "日付を選択"
           {/* 今日ボタン */}
           <div style={{ marginTop: 16, paddingTop: 14, borderTop: `1px solid ${THEME.border}` }}>
             <button
+              type="button"
               onClick={() => {
                 const mm = String(today.getMonth() + 1).padStart(2, "0");
                 const dd = String(today.getDate()).padStart(2, "0");
