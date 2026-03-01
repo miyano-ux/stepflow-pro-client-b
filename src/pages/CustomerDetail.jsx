@@ -26,14 +26,14 @@ const formatDateJP = (v) => {
 
 export default function CustomerDetail({
   customers = [], formSettings = [], statuses = [],
-  trackingLogs = [], masterUrl, gasUrl, companyName, onRefresh,
+  trackingLogs = [], staffList = [], gasUrl, onRefresh,
 }) {
   const { id } = useParams();
   const navigate = useNavigate();
 
   const [isEditing, setIsEditing] = useState(false);
   const [syncingCount, setSyncingCount] = useState(0);
-  const [staffList, setStaffList] = useState([]);
+
   const [formData, setFormData] = useState(null);
 
   const customer = useMemo(
@@ -45,13 +45,7 @@ export default function CustomerDetail({
     if (customer && syncingCount === 0) setFormData({ ...customer });
   }, [customer, syncingCount]);
 
-  useEffect(() => {
-    if (!masterUrl) return;
-    axios
-      .get(`${masterUrl}?action=list&company=${companyName}`)
-      .then((res) => setStaffList(res?.data?.users || []))
-      .catch(console.error);
-  }, [masterUrl, companyName]);
+
 
   const customerLogs = useMemo(
     () =>

@@ -76,11 +76,34 @@ function App() {
     return sUser ? JSON.parse(sUser) : null;
   });
 
+  // ── スタッフ一覧: App.jsx で一元管理・キャッシュ ──────────────
+  // 各コンポーネントが個別に fetch しないよう、ここで取得して props で渡す
+  const [staffList, setStaffList] = useState(() => {
+    try {
+      const raw = localStorage.getItem("sf_staff_cache");
+      return raw ? JSON.parse(raw) : [];
+    } catch { return []; }
+  });
+
+  const refreshStaff = useCallback(async () => {
+    if (!MASTER_WHITELIST_API || !CLIENT_COMPANY_NAME) return;
+    try {
+      const res = await axios.get(`${MASTER_WHITELIST_API}?action=list&company=${CLIENT_COMPANY_NAME}&_t=${Date.now()}`);
+      const list = res?.data?.users || [];
+      setStaffList(list);
+      // 次回起動時の初期表示用にキャッシュ（古くても画面は即表示、裏で更新）
+      localStorage.setItem("sf_staff_cache", JSON.stringify(list));
+    } catch (e) { console.error("スタッフ取得エラー", e); }
+  }, []);
+
   const refresh = useCallback(async () => {
     if (!user) return;
     try {
-      const res = await axios.get(GAS_URL);
-      const data = res?.data || {};
+      const [gasRes] = await Promise.all([
+        axios.get(GAS_URL),
+        refreshStaff(), // GASデータと並列で取得
+      ]);
+      const data = gasRes?.data || {};
       setD(data);
       // displaySettings はlocalStorageが未設定の場合のみGAS値を初期値として使う
       const local = getDisplaySettings();
@@ -90,7 +113,7 @@ function App() {
     } finally {
       setLoad(false);
     }
-  }, [user, getDisplaySettings]);
+  }, [user, getDisplaySettings, refreshStaff]);
 
   useEffect(() => {
     refresh();
@@ -195,12 +218,12 @@ function App() {
           >
             <Routes>
               {/* 顧客管理 */}
-              <Route path="/" element={<CustomerList customers={d?.customers} displaySettings={displaySettings} formSettings={d?.formSettings} scenarios={d?.scenarios} statuses={d?.statuses} masterUrl={MASTER_WHITELIST_API} gasUrl={GAS_URL} companyName={CLIENT_COMPANY_NAME} onRefresh={refresh} />} />
-              <Route path="/customers" element={<CustomerList customers={d?.customers} displaySettings={displaySettings} formSettings={d?.formSettings} scenarios={d?.scenarios} statuses={d?.statuses} masterUrl={MASTER_WHITELIST_API} gasUrl={GAS_URL} companyName={CLIENT_COMPANY_NAME} onRefresh={refresh} />} />
+              <Route path="/" element={<CustomerList customers={d?.customers} displaySettings={displaySettings} formSettings={d?.formSettings} scenarios={d?.scenarios} statuses={d?.statuses} staffList={staffList} gasUrl={GAS_URL} onRefresh={refresh} />} />
+              <Route path="/customers" element={<CustomerList customers={d?.customers} displaySettings={displaySettings} formSettings={d?.formSettings} scenarios={d?.scenarios} statuses={d?.statuses} staffList={staffList} gasUrl={GAS_URL} onRefresh={refresh} />} />
               <Route path="/add" element={<CustomerForm scenarios={d?.scenarios} formSettings={d?.formSettings} statuses={d?.statuses} masterUrl={MASTER_WHITELIST_API} onRefresh={refresh} />} />
               <Route path="/edit/:id" element={<CustomerEdit customers={d?.customers} scenarios={d?.scenarios} formSettings={d?.formSettings} statuses={d?.statuses} masterUrl={MASTER_WHITELIST_API} onRefresh={refresh} />} />
               <Route path="/schedule/:id" element={<CustomerSchedule customers={d?.customers} deliveryLogs={d?.deliveryLogs} onRefresh={refresh} />} />
-              <Route path="/detail/:id" element={<CustomerDetail customers={d?.customers} formSettings={d?.formSettings} statuses={d?.statuses} trackingLogs={d?.trackingLogs} masterUrl={MASTER_WHITELIST_API} gasUrl={GAS_URL} companyName={CLIENT_COMPANY_NAME} onRefresh={refresh} />} />
+              <Route path="/detail/:id" element={<CustomerDetail customers={d?.customers} formSettings={d?.formSettings} statuses={d?.statuses} trackingLogs={d?.trackingLogs} staffList={staffList} gasUrl={GAS_URL} onRefresh={refresh} />} />
               <Route path="/direct-sms/:id" element={<DirectSms customers={d?.customers} templates={d?.templates} onRefresh={refresh} masterUrl={MASTER_WHITELIST_API} currentUserEmail={user?.email} />} />
 
               {/* 設定 */}
@@ -220,7 +243,7 @@ function App() {
               <Route path="/import-errors" element={<ImportErrorList errors={d?.importErrors} onRefresh={refresh} />} />
 
               {/* ユーザー管理 */}
-              <Route path="/users" element={<UserManager masterUrl={MASTER_WHITELIST_API} companyName={CLIENT_COMPANY_NAME} />} />
+              <Route path="/users" element={<UserManager staffList={staffList} onRefreshStaff={refreshStaff} masterUrl={MASTER_WHITELIST_API} companyName={CLIENT_COMPANY_NAME} />} />
               <Route path="/users/add" element={<UserForm masterUrl={MASTER_WHITELIST_API} />} />
               <Route path="/users/edit/:id" element={<UserForm masterUrl={MASTER_WHITELIST_API} />} />
 
@@ -229,7 +252,7 @@ function App() {
               <Route path="/tracking" element={<TrackingDashboard />} />
 
               {/* カンバン */}
-              <Route path="/kanban" element={<KanbanBoard customers={d?.customers} statuses={d?.statuses} scenarios={d?.scenarios} scenarioSettings={d?.scenarioSettings} onRefresh={refresh} masterUrl={MASTER_WHITELIST_API} gasUrl={GAS_URL} companyName={CLIENT_COMPANY_NAME} />} />
+              <Route path="/kanban" element={<KanbanBoard customers={d?.customers} statuses={d?.statuses} scenarios={d?.scenarios} scenarioSettings={d?.scenarioSettings} staffList={staffList} onRefresh={refresh} gasUrl={GAS_URL} />} />
             </Routes>
           </main>
 

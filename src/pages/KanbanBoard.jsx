@@ -25,11 +25,11 @@ const S = {
 
 export default function KanbanBoard({
   customers = [], statuses = [], scenarios = [], scenarioSettings = {},
-  onRefresh, masterUrl, gasUrl, companyName,
+  onRefresh, staffList = [], gasUrl,
 }) {
   const navigate = useNavigate();
   const [filterStaff, setFilterStaff] = useState("");
-  const [staffList, setStaffList]     = useState([]);
+
   const [localCustomers, setLocalCustomers] = useState(customers);
   const [draggingId, setDraggingId]   = useState(null);
   const [overColumn, setOverColumn]   = useState(null);
@@ -51,13 +51,7 @@ export default function KanbanBoard({
   }, [customers]);
 
   // スタッフ取得
-  useEffect(() => {
-    if (!masterUrl) return;
-    axios
-      .get(`${masterUrl}?action=list&company=${companyName}`)
-      .then((r) => setStaffList(r?.data?.users || []))
-      .catch(console.error);
-  }, [masterUrl, companyName]);
+
 
   // ステータス分類
   const flowStatuses = statuses.slice(0, statuses.length - 3);

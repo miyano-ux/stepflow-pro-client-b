@@ -1,198 +1,162 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
-import { 
-  UserPlus, Mail, Edit3, Trash2, Loader2, Phone, ShieldCheck, UserCircle
+import {
+  UserPlus, Mail, Edit3, Trash2, Loader2,
+  Phone, UserCircle, RefreshCw
 } from "lucide-react";
+import { THEME } from "../lib/constants";
+import { styles } from "../lib/styles";
 
-const THEME = {
-  primary: "#4F46E5",
-  bg: "#F8FAFC",
-  card: "#FFFFFF",
-  textMain: "#1E293B",
-  textMuted: "#64748B",
-  border: "#E2E8F0",
-  danger: "#EF4444",
-  success: "#10B981"
+// ==========================================
+// 👥 UserManager - ユーザー管理
+// ==========================================
+// staffList は App.jsx で一元取得・キャッシュ済みのものを props で受け取る
+// 個別 fetch を廃止することでタイムラグを解消
+
+const localStyles = {
+  main:    { minHeight: "100vh", backgroundColor: THEME.bg },
+  wrapper: { padding: "48px 64px", maxWidth: "1440px", margin: "0 auto" },
+  card:    { backgroundColor: THEME.card, borderRadius: "16px", border: `1px solid ${THEME.border}`, boxShadow: "0 4px 6px -1px rgba(0,0,0,0.05)", overflow: "hidden" },
+  tableTh: { padding: "16px 24px", color: THEME.textMuted, fontSize: "11px", fontWeight: "800", backgroundColor: "#F8FAFC", borderBottom: `2px solid ${THEME.border}`, textAlign: "left", textTransform: "uppercase", letterSpacing: "0.05em" },
+  tableTd: { padding: "20px 24px", fontSize: "14px", color: THEME.textMain, borderBottom: `1px solid ${THEME.border}`, verticalAlign: "middle" },
+  badge:   { padding: "4px 10px", borderRadius: "6px", fontSize: "11px", fontWeight: "800", backgroundColor: "#EEF2FF", color: THEME.primary, display: "inline-flex", alignItems: "center", gap: "4px" },
 };
 
-const styles = {
-  // 🆕 重要：サイドバーとの重なりを防ぐメインコンテナ設定
-  main: { 
-    minHeight: "100vh", 
-    backgroundColor: THEME.bg 
-  },
-  wrapper: { 
-    padding: "48px 64px", 
-    maxWidth: "1440px", 
-    margin: "0 auto" 
-  },
-  card: { 
-    backgroundColor: THEME.card, 
-    borderRadius: "16px", 
-    border: `1px solid ${THEME.border}`, 
-    boxShadow: "0 4px 6px -1px rgba(0,0,0,0.05)",
-    overflow: "hidden" 
-  },
-  tableTh: { 
-    padding: "16px 24px", 
-    color: THEME.textMuted, 
-    fontSize: "11px", 
-    fontWeight: "800", 
-    backgroundColor: "#F8FAFC", 
-    borderBottom: `2px solid ${THEME.border}`,
-    textAlign: "left",
-    textTransform: "uppercase",
-    letterSpacing: "0.05em"
-  },
-  tableTd: { 
-    padding: "20px 24px", 
-    fontSize: "14px", 
-    color: THEME.textMain, 
-    borderBottom: `1px solid ${THEME.border}`,
-    verticalAlign: "middle"
-  },
-  badge: {
-    padding: "4px 10px",
-    borderRadius: "6px",
-    fontSize: "11px",
-    fontWeight: "800",
-    backgroundColor: "#EEF2FF",
-    color: THEME.primary,
-    display: "inline-flex",
-    alignItems: "center",
-    gap: "4px"
-  }
-};
-
-export default function UserManager({ masterUrl, companyName = "B社" }) {
+export default function UserManager({ staffList = [], onRefreshStaff, masterUrl, companyName = "B社" }) {
   const navigate = useNavigate();
-  const [users, setUsers] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
 
-  const fetchUsers = useCallback(async () => {
-    setLoading(true);
+  // 手動更新ボタン（必要なときだけ叩く）
+  const handleRefresh = async () => {
+    setRefreshing(true);
     try {
-      const res = await axios.get(`${masterUrl}?action=list&company=${companyName}&_t=${Date.now()}`);
-      setUsers(res.data.users || []);
-    } catch (e) {
-      console.error("データ取得エラー", e);
+      await onRefreshStaff();
     } finally {
-      setLoading(false);
+      setRefreshing(false);
     }
-  }, [masterUrl, companyName]);
-
-  useEffect(() => { fetchUsers(); }, [fetchUsers]);
+  };
 
   const handleDelete = async (id) => {
     if (!window.confirm("このユーザーを完全に削除しますか？")) return;
     try {
-      const payload = { action: "delete", id: String(id), company: companyName };
-      const res = await axios.post(masterUrl, JSON.stringify(payload), { headers: { 'Content-Type': 'text/plain;charset=utf-8' } });
-      if (res.data.status === "success") fetchUsers();
-      else alert("失敗: " + res.data.message);
-    } catch (e) {
+      const res = await axios.post(
+        masterUrl,
+        JSON.stringify({ action: "delete", id: String(id), company: companyName }),
+        { headers: { "Content-Type": "text/plain;charset=utf-8" } }
+      );
+      if (res.data.status === "success") {
+        await onRefreshStaff(); // 削除後だけ再取得
+      } else {
+        alert("失敗: " + res.data.message);
+      }
+    } catch {
       alert("通信エラーが発生しました");
     }
   };
 
   return (
-    <div style={styles.main}>
-      <div style={styles.wrapper}>
+    <div style={localStyles.main}>
+      <div style={localStyles.wrapper}>
+
         <header style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: "40px" }}>
           <div>
-            <h1 style={{ fontSize: "32px", fontWeight: "900", color: THEME.textMain, margin: 0, letterSpacing: "-0.02em" }}>ユーザー管理</h1>
+            <h1 style={{ fontSize: "32px", fontWeight: "900", color: THEME.textMain, margin: 0 }}>ユーザー管理</h1>
             <p style={{ color: THEME.textMuted, fontSize: "15px", marginTop: "8px" }}>
               システムの利用権限を持つスタッフアカウントの一覧
             </p>
           </div>
-          <button 
-            onClick={() => navigate("/users/add")} 
-            style={{ 
-              backgroundColor: THEME.primary, 
-              color: "white", 
-              border: "none", 
-              padding: "14px 28px", 
-              borderRadius: "12px", 
-              fontWeight: "800", 
-              cursor: "pointer", 
-              display: "flex", 
-              alignItems: "center", 
-              gap: "10px",
-              boxShadow: "0 10px 15px -3px rgba(79, 70, 229, 0.3)",
-              transition: "transform 0.2s"
-            }}
-            onMouseEnter={(e) => e.currentTarget.style.transform = "translateY(-2px)"}
-            onMouseLeave={(e) => e.currentTarget.style.transform = "translateY(0)"}
-          >
-            <UserPlus size={20} /> 新規ユーザー登録
-          </button>
+          <div style={{ display: "flex", gap: 12 }}>
+            {/* 手動更新ボタン */}
+            <button
+              onClick={handleRefresh}
+              disabled={refreshing}
+              style={{ ...styles.btn, ...styles.btnSecondary, gap: 8 }}
+              title="最新情報に更新"
+            >
+              <RefreshCw size={16} className={refreshing ? "animate-spin" : ""} />
+              {refreshing ? "更新中..." : "更新"}
+            </button>
+            <button
+              onClick={() => navigate("/users/add")}
+              style={{ ...styles.btn, ...styles.btnPrimary }}
+            >
+              <UserPlus size={18} /> 新規ユーザー登録
+            </button>
+          </div>
         </header>
 
-        <div style={styles.card}>
+        <div style={localStyles.card}>
           <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: 0 }}>
             <thead>
               <tr>
-                <th style={styles.tableTh}>担当スタッフ</th>
-                <th style={styles.tableTh}>メールアドレス</th>
-                <th style={styles.tableTh}>電話番号</th>
-                <th style={{ ...styles.tableTh, textAlign: "center", width: "120px" }}>操作</th>
+                <th style={localStyles.tableTh}>担当スタッフ</th>
+                <th style={localStyles.tableTh}>メールアドレス</th>
+                <th style={localStyles.tableTh}>電話番号</th>
+                <th style={{ ...localStyles.tableTh, textAlign: "center", width: "120px" }}>操作</th>
               </tr>
             </thead>
             <tbody>
-              {loading ? (
+              {staffList.length === 0 ? (
                 <tr>
-                  <td colSpan="4" style={{ padding: "100px", textAlign: "center" }}>
-                    <Loader2 className="animate-spin" color={THEME.primary} size={48} />
-                    <p style={{ marginTop: "20px", color: THEME.textMuted, fontWeight: "700" }}>マスターデータを同期中...</p>
+                  <td colSpan="4" style={{ padding: "80px", textAlign: "center", color: THEME.textMuted }}>
+                    登録データが見つかりません
                   </td>
                 </tr>
-              ) : users.length > 0 ? (
-                users.map((u) => (
-                  <tr key={u.id} style={{ transition: "0.2s" }} onMouseEnter={(e) => e.currentTarget.style.backgroundColor = "#F1F5F9"}>
-                    <td style={styles.tableTd}>
+              ) : (
+                staffList.map((u) => (
+                  <tr
+                    key={u.id}
+                    style={{ transition: "0.15s" }}
+                    onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#F8FAFC")}
+                    onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "white")}
+                  >
+                    <td style={localStyles.tableTd}>
                       <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-                        <div style={{ width: "40px", height: "40px", borderRadius: "50%", backgroundColor: "#E0E7FF", display: "flex", alignItems: "center", justifyContent: "center", color: THEME.primary }}>
+                        <div style={{ width: "40px", height: "40px", borderRadius: "50%", backgroundColor: "#E0E7FF", display: "flex", alignItems: "center", justifyContent: "center", color: THEME.primary, flexShrink: 0 }}>
                           <UserCircle size={24} />
                         </div>
                         <div>
                           <div style={{ fontWeight: "900", fontSize: "16px" }}>{u.lastName} {u.firstName}</div>
-                          <div style={styles.badge}>STAFF</div>
+                          <span style={localStyles.badge}>STAFF</span>
                         </div>
                       </div>
                     </td>
-                    <td style={styles.tableTd}>
+                    <td style={localStyles.tableTd}>
                       <div style={{ display: "flex", alignItems: "center", gap: "8px", color: THEME.textMuted }}>
                         <Mail size={14} /> {u.email}
                       </div>
                     </td>
-                    <td style={styles.tableTd}>
+                    <td style={localStyles.tableTd}>
                       <div style={{ display: "flex", alignItems: "center", gap: "8px", color: THEME.textMuted }}>
                         <Phone size={14} /> {String(u.phone || "-").replace(/'/g, "")}
                       </div>
                     </td>
-                    <td style={styles.tableTd}>
+                    <td style={localStyles.tableTd}>
                       <div style={{ display: "flex", gap: "16px", justifyContent: "center" }}>
-                        <button onClick={() => navigate(`/users/edit/${u.id}`, { state: { user: u } })} style={{ background: "none", border: "none", color: THEME.primary, cursor: "pointer", padding: "8px" }} title="編集">
-                          <Edit3 size={20}/>
+                        <button
+                          onClick={() => navigate(`/users/edit/${u.id}`, { state: { user: u } })}
+                          style={{ background: "none", border: "none", color: THEME.primary, cursor: "pointer", padding: "8px" }}
+                          title="編集"
+                        >
+                          <Edit3 size={20} />
                         </button>
-                        <button onClick={() => handleDelete(u.id)} style={{ background: "none", border: "none", color: THEME.danger, cursor: "pointer", padding: "8px" }} title="削除">
-                          <Trash2 size={20}/>
+                        <button
+                          onClick={() => handleDelete(u.id)}
+                          style={{ background: "none", border: "none", color: THEME.danger, cursor: "pointer", padding: "8px" }}
+                          title="削除"
+                        >
+                          <Trash2 size={20} />
                         </button>
                       </div>
                     </td>
                   </tr>
                 ))
-              ) : (
-                <tr>
-                  <td colSpan="4" style={{ padding: "100px", textAlign: "center", color: THEME.textMuted }}>
-                    登録データが見つかりません
-                  </td>
-                </tr>
               )}
             </tbody>
           </table>
         </div>
+
       </div>
     </div>
   );

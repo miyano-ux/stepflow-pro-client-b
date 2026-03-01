@@ -43,13 +43,13 @@ const localStyles = {
 
 export default function CustomerList({
   customers = [], displaySettings = [], formSettings = [],
-  scenarios = [], statuses = [], masterUrl, gasUrl, companyName, onRefresh,
+  scenarios = [], statuses = [], staffList = [], gasUrl, onRefresh,
 }) {
   const navigate = useNavigate();
   const [search, setSearch] = useState({});
   const [dateRange, setDateRange] = useState({});
   const [sort, setSort] = useState({ key: "登録日", dir: "desc" });
-  const [staffList, setStaffList] = useState([]);
+
   const [confirmModal, setConfirmModal] = useState({ open: false, customer: null, field: "", newValue: "", oldValue: "" });
   const [localCustomers, setLocalCustomers] = useState(customers);
   const [syncingCount, setSyncingCount] = useState(0);
@@ -58,12 +58,7 @@ export default function CustomerList({
     if (syncingCount === 0) setLocalCustomers(customers);
   }, [customers, syncingCount]);
 
-  useEffect(() => {
-    if (!masterUrl) return;
-    axios.get(`${masterUrl}?action=list&company=${companyName}`)
-      .then((res) => setStaffList(res?.data?.users || []))
-      .catch((e) => console.error(e));
-  }, [masterUrl, companyName]);
+
 
   const vCols = useMemo(() => {
     const names = displaySettings?.length > 0
