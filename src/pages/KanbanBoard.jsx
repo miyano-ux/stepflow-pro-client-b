@@ -3,9 +3,99 @@ import { Link, useNavigate } from "react-router-dom";
 import axios from "axios";
 import {
   ListTodo, UserCircle, MessageSquare,
-  Trophy, Moon, Trash2, ChevronDown, Loader2, Users
+  Trophy, Moon, Trash2, ChevronDown, Loader2, Users, Check
 } from "lucide-react";
 import { THEME } from "../lib/constants";
+
+// ── カスタム担当者ドロップダウン ──────────────────────────
+function StaffDropdown({ staffList, value, onChange }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+
+  // 外側クリックで閉じる
+  useEffect(() => {
+    const handler = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  const selected = staffList.find((s) => s.email === value);
+  const label = selected ? `${selected.lastName} ${selected.firstName}` : "全ての担当者";
+
+  const options = [{ email: "", label: "全ての担当者" }, ...staffList.map((s) => ({ email: s.email, label: `${s.lastName} ${s.firstName}` }))];
+
+  return (
+    <div ref={ref} style={{ position: "relative", userSelect: "none" }}>
+      {/* トリガーボタン */}
+      <button
+        onClick={() => setOpen((o) => !o)}
+        style={{
+          display: "flex", alignItems: "center", gap: 10,
+          backgroundColor: "#FFF", border: `1px solid ${open ? THEME.primary : THEME.border}`,
+          borderRadius: 12, padding: "0 14px", height: 42, minWidth: 200, cursor: "pointer",
+          boxShadow: open ? `0 0 0 3px ${THEME.primary}20` : "none",
+          transition: "all 0.15s",
+        }}
+      >
+        {selected ? (
+          <div style={{ width: 26, height: 26, borderRadius: "50%", backgroundColor: "#E0E7FF", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+            <UserCircle size={16} color={THEME.primary} />
+          </div>
+        ) : (
+          <Users size={15} color={THEME.textMuted} />
+        )}
+        <span style={{ flex: 1, textAlign: "left", fontSize: 13, fontWeight: 800, color: THEME.textMain, whiteSpace: "nowrap" }}>
+          {label}
+        </span>
+        <ChevronDown size={15} color={THEME.textMuted} style={{ transform: open ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.2s", flexShrink: 0 }} />
+      </button>
+
+      {/* ドロップダウンパネル */}
+      {open && (
+        <div style={{
+          position: "absolute", top: "calc(100% + 8px)", right: 0, zIndex: 1000,
+          backgroundColor: "#FFF", borderRadius: 16, border: `1px solid ${THEME.border}`,
+          boxShadow: "0 16px 32px rgba(0,0,0,0.12)", minWidth: 220, overflow: "hidden",
+          animation: "fadeIn 0.12s ease",
+        }}>
+          <div style={{ padding: "6px" }}>
+            {options.map((opt) => {
+              const isActive = opt.email === value;
+              return (
+                <button
+                  key={opt.email}
+                  onClick={() => { onChange(opt.email); setOpen(false); }}
+                  style={{
+                    width: "100%", display: "flex", alignItems: "center", gap: 10,
+                    padding: "10px 12px", borderRadius: 10, border: "none", cursor: "pointer",
+                    backgroundColor: isActive ? "#EEF2FF" : "transparent",
+                    transition: "background-color 0.1s",
+                  }}
+                  onMouseEnter={(e) => { if (!isActive) e.currentTarget.style.backgroundColor = "#F8FAFC"; }}
+                  onMouseLeave={(e) => { if (!isActive) e.currentTarget.style.backgroundColor = "transparent"; }}
+                >
+                  {opt.email ? (
+                    <div style={{ width: 28, height: 28, borderRadius: "50%", backgroundColor: isActive ? "#C7D2FE" : "#EEF2FF", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                      <UserCircle size={17} color={THEME.primary} />
+                    </div>
+                  ) : (
+                    <div style={{ width: 28, height: 28, borderRadius: "50%", backgroundColor: "#F1F5F9", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                      <Users size={14} color={THEME.textMuted} />
+                    </div>
+                  )}
+                  <span style={{ flex: 1, textAlign: "left", fontSize: 13, fontWeight: isActive ? 900 : 700, color: isActive ? THEME.primary : THEME.textMain }}>
+                    {opt.label}
+                  </span>
+                  {isActive && <Check size={14} color={THEME.primary} />}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 // ==========================================
 // 📋 KanbanBoard - 案件管理カンバン
@@ -14,8 +104,6 @@ import { THEME } from "../lib/constants";
 const S = {
   main:     { minHeight: "100vh", backgroundColor: THEME.bg, display: "flex", flexDirection: "column" },
   wrapper:  { padding: "40px 40px 0", flex: 1, display: "flex", flexDirection: "column" },
-  selWrap:  { position: "relative", display: "flex", alignItems: "center", backgroundColor: "#FFF", padding: "0 14px", borderRadius: "12px", border: `1px solid ${THEME.border}`, height: "42px", minWidth: "220px" },
-  select:   { width: "100%", border: "none", outline: "none", backgroundColor: "transparent", fontSize: "13px", fontWeight: "800", color: THEME.textMain, appearance: "none", cursor: "pointer", zIndex: 1 },
   kanban:   { display: "flex", gap: "20px", overflowX: "auto", paddingBottom: "24px", flex: 1, alignItems: "flex-start" },
   col:      { minWidth: "310px", width: "310px", borderRadius: "20px", padding: "16px", minHeight: "60vh", border: `1px solid ${THEME.border}`, transition: "background-color 0.2s, border-color 0.2s" },
   card:     { backgroundColor: "#FFF", borderRadius: "14px", padding: "16px", boxShadow: "0 4px 6px -1px rgba(0,0,0,0.05)", cursor: "grab", border: "2px solid transparent", userSelect: "none", transition: "transform 0.15s, box-shadow 0.15s, opacity 0.15s" },
@@ -186,16 +274,7 @@ export default function KanbanBoard({
               >
                 <ListTodo size={18} /> ステータス調整
               </button>
-              <div style={S.selWrap}>
-                <Users size={16} color={THEME.textMuted} style={{ marginRight: 8 }} />
-                <select style={S.select} value={filterStaff} onChange={(e) => setFilterStaff(e.target.value)}>
-                  <option value="">全ての担当者</option>
-                  {staffList.map((s) => (
-                    <option key={s.email} value={s.email}>{s.lastName} {s.firstName}</option>
-                  ))}
-                </select>
-                <ChevronDown size={16} color={THEME.textMuted} style={{ position: "absolute", right: "12px", pointerEvents: "none" }} />
-              </div>
+              <StaffDropdown staffList={staffList} value={filterStaff} onChange={setFilterStaff} />
             </div>
           </header>
 
