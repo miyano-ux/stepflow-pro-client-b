@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { FileSpreadsheet, SlidersHorizontal, Upload } from "lucide-react";
 import axios from "axios";
-import { THEME, CLIENT_COMPANY_NAME, GAS_URL } from "../lib/constants";
+import { THEME, GAS_URL } from "../lib/constants";
 import { styles } from "../lib/styles";
 import { apiCall, smartNormalizePhone, downloadCSV } from "../lib/utils";
 import Page from "../components/Page";
@@ -20,7 +20,7 @@ import DynamicField from "../components/DynamicField";
  * @param {string} masterUrl - マスタAPIのURL
  * @param {function} onRefresh - データ再取得コールバック
  */
-function CustomerForm({ formSettings = [], scenarios = [], statuses = [], masterUrl, onRefresh }) {
+function CustomerForm({ formSettings = [], scenarios = [], statuses = [], staffList = [], onRefresh }) {
   const navigate = useNavigate();
 
   const [ln, setLn] = useState("");
@@ -28,24 +28,11 @@ function CustomerForm({ formSettings = [], scenarios = [], statuses = [], master
   const [ph, setPh] = useState("");
   const [fd, setFd] = useState({ "対応ステータス": "未対応", "担当者メール": "" });
   const [sc, setSc] = useState("");
-  const [staffList, setStaffList] = useState([]);
 
-  // 初期化：シナリオの先頭をデフォルト選択・スタッフ一覧取得
+  // 初期化：シナリオの先頭をデフォルト選択
   useEffect(() => {
     if (scenarios?.length > 0) setSc(scenarios[0]["シナリオID"]);
-
-    const fetchStaff = async () => {
-      try {
-        const res = await axios.get(
-          `${masterUrl}?action=list&company=${CLIENT_COMPANY_NAME}`
-        );
-        setStaffList(res?.data?.users || []);
-      } catch (e) {
-        console.error(e);
-      }
-    };
-    if (masterUrl) fetchStaff();
-  }, [scenarios, masterUrl]);
+  }, [scenarios]);
 
   // CSVインポート処理
   const handleUpload = (e) => {
