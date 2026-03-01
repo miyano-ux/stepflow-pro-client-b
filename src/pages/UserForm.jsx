@@ -14,7 +14,7 @@ import Page from "../components/Page";
  * ユーザーの新規登録および既存情報の編集ページ
  * @param {string} masterUrl - マスタAPIのURL
  */
-function UserForm({ masterUrl }) {
+function UserForm({ masterUrl, onRefreshStaff }) {
   const navigate = useNavigate();
   const { id } = useParams();                    // id = encodeされたメールアドレス（編集時）
   const isEdit = !!id;
@@ -72,6 +72,7 @@ function UserForm({ masterUrl }) {
       });
 
       if (res.data.status === "success") {
+        await onRefreshStaff?.(); // キャッシュを即時更新してから画面遷移
         alert(isEdit ? "ユーザー情報を更新しました" : "新しいユーザーを登録しました");
         navigate("/users");
       } else {

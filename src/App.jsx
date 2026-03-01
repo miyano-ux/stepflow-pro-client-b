@@ -244,8 +244,8 @@ function App() {
 
               {/* ユーザー管理 */}
               <Route path="/users" element={<UserManager staffList={staffList} onRefreshStaff={refreshStaff} masterUrl={MASTER_WHITELIST_API} companyName={CLIENT_COMPANY_NAME} />} />
-              <Route path="/users/add" element={<UserForm masterUrl={MASTER_WHITELIST_API} />} />
-              <Route path="/users/edit/:id" element={<UserForm masterUrl={MASTER_WHITELIST_API} />} />
+              <Route path="/users/add" element={<UserForm masterUrl={MASTER_WHITELIST_API} onRefreshStaff={refreshStaff} />} />
+              <Route path="/users/edit/:id" element={<UserForm masterUrl={MASTER_WHITELIST_API} onRefreshStaff={refreshStaff} />} />
 
               {/* 分析・トラッキング */}
               <Route path="/analysis" element={<AnalysisReport customers={d?.customers} statuses={d?.statuses} trackingLogs={d?.trackingLogs} masterUrl={MASTER_WHITELIST_API} />} />
