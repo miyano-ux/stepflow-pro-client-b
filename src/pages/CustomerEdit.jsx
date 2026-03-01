@@ -32,7 +32,6 @@ function CustomerEdit({
   const { id } = useParams();
   const nav = useNavigate();
 
-  const c = customers?.find((x) => x.id === Number(id));
 
   const [ln, setLn] = useState("");
   const [fn, setFn] = useState("");
@@ -42,17 +41,21 @@ function CustomerEdit({
   const [staffList, setStaffList] = useState([]);
 
   // 顧客データとスタッフ一覧を初期化
+  // ※ 依存配列を [id, masterUrl] のみにすることで、
+  //   親の再レンダーで customers 参照が変わってもフォームが意図せず
+  //   初期化されてしまう（入力中にフォームがリセットされる）バグを防ぐ
   useEffect(() => {
-    if (c) {
-      setLn(c["姓"] || "");
-      setFn(c["名"] || "");
-      setPh(c["電話番号"] || "");
+    const customer = customers?.find((x) => x.id === Number(id));
+    if (customer) {
+      setLn(customer["姓"] || "");
+      setFn(customer["名"] || "");
+      setPh(customer["電話番号"] || "");
       setFd({
-        ...c,
-        "対応ステータス": c["対応ステータス"] || statuses[0]?.name || "未対応",
-        "担当者メール": c["担当者メール"] || "",
+        ...customer,
+        "対応ステータス": customer["対応ステータス"] || statuses[0]?.name || "未対応",
+        "担当者メール": customer["担当者メール"] || "",
       });
-      setSc(c["シナリオID"]);
+      setSc(customer["シナリオID"]);
     }
 
     const fetchStaff = async () => {
@@ -66,7 +69,10 @@ function CustomerEdit({
       }
     };
     if (masterUrl) fetchStaff();
-  }, [c, masterUrl]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id, masterUrl]); // id が変わった時だけ再初期化
+
+  const c = customers?.find((x) => x.id === Number(id));
 
   // 顧客データ未取得時のローディング表示
   if (!c) {
