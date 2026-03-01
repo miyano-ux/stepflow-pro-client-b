@@ -45,7 +45,7 @@ export default function ScenarioList({ scenarios = [], scenarioSettings = {}, st
     }
   };
 
-  // 成約・休眠シナリオ設定を保存
+  // 成約・休眠シナリオ設定を保存（全員共通の業務ルール → GAS ScriptProperties に保存）
   const handleSaveSettings = async () => {
     setSaving(true);
     try {

@@ -44,15 +44,32 @@ function App() {
     customers: [],
     scenarios: [],
     formSettings: [],
-    displaySettings: [],
     deliveryLogs: [],
     templates: [],
     gmailSettings: [],
     importErrors: [],
     statuses: [],
     trackingLogs: [],
-    scenarioSettings: {},
+    scenarioSettings: { wonScenarioId: "", dormantScenarioId: "" },
   });
+
+  // displaySettings: ユーザー個別に localStorage で管理
+  // キー: sf_display_${user.email} → 同じブラウザでも別ユーザーは別設定
+  const getDisplaySettings = useCallback(() => {
+    const email = JSON.parse(localStorage.getItem("sf_user") || "{}")?.email || "default";
+    try {
+      const raw = localStorage.getItem(`sf_display_${email}`);
+      return raw ? JSON.parse(raw) : null; // null = 未設定（GASのデフォルトを使う）
+    } catch { return null; }
+  }, []);
+
+  const [displaySettings, setDisplaySettings] = useState(() => getDisplaySettings() || []);
+
+  const saveDisplaySettings = useCallback((settings) => {
+    const email = JSON.parse(localStorage.getItem("sf_user") || "{}")?.email || "default";
+    localStorage.setItem(`sf_display_${email}`, JSON.stringify(settings));
+    setDisplaySettings(settings);
+  }, []);
   const [load, setLoad] = useState(true);
   const [user, setUser] = useState(() => {
     const sUser = localStorage.getItem("sf_user");
@@ -63,11 +80,17 @@ function App() {
     if (!user) return;
     try {
       const res = await axios.get(GAS_URL);
-      setD(res?.data || {});
+      const data = res?.data || {};
+      setD(data);
+      // displaySettings はlocalStorageが未設定の場合のみGAS値を初期値として使う
+      const local = getDisplaySettings();
+      if (!local && data.displaySettings?.length > 0) {
+        setDisplaySettings(data.displaySettings);
+      }
     } finally {
       setLoad(false);
     }
-  }, [user]);
+  }, [user, getDisplaySettings]);
 
   useEffect(() => {
     refresh();
@@ -172,8 +195,8 @@ function App() {
           >
             <Routes>
               {/* 顧客管理 */}
-              <Route path="/" element={<CustomerList customers={d?.customers} displaySettings={d?.displaySettings} formSettings={d?.formSettings} scenarios={d?.scenarios} statuses={d?.statuses} masterUrl={MASTER_WHITELIST_API} gasUrl={GAS_URL} companyName={CLIENT_COMPANY_NAME} onRefresh={refresh} />} />
-              <Route path="/customers" element={<CustomerList customers={d?.customers} displaySettings={d?.displaySettings} formSettings={d?.formSettings} scenarios={d?.scenarios} statuses={d?.statuses} masterUrl={MASTER_WHITELIST_API} gasUrl={GAS_URL} companyName={CLIENT_COMPANY_NAME} onRefresh={refresh} />} />
+              <Route path="/" element={<CustomerList customers={d?.customers} displaySettings={displaySettings} formSettings={d?.formSettings} scenarios={d?.scenarios} statuses={d?.statuses} masterUrl={MASTER_WHITELIST_API} gasUrl={GAS_URL} companyName={CLIENT_COMPANY_NAME} onRefresh={refresh} />} />
+              <Route path="/customers" element={<CustomerList customers={d?.customers} displaySettings={displaySettings} formSettings={d?.formSettings} scenarios={d?.scenarios} statuses={d?.statuses} masterUrl={MASTER_WHITELIST_API} gasUrl={GAS_URL} companyName={CLIENT_COMPANY_NAME} onRefresh={refresh} />} />
               <Route path="/add" element={<CustomerForm scenarios={d?.scenarios} formSettings={d?.formSettings} statuses={d?.statuses} masterUrl={MASTER_WHITELIST_API} onRefresh={refresh} />} />
               <Route path="/edit/:id" element={<CustomerEdit customers={d?.customers} scenarios={d?.scenarios} formSettings={d?.formSettings} statuses={d?.statuses} masterUrl={MASTER_WHITELIST_API} onRefresh={refresh} />} />
               <Route path="/schedule/:id" element={<CustomerSchedule customers={d?.customers} deliveryLogs={d?.deliveryLogs} onRefresh={refresh} />} />
@@ -181,7 +204,7 @@ function App() {
               <Route path="/direct-sms/:id" element={<DirectSms customers={d?.customers} templates={d?.templates} onRefresh={refresh} masterUrl={MASTER_WHITELIST_API} currentUserEmail={user?.email} />} />
 
               {/* 設定 */}
-              <Route path="/column-settings" element={<ColumnSettings displaySettings={d?.displaySettings} formSettings={d?.formSettings} onRefresh={refresh} gasUrl={GAS_URL} />} />
+              <Route path="/column-settings" element={<ColumnSettings displaySettings={displaySettings} formSettings={d?.formSettings} onSaveDisplaySettings={saveDisplaySettings} onRefresh={refresh} gasUrl={GAS_URL} />} />
               <Route path="/form-settings" element={<FormSettings formSettings={d?.formSettings} onRefresh={refresh} />} />
               <Route path="/status-settings" element={<StatusSettings statuses={d?.statuses} onRefresh={refresh} gasUrl={GAS_URL} />} />
 

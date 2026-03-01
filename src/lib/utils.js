@@ -27,6 +27,36 @@ export const smartNormalizePhone = (phone) => {
 };
 
 /**
+ * 電話番号をSMS送信用の国際形式に変換する（先頭0を81に置換）
+ * 例: 09012345678 → 819012345678
+ */
+export const formatPhoneForSms = (phone) => {
+  const normalized = smartNormalizePhone(phone);
+  if (!normalized) return "";
+  if (normalized.startsWith("81")) return normalized;
+  return "81" + (normalized.startsWith("0") ? normalized.slice(1) : normalized);
+};
+
+/**
+ * シナリオのステップから配信スケジュールの日時リストを計算する
+ * GAS側での日時計算を廃止し、React側で計算してGASに渡す
+ * @param {Array} steps - シナリオのステップ配列（GASから返る形式）
+ * @param {Date} baseDate - 基準日時（デフォルト: 現在時刻）
+ * @returns {Array} - { elapsedDays, deliveryHour, message, scheduledAt } の配列
+ */
+export const calcScheduleDates = (steps, baseDate = new Date()) => {
+  return steps.map((st) => {
+    const d = new Date(baseDate.getTime());
+    d.setDate(d.getDate() + Number(st["経過日数"] ?? st.elapsedDays ?? 0));
+    d.setHours(Number(st["配信時間"] ?? st.deliveryHour ?? 10), 0, 0, 0);
+    return {
+      ...st,
+      scheduledAt: d.toISOString(),
+    };
+  });
+};
+
+/**
  * 日付文字列 "YYYY-MM-DD" をローカルタイムのタイムスタンプに変換する
  * @param {boolean} isEnd - true の場合は23:59:59.999に設定
  */
