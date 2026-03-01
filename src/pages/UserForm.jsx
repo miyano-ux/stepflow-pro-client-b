@@ -16,13 +16,14 @@ import Page from "../components/Page";
  */
 function UserForm({ masterUrl }) {
   const navigate = useNavigate();
-  const { id } = useParams();
+  const { id } = useParams();                    // id = encodeされたメールアドレス（編集時）
+  const isEdit = !!id;
   const location = useLocation();
   const [loading, setLoading] = useState(false);
 
   // 初期データの安全なパース（編集時は location.state から取得）
   const [form, setForm] = useState(() => {
-    if (id && location.state?.user) return location.state.user;
+    if (isEdit && location.state?.user) return location.state.user;
     return {
       email: "",
       company: CLIENT_COMPANY_NAME,
@@ -47,20 +48,31 @@ function UserForm({ masterUrl }) {
           : "'" + form.phone
         : "";
 
-      const payload = {
-        action: "save",
-        id: id || "",
-        ...form,
-        company: CLIENT_COMPANY_NAME,
-        phone: finalPhone,
-      };
+      const payload = isEdit
+        ? {
+            action: "editUser",          // 編集: oldEmail で対象を特定
+            oldEmail: decodeURIComponent(id), // 変更前のメール（URLパラメータから）
+            email: form.email,
+            company: CLIENT_COMPANY_NAME,
+            lastName: form.lastName,
+            firstName: form.firstName,
+            phone: finalPhone,
+          }
+        : {
+            action: "addUser",           // 新規登録
+            email: form.email,
+            company: CLIENT_COMPANY_NAME,
+            lastName: form.lastName,
+            firstName: form.firstName,
+            phone: finalPhone,
+          };
 
       const res = await axios.post(masterUrl, JSON.stringify(payload), {
         headers: { "Content-Type": "text/plain;charset=utf-8" },
       });
 
       if (res.data.status === "success") {
-        alert(id ? "ユーザー情報を更新しました" : "新しいユーザーを登録しました");
+        alert(isEdit ? "ユーザー情報を更新しました" : "新しいユーザーを登録しました");
         navigate("/users");
       } else {
         alert("保存失敗: " + (res.data.message || "不明なエラー"));
@@ -73,7 +85,7 @@ function UserForm({ masterUrl }) {
   };
 
   return (
-    <Page title={id ? "ユーザー情報の編集" : "新規ユーザー登録"}>
+    <Page title={isEdit ? "ユーザー情報の編集" : "新規ユーザー登録"}>
 
       {/* 戻るボタン */}
       <button
@@ -137,7 +149,7 @@ function UserForm({ masterUrl }) {
               value={form.email}
               onChange={(e) => setForm({ ...form, email: e.target.value })}
               placeholder="example@stepflow.jp"
-              disabled={!!id}
+              disabled={isEdit}
             />
             {id && (
               <p style={{ fontSize: 11, color: THEME.textMuted, marginTop: 8 }}>
@@ -174,12 +186,12 @@ function UserForm({ masterUrl }) {
             >
               {loading ? (
                 <Loader2 className="animate-spin" size={20} />
-              ) : id ? (
+              ) : isEdit ? (
                 <Check size={20} />
               ) : (
                 <UserPlus size={20} />
               )}
-              {id ? "変更を保存する" : "この内容で登録する"}
+              {isEdit ? "変更を保存する" : "この内容で登録する"}
             </button>
             <button
               onClick={() => navigate("/users")}

@@ -37,12 +37,12 @@ export default function UserManager({ staffList = [], onRefreshStaff, masterUrl,
     }
   };
 
-  const handleDelete = async (id) => {
+  const handleDelete = async (email) => {
     if (!window.confirm("このユーザーを完全に削除しますか？")) return;
     try {
       const res = await axios.post(
         masterUrl,
-        JSON.stringify({ action: "delete", id: String(id), company: companyName }),
+        JSON.stringify({ action: "deleteUser", email: email, company: companyName }),
         { headers: { "Content-Type": "text/plain;charset=utf-8" } }
       );
       if (res.data.status === "success") {
@@ -106,7 +106,7 @@ export default function UserManager({ staffList = [], onRefreshStaff, masterUrl,
               ) : (
                 staffList.map((u) => (
                   <tr
-                    key={u.id}
+                    key={u.email}
                     style={{ transition: "0.15s" }}
                     onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#F8FAFC")}
                     onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "white")}
@@ -132,14 +132,14 @@ export default function UserManager({ staffList = [], onRefreshStaff, masterUrl,
                     <td style={localStyles.tableTd}>
                       <div style={{ display: "flex", gap: "16px", justifyContent: "center" }}>
                         <button
-                          onClick={() => navigate(`/users/edit/${u.id}`, { state: { user: u } })}
+                          onClick={() => navigate(`/users/edit/${encodeURIComponent(u.email)}`, { state: { user: u } })}
                           style={{ background: "none", border: "none", color: THEME.primary, cursor: "pointer", padding: "8px" }}
                           title="編集"
                         >
                           <Edit3 size={20} />
                         </button>
                         <button
-                          onClick={() => handleDelete(u.id)}
+                          onClick={() => handleDelete(u.email)}
                           style={{ background: "none", border: "none", color: THEME.danger, cursor: "pointer", padding: "8px" }}
                           title="削除"
                         >
