@@ -116,10 +116,7 @@ export default function UserManager({ staffList = [], onRefreshStaff, masterUrl,
                         <div style={{ width: "40px", height: "40px", borderRadius: "50%", backgroundColor: "#E0E7FF", display: "flex", alignItems: "center", justifyContent: "center", color: THEME.primary, flexShrink: 0 }}>
                           <UserCircle size={24} />
                         </div>
-                        <div>
-                          <div style={{ fontWeight: "900", fontSize: "16px" }}>{u.lastName} {u.firstName}</div>
-                          <span style={localStyles.badge}>STAFF</span>
-                        </div>
+                        <div style={{ fontWeight: "900", fontSize: "16px" }}>{u.lastName} {u.firstName}</div>
                       </div>
                     </td>
                     <td style={localStyles.tableTd}>
