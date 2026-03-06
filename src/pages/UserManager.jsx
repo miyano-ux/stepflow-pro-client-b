@@ -157,14 +157,20 @@ function GroupCard({ group, staffList, onSave, onDelete }) {
 
 // ── メインコンポーネント ────────────────────────────────────────
 export default function UserManager({
-  staffList = [], groups = [], statuses = [],
+  staffList = [], groups: groupsProp = [], statuses = [],
   onRefreshStaff, onRefresh, masterUrl, gasUrl, companyName = "B社",
 }) {
   const navigate = useNavigate();
-  const [refreshing, setRefreshing] = useState(false);
-  const [addingGroup, setAddingGroup] = useState(false);
-  const [newGroupName, setNewGroupName] = useState("");
-  const [newGroupMembers, setNewGroupMembers] = useState([]);
+  const [refreshing,      setRefreshing]      = useState(false);
+  const [addingGroup,     setAddingGroup]      = useState(false);
+  const [newGroupName,    setNewGroupName]     = useState("");
+  const [newGroupMembers, setNewGroupMembers]  = useState([]);
+
+  // グループをローカルstateで管理して即時反映
+  const [localGroups, setLocalGroups] = useState(groupsProp);
+
+  // propsが変わったとき（初回ロード・外部更新）だけ同期
+  React.useEffect(() => { setLocalGroups(groupsProp); }, [groupsProp]);
 
   const handleRefresh = async () => {
     setRefreshing(true);
@@ -184,17 +190,25 @@ export default function UserManager({
     } catch { alert("通信エラーが発生しました"); }
   };
 
-  // グループ保存（新規・更新共通）
+  // グループ保存（楽観的更新：即座にローカルに反映 → バックグラウンドでGAS保存）
   const handleSaveGroup = async ({ groupId, name, members }) => {
+    // 即時反映
+    setLocalGroups(prev => prev.map(g =>
+      g["グループID"] === groupId
+        ? { ...g, "グループ名": name, "メンバーメール": members.join(",") }
+        : g
+    ));
     try {
       const res = await axios.post(GAS_URL, JSON.stringify({ action: "saveGroup", groupId, name, members }), { headers: { "Content-Type": "text/plain;charset=utf-8" } });
       if (res.data?.status === "error") {
         alert("エラー: " + (res.data.message || "保存に失敗しました"));
-        return;
+        if (onRefresh) onRefresh(); // 失敗時は正確なデータを再取得
+      } else {
+        onRefresh?.(); // バックグラウンドで同期（awaitしない）
       }
-      if (onRefresh) await onRefresh();
     } catch(e) {
       alert("通信エラー: " + (e?.message || "不明なエラー"));
+      if (onRefresh) onRefresh();
     }
   };
 
@@ -202,29 +216,43 @@ export default function UserManager({
   const handleAddGroup = async () => {
     if (!newGroupName.trim()) return alert("グループ名を入力してください");
     const groupId = "g_" + Date.now();
+    const newGroup = {
+      "グループID": groupId,
+      "グループ名": newGroupName.trim(),
+      "メンバーメール": newGroupMembers.join(","),
+    };
+    // 即時反映
+    setLocalGroups(prev => [...prev, newGroup]);
+    setNewGroupName("");
+    setNewGroupMembers([]);
+    setAddingGroup(false);
     try {
       const res = await axios.post(GAS_URL, JSON.stringify({ action: "saveGroup", groupId, name: newGroupName.trim(), members: newGroupMembers }), { headers: { "Content-Type": "text/plain;charset=utf-8" } });
       if (res.data?.status === "error") {
         alert("エラー: " + (res.data.message || "保存に失敗しました"));
-        return;
+        setLocalGroups(prev => prev.filter(g => g["グループID"] !== groupId));
+      } else {
+        onRefresh?.();
       }
-      setNewGroupName("");
-      setNewGroupMembers([]);
-      setAddingGroup(false);
-      if (onRefresh) await onRefresh();
     } catch(e) {
       alert("通信エラー: " + (e?.message || "不明なエラー"));
+      setLocalGroups(prev => prev.filter(g => g["グループID"] !== groupId));
     }
   };
 
   // グループ削除
   const handleDeleteGroup = async (groupId) => {
     if (!window.confirm("このグループを削除しますか？")) return;
+    // 即時反映
+    const removed = localGroups.find(g => g["グループID"] === groupId);
+    setLocalGroups(prev => prev.filter(g => g["グループID"] !== groupId));
     try {
       await axios.post(GAS_URL, JSON.stringify({ action: "deleteGroup", groupId }), { headers: { "Content-Type": "text/plain;charset=utf-8" } });
-      if (onRefresh) await onRefresh();
+      onRefresh?.();
     } catch(e) {
       alert("通信エラー: " + (e?.message || "不明なエラー"));
+      // 失敗時は元に戻す
+      if (removed) setLocalGroups(prev => [...prev, removed]);
     }
   };
 
@@ -385,12 +413,12 @@ export default function UserManager({
         )}
 
         {/* グループ一覧 */}
-        {groups.length === 0 && !addingGroup ? (
+{localGroups.length === 0 && !addingGroup ? (
           <div style={{ padding: "48px 0", textAlign: "center", color: THEME.textMuted, fontSize: 14, border: `2px dashed ${THEME.border}`, borderRadius: 14 }}>
             グループがまだ登録されていません。「グループを追加」から作成してください。
           </div>
         ) : (
-          groups.map(g => (
+          localGroups.map(g => (
             <GroupCard
               key={g["グループID"]}
               group={{

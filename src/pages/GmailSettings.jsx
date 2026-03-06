@@ -291,9 +291,10 @@ function GmailSettings({
                     <LabelText>担当者</LabelText>
                     <StaffGroupSelect
                       value={modal.data.staffEmail}
-                      onChange={(email) => setData({ staffEmail: email })}
+                      onChange={(val) => setData({ staffEmail: val })}
                       staffList={staffList}
                       groups={groups}
+                      deferred={true}
                     />
                   </FieldBox>
 

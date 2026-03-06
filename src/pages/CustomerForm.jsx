@@ -28,6 +28,7 @@ function CustomerForm({ formSettings = [], scenarios = [], statuses = [], staffL
   const [fn, setFn] = useState("");
   const [ph, setPh] = useState("");
   const [fd, setFd] = useState({ "対応ステータス": "未対応", "担当者メール": "" });
+  const [successModal, setSuccessModal] = useState(null); // 登録完了ポップアップ
   const [sc, setSc] = useState("");
 
   // 初期化：シナリオの先頭をデフォルト選択
@@ -102,35 +103,127 @@ function CustomerForm({ formSettings = [], scenarios = [], statuses = [], staffL
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
+      let resolvedData = { ...fd };
+      let assignedGroupName = null;
+      let assignedStaffName = null;
+
+      // グループ指定の場合、登録前に担当者を解決する
+      if (resolvedData["担当者メール"]?.startsWith("group:")) {
+        const groupId = resolvedData["担当者メール"].replace("group:", "");
+        const res = await apiCall.post(GAS_URL, { action: "assignGroup", groupId });
+        if (res?.email) {
+          // 割り当てられたグループ名・担当者名を記録（完了モーダル表示用）
+          const grp = (groups || []).find(g => g["グループID"] === groupId);
+          assignedGroupName = grp?.["グループ名"] || groupId;
+          const staff = staffList.find(s => s.email === res.email);
+          assignedStaffName = staff ? `${staff.lastName} ${staff.firstName}` : res.email;
+          resolvedData = { ...resolvedData, "担当者メール": res.email };
+        } else {
+          alert("グループ割り当てに失敗しました: " + (res?.message || ""));
+          return;
+        }
+      } else if (resolvedData["担当者メール"]) {
+        const staff = staffList.find(s => s.email === resolvedData["担当者メール"]);
+        if (staff) assignedStaffName = `${staff.lastName} ${staff.firstName}`;
+      }
+
       await apiCall.post(GAS_URL, {
         action: "add",
         lastName: ln,
         firstName: fn,
         phone: ph,
-        data: fd,
+        data: resolvedData,
         scenarioID: sc,
       });
-      // 即時反映用のデータをnavigation stateに乗せてリストへ遷移
-      // CustomerList側でlocalCustomersに即追加し、楽観的UIを実現する
-      const optimisticCustomer = {
-        id: `optimistic_${Date.now()}`,   // 仮ID（refresh後に正式IDに差し替わる）
-        姓: ln, 名: fn, 電話番号: ph,
-        シナリオID: sc,
-        登録日: new Date().toISOString(),
-        対応ステータス: fd["対応ステータス"] || "未対応",
-        担当者メール: fd["担当者メール"] || "",
-        配信ステータス: "配信中",
-        ...fd,
-        _optimistic: true,                // 仮データフラグ
-      };
-      onRefresh(); // バックグラウンドで正式データを取得
-      navigate("/", { state: { newCustomer: optimisticCustomer } });
+
+      // 登録完了モーダルを表示
+      setSuccessModal({
+        name: `${ln} ${fn}`,
+        status: resolvedData["対応ステータス"] || "未対応",
+        source: resolvedData["流入元"] || null,
+        assignedGroupName,
+        assignedStaffName,
+        scenarioID: sc || null,
+        optimisticCustomer: {
+          id: `optimistic_${Date.now()}`,
+          姓: ln, 名: fn, 電話番号: ph,
+          シナリオID: sc,
+          登録日: new Date().toISOString(),
+          対応ステータス: resolvedData["対応ステータス"] || "未対応",
+          担当者メール: resolvedData["担当者メール"] || "",
+          配信ステータス: "配信中",
+          ...resolvedData,
+          _optimistic: true,
+        },
+      });
+      onRefresh();
     } catch (err) {
       alert(err.message);
     }
   };
 
+  // 登録完了モーダルを閉じてリストへ遷移
+  const handleSuccessClose = () => {
+    const { optimisticCustomer } = successModal;
+    setSuccessModal(null);
+    navigate("/", { state: { newCustomer: optimisticCustomer } });
+  };
+
   return (
+    <>
+    {/* 登録完了モーダル */}
+    {successModal && (
+      <div style={{ position: "fixed", inset: 0, backgroundColor: "rgba(0,0,0,0.55)", display: "flex", justifyContent: "center", alignItems: "center", zIndex: 3000 }}>
+        <div style={{ backgroundColor: "white", borderRadius: 20, padding: 40, maxWidth: 480, width: "100%", boxShadow: "0 24px 64px rgba(0,0,0,0.2)", textAlign: "center" }}>
+          <div style={{ width: 64, height: 64, borderRadius: "50%", backgroundColor: "#DCFCE7", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 20px" }}>
+            <span style={{ fontSize: 28 }}>✓</span>
+          </div>
+          <h3 style={{ margin: "0 0 8px", fontSize: 20, fontWeight: 900, color: "#166534" }}>登録完了しました</h3>
+          <p style={{ margin: "0 0 24px", fontSize: 15, color: "#374151" }}>
+            <strong>{successModal.name}</strong> 様を以下の設定で登録しました。
+          </p>
+          <div style={{ textAlign: "left", backgroundColor: "#F8FAFC", borderRadius: 12, padding: "16px 20px", marginBottom: 28, display: "grid", gap: 10, fontSize: 14 }}>
+            <div style={{ display: "flex", justifyContent: "space-between" }}>
+              <span style={{ color: "#6B7280" }}>対応ステータス</span>
+              <strong>{successModal.status}</strong>
+            </div>
+            {successModal.source && (
+              <div style={{ display: "flex", justifyContent: "space-between" }}>
+                <span style={{ color: "#6B7280" }}>流入元</span>
+                <strong>{successModal.source}</strong>
+              </div>
+            )}
+            {successModal.assignedGroupName ? (
+              <div style={{ display: "flex", justifyContent: "space-between" }}>
+                <span style={{ color: "#6B7280" }}>担当者（グループ割当）</span>
+                <span>
+                  <span style={{ fontSize: 12, color: "#6366F1", fontWeight: 700 }}>👥 {successModal.assignedGroupName}</span>
+                  <span style={{ margin: "0 6px", color: "#D1D5DB" }}>→</span>
+                  <strong>{successModal.assignedStaffName}</strong>
+                </span>
+              </div>
+            ) : successModal.assignedStaffName ? (
+              <div style={{ display: "flex", justifyContent: "space-between" }}>
+                <span style={{ color: "#6B7280" }}>担当者</span>
+                <strong>{successModal.assignedStaffName}</strong>
+              </div>
+            ) : null}
+            {successModal.scenarioID && (
+              <div style={{ display: "flex", justifyContent: "space-between" }}>
+                <span style={{ color: "#6B7280" }}>適用シナリオ</span>
+                <strong>{successModal.scenarioID}</strong>
+              </div>
+            )}
+          </div>
+          <button
+            onClick={handleSuccessClose}
+            style={{ width: "100%", padding: "14px", backgroundColor: "#6366F1", color: "white", border: "none", borderRadius: 12, fontSize: 15, fontWeight: 800, cursor: "pointer" }}
+          >
+            顧客一覧へ戻る
+          </button>
+        </div>
+      </div>
+    )}
     <Page
       title="新規顧客登録"
       topButton={
@@ -206,9 +299,10 @@ function CustomerForm({ formSettings = [], scenarios = [], statuses = [], staffL
               <StaffGroupSelect
                 inputId="form-staff"
                 value={fd["担当者メール"]}
-                onChange={(email) => setFd({ ...fd, "担当者メール": email })}
+                onChange={(val) => setFd({ ...fd, "担当者メール": val })}
                 staffList={staffList}
                 groups={groups}
+                deferred={true}
               />
             </div>
 
@@ -305,6 +399,7 @@ function CustomerForm({ formSettings = [], scenarios = [], statuses = [], staffL
         </div>
       </div>
     </Page>
+    </>
   );
 }
 

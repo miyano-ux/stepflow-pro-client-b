@@ -147,16 +147,30 @@ export default function CustomerDetail({
 
   const handleSave = async () => {
     setSyncingCount((p) => p + 1);
-    const snapshot = { ...formData };
+    let snapshot = { ...formData };
     try {
+      // グループ指定の場合、保存前に担当者を解決する
+      if (snapshot["担当者メール"]?.startsWith("group:")) {
+        const groupId = snapshot["担当者メール"].replace("group:", "");
+        const res = await axios.post(
+          GAS_URL,
+          JSON.stringify({ action: "assignGroup", groupId }),
+          { headers: { "Content-Type": "text/plain;charset=utf-8" } }
+        );
+        if (res.data?.email) {
+          snapshot = { ...snapshot, "担当者メール": res.data.email };
+          setFormData(snapshot);
+        } else {
+          alert("グループ割り当てに失敗しました: " + (res.data?.message || ""));
+          setSyncingCount(0);
+          return;
+        }
+      }
       await axios.post(
         gasUrl,
         JSON.stringify({ action: "update", id, data: snapshot }),
         { headers: { "Content-Type": "text/plain;charset=utf-8" } }
       );
-      // GAS書き込み完了後、即座に編集モード解除・snapshot表示を維持
-      // syncingCount > 0 の間は useEffect が formData を上書きしないので
-      // onRefresh 完了まで保存済みの値がそのまま表示される
       setIsEditing(false);
       setFormData(snapshot);
       onRefresh().finally(() => {
@@ -273,9 +287,10 @@ export default function CustomerDetail({
                     <StaffGroupSelect
                       inputId="detail-担当者メール"
                       value={formData["担当者メール"]}
-                      onChange={(email) => handleFieldChange("担当者メール", email)}
+                      onChange={(val) => handleFieldChange("担当者メール", val)}
                       staffList={staffList}
                       groups={groups}
+                      deferred={true}
                     />
                   </div>
                   {sources.length > 0 && (
