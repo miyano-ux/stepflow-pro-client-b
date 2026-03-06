@@ -146,17 +146,21 @@ export default function CustomerDetail({
 
   const handleSave = async () => {
     setSyncingCount((p) => p + 1);
+    const snapshot = { ...formData };
     try {
       await axios.post(
         gasUrl,
-        JSON.stringify({ action: "update", id, data: formData }),
+        JSON.stringify({ action: "update", id, data: snapshot }),
         { headers: { "Content-Type": "text/plain;charset=utf-8" } }
       );
-      setTimeout(() => {
-        onRefresh();
+      // GAS書き込み完了後、即座に編集モード解除・snapshot表示を維持
+      // syncingCount > 0 の間は useEffect が formData を上書きしないので
+      // onRefresh 完了まで保存済みの値がそのまま表示される
+      setIsEditing(false);
+      setFormData(snapshot);
+      onRefresh().finally(() => {
         setSyncingCount((p) => Math.max(0, p - 1));
-        setIsEditing(false);
-      }, 1500);
+      });
     } catch {
       alert("更新に失敗しました");
       setSyncingCount(0);

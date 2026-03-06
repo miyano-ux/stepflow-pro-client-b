@@ -27,7 +27,6 @@ import ScenarioForm       from "./pages/ScenarioForm.jsx";
 
 // ── pages (今回移管) ──────────────────────────────
 import CustomerForm          from "./pages/CustomerForm";
-import CustomerEdit          from "./pages/CustomerEdit";
 import CustomerSchedule      from "./pages/CustomerSchedule";
 import DirectSms             from "./pages/DirectSms";
 import FormSettings          from "./pages/FormSettings";
@@ -224,7 +223,6 @@ function App() {
               <Route path="/" element={<CustomerList customers={d?.customers} displaySettings={displaySettings} formSettings={d?.formSettings} scenarios={d?.scenarios} statuses={d?.statuses} staffList={staffList} scenarioSettings={d?.scenarioSettings} sources={d?.sources} gasUrl={GAS_URL} onRefresh={refresh} />} />
               <Route path="/customers" element={<CustomerList customers={d?.customers} displaySettings={displaySettings} formSettings={d?.formSettings} scenarios={d?.scenarios} statuses={d?.statuses} staffList={staffList} scenarioSettings={d?.scenarioSettings} sources={d?.sources} gasUrl={GAS_URL} onRefresh={refresh} />} />
               <Route path="/add" element={<CustomerForm scenarios={d?.scenarios} formSettings={d?.formSettings} statuses={d?.statuses} staffList={staffList} sources={d?.sources} onRefresh={refresh} />} />
-              <Route path="/edit/:id" element={<CustomerEdit customers={d?.customers} scenarios={d?.scenarios} formSettings={d?.formSettings} statuses={d?.statuses} sources={d?.sources} masterUrl={MASTER_WHITELIST_API} onRefresh={refresh} />} />
               <Route path="/schedule/:id" element={<CustomerSchedule customers={d?.customers} deliveryLogs={d?.deliveryLogs} onRefresh={refresh} />} />
               <Route path="/detail/:id" element={<CustomerDetail customers={d?.customers} formSettings={d?.formSettings} statuses={d?.statuses} sources={d?.sources} trackingLogs={d?.trackingLogs} staffList={staffList} gasUrl={GAS_URL} onRefresh={refresh} />} />
               <Route path="/direct-sms/:id" element={<DirectSms customers={d?.customers} templates={d?.templates} onRefresh={refresh} masterUrl={MASTER_WHITELIST_API} currentUserEmail={user?.email} />} />
