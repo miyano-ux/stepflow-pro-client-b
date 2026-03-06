@@ -118,44 +118,52 @@ export default function CustomerDetail({
   );
 
   // 編集フィールド（テキスト）
-  const EditText = ({ label, fieldName, type = "text" }) => (
-    <div style={styles.inputGroup}>
-      <label style={styles.label}>{label}</label>
-      <input
-        style={styles.input}
-        type={type}
-        value={formData[fieldName] || ""}
-        onChange={(e) => set(fieldName, e.target.value)}
-      />
-    </div>
-  );
-
-  // 編集フィールド（セレクト）
-  const EditSelect = ({ label, fieldName, options = [] }) => (
-    <div style={styles.inputGroup}>
-      <label style={styles.label}>{label}</label>
-      <div style={{ position: "relative" }}>
-        <select
-          style={{ ...styles.input, appearance: "none", paddingRight: 36 }}
+  const EditText = ({ label, fieldName, type = "text" }) => {
+    const inputId = `detail-${fieldName}`;
+    return (
+      <div style={styles.inputGroup}>
+        <label htmlFor={inputId} style={{ ...styles.label, userSelect: "none" }}>{label}</label>
+        <input
+          id={inputId}
+          style={styles.input}
+          type={type}
           value={formData[fieldName] || ""}
           onChange={(e) => set(fieldName, e.target.value)}
-        >
-          <option value="">未選択</option>
-          {options.map((o) => (
-            <option key={o.value ?? o} value={o.value ?? o}>
-              {o.label ?? o}
-            </option>
-          ))}
-        </select>
-        <ChevronDown size={15} style={{ position: "absolute", right: 12, top: 14, pointerEvents: "none", color: THEME.textMuted }} />
+        />
       </div>
-    </div>
-  );
+    );
+  };
+
+  // 編集フィールド（セレクト）
+  const EditSelect = ({ label, fieldName, options = [] }) => {
+    const selectId = `detail-${fieldName}`;
+    return (
+      <div style={styles.inputGroup}>
+        <label htmlFor={selectId} style={{ ...styles.label, userSelect: "none" }}>{label}</label>
+        <div style={{ position: "relative" }}>
+          <select
+            id={selectId}
+            style={{ ...styles.input, appearance: "none", paddingRight: 36 }}
+            value={formData[fieldName] || ""}
+            onChange={(e) => set(fieldName, e.target.value)}
+          >
+            <option value="">未選択</option>
+            {options.map((o) => (
+              <option key={o.value ?? o} value={o.value ?? o}>
+                {o.label ?? o}
+              </option>
+            ))}
+          </select>
+          <ChevronDown size={15} style={{ position: "absolute", right: 12, top: 14, pointerEvents: "none", color: THEME.textMuted }} />
+        </div>
+      </div>
+    );
+  };
 
   // 編集フィールド（日付）
   const EditDate = ({ label, fieldName }) => (
     <div style={styles.inputGroup}>
-      <label style={styles.label}>{label}</label>
+      <label style={{ ...styles.label, userSelect: "none" }}>{label}</label>
       <DatePicker
         value={formData[fieldName] || ""}
         onChange={(v) => set(fieldName, v)}
