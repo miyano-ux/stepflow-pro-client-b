@@ -4,7 +4,7 @@ import axios from "axios";
 import {
   ArrowLeft, Save, MessageSquare, History, Loader2,
   Edit3, X, Clock, LayoutGrid, ChevronDown, ExternalLink,
-  Phone, User, Mail,
+  Phone, User,
 } from "lucide-react";
 import { THEME, GAS_URL } from "../lib/constants";
 import { styles } from "../lib/styles";
@@ -15,7 +15,6 @@ import DatePicker from "../components/DatePicker";
 // 👤 CustomerDetail - 顧客詳細ページ
 // ==========================================
 
-// 日付を読みやすい形式に変換
 const formatDateJP = (v) => {
   if (!v) return null;
   const d = new Date(v);
@@ -23,6 +22,92 @@ const formatDateJP = (v) => {
   const p = (n) => String(n).padStart(2, "0");
   return `${d.getFullYear()}/${p(d.getMonth() + 1)}/${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
 };
+
+// ── トップレベルサブコンポーネント ─────────────────────────
+// ※ 関数コンポーネント内で定義すると再レンダーのたびに関数が再生成され
+//   Reactが別コンポーネントと判断してアンマウント→フォーカス消失する
+//   そのため必ずモジュールトップレベルで定義する
+
+const ViewField = ({ label, value, icon }) => (
+  <div style={{ marginBottom: 20 }}>
+    <div style={{ fontSize: 11, fontWeight: 800, color: THEME.textMuted, marginBottom: 6, display: "flex", alignItems: "center", gap: 5 }}>
+      {icon} {label}
+    </div>
+    <div style={{ fontSize: 15, fontWeight: 600, color: value ? THEME.textMain : THEME.textMuted }}>
+      {value || "未設定"}
+    </div>
+  </div>
+);
+
+const EditText = ({ label, fieldName, type = "text", value, onChange }) => {
+  const inputId = `detail-${fieldName}`;
+  return (
+    <div style={styles.inputGroup}>
+      <label htmlFor={inputId} style={{ ...styles.label, userSelect: "none" }}>{label}</label>
+      <input
+        id={inputId}
+        style={styles.input}
+        type={type}
+        value={value || ""}
+        onChange={(e) => onChange(fieldName, e.target.value)}
+      />
+    </div>
+  );
+};
+
+const EditSelect = ({ label, fieldName, options = [], value, onChange }) => {
+  const selectId = `detail-${fieldName}`;
+  return (
+    <div style={styles.inputGroup}>
+      <label htmlFor={selectId} style={{ ...styles.label, userSelect: "none" }}>{label}</label>
+      <div style={{ position: "relative" }}>
+        <select
+          id={selectId}
+          style={{ ...styles.input, appearance: "none", paddingRight: 36 }}
+          value={value || ""}
+          onChange={(e) => onChange(fieldName, e.target.value)}
+        >
+          <option value="">未選択</option>
+          {options.map((o) => (
+            <option key={o.value ?? o} value={o.value ?? o}>
+              {o.label ?? o}
+            </option>
+          ))}
+        </select>
+        <ChevronDown size={15} style={{ position: "absolute", right: 12, top: 14, pointerEvents: "none", color: THEME.textMuted }} />
+      </div>
+    </div>
+  );
+};
+
+const EditDate = ({ label, fieldName, value, onChange }) => (
+  <div style={styles.inputGroup}>
+    <label style={{ ...styles.label, userSelect: "none" }}>{label}</label>
+    <DatePicker
+      value={value || ""}
+      onChange={(v) => onChange(fieldName, v)}
+      placeholder={`${label}を選択`}
+    />
+  </div>
+);
+
+// カスタム項目1フィールドのレンダリング
+const CustomField = ({ field, isEditing, value, onChange }) => {
+  if (!isEditing) {
+    const val = field.type === "date" ? formatDateJP(value) : value;
+    return <ViewField label={field.name} value={val} />;
+  }
+  if (field.type === "date") {
+    return <EditDate label={field.name} fieldName={field.name} value={value} onChange={onChange} />;
+  }
+  if (field.type === "dropdown") {
+    const opts = (field.options || "").split(",").map((o) => o.trim()).filter(Boolean);
+    return <EditSelect label={field.name} fieldName={field.name} options={opts} value={value} onChange={onChange} />;
+  }
+  return <EditText label={field.name} fieldName={field.name} value={value} onChange={onChange} />;
+};
+
+// ─────────────────────────────────────────────────────────
 
 export default function CustomerDetail({
   customers = [], formSettings = [], statuses = [], sources = [],
@@ -34,7 +119,6 @@ export default function CustomerDetail({
 
   const [isEditing, setIsEditing] = useState(false);
   const [syncingCount, setSyncingCount] = useState(0);
-
   const [formData, setFormData] = useState(null);
 
   const customer = useMemo(
@@ -43,19 +127,14 @@ export default function CustomerDetail({
   );
 
   useEffect(() => {
-    // CustomerEdit から遷移直後は updatedCustomer を優先して即時反映
-    // GAS のデータが返ってきたら（syncingCount===0 かつ state クリア後）正式データに切り替わる
     const updated = location.state?.updatedCustomer;
     if (updated && String(updated.id) === String(id)) {
       setFormData({ ...updated });
-      // state をクリアしてブラウザバック時に再適用されないようにする
       window.history.replaceState({}, "");
       return;
     }
     if (customer && syncingCount === 0) setFormData({ ...customer });
   }, [customer, syncingCount, location.state, id]);
-
-
 
   const customerLogs = useMemo(
     () =>
@@ -89,7 +168,8 @@ export default function CustomerDetail({
     setFormData({ ...customer });
   };
 
-  const set = (key, val) => setFormData((prev) => ({ ...prev, [key]: val }));
+  // フィールド値更新（トップレベルコンポーネントに props で渡す）
+  const handleFieldChange = (key, val) => setFormData((prev) => ({ ...prev, [key]: val }));
 
   if (!formData) {
     return (
@@ -99,92 +179,8 @@ export default function CustomerDetail({
     );
   }
 
-  // 担当者オブジェクト
   const assignedStaff = staffList.find((s) => s.email === formData["担当者メール"]);
   const assignedName = assignedStaff ? `${assignedStaff.lastName} ${assignedStaff.firstName}` : null;
-
-  // ── サブコンポーネント ──────────────────
-
-  // ラベル付きフィールド表示（閲覧モード）
-  const ViewField = ({ label, value, icon }) => (
-    <div style={{ marginBottom: 20 }}>
-      <div style={{ fontSize: 11, fontWeight: 800, color: THEME.textMuted, marginBottom: 6, display: "flex", alignItems: "center", gap: 5 }}>
-        {icon} {label}
-      </div>
-      <div style={{ fontSize: 15, fontWeight: 600, color: value ? THEME.textMain : THEME.textMuted }}>
-        {value || "未設定"}
-      </div>
-    </div>
-  );
-
-  // 編集フィールド（テキスト）
-  const EditText = ({ label, fieldName, type = "text" }) => {
-    const inputId = `detail-${fieldName}`;
-    return (
-      <div style={styles.inputGroup}>
-        <label htmlFor={inputId} style={{ ...styles.label, userSelect: "none" }}>{label}</label>
-        <input
-          id={inputId}
-          style={styles.input}
-          type={type}
-          value={formData[fieldName] || ""}
-          onChange={(e) => set(fieldName, e.target.value)}
-        />
-      </div>
-    );
-  };
-
-  // 編集フィールド（セレクト）
-  const EditSelect = ({ label, fieldName, options = [] }) => {
-    const selectId = `detail-${fieldName}`;
-    return (
-      <div style={styles.inputGroup}>
-        <label htmlFor={selectId} style={{ ...styles.label, userSelect: "none" }}>{label}</label>
-        <div style={{ position: "relative" }}>
-          <select
-            id={selectId}
-            style={{ ...styles.input, appearance: "none", paddingRight: 36 }}
-            value={formData[fieldName] || ""}
-            onChange={(e) => set(fieldName, e.target.value)}
-          >
-            <option value="">未選択</option>
-            {options.map((o) => (
-              <option key={o.value ?? o} value={o.value ?? o}>
-                {o.label ?? o}
-              </option>
-            ))}
-          </select>
-          <ChevronDown size={15} style={{ position: "absolute", right: 12, top: 14, pointerEvents: "none", color: THEME.textMuted }} />
-        </div>
-      </div>
-    );
-  };
-
-  // 編集フィールド（日付）
-  const EditDate = ({ label, fieldName }) => (
-    <div style={styles.inputGroup}>
-      <label style={{ ...styles.label, userSelect: "none" }}>{label}</label>
-      <DatePicker
-        value={formData[fieldName] || ""}
-        onChange={(v) => set(fieldName, v)}
-        placeholder={`${label}を選択`}
-      />
-    </div>
-  );
-
-  // カスタム項目のフィールドをレンダリング
-  const renderCustomField = (field) => {
-    if (!isEditing) {
-      const val = field.type === "date" ? formatDateJP(formData[field.name]) : formData[field.name];
-      return <ViewField key={field.name} label={field.name} value={val} />;
-    }
-    if (field.type === "date") return <EditDate key={field.name} label={field.name} fieldName={field.name} />;
-    if (field.type === "dropdown") {
-      const opts = (field.options || "").split(",").map((o) => o.trim()).filter(Boolean);
-      return <EditSelect key={field.name} label={field.name} fieldName={field.name} options={opts} />;
-    }
-    return <EditText key={field.name} label={field.name} fieldName={field.name} />;
-  };
 
   return (
     <div style={{ minHeight: "100vh", backgroundColor: THEME.bg, padding: "40px 48px" }}>
@@ -217,46 +213,28 @@ export default function CustomerDetail({
             </div>
           </div>
 
-          {/* アクションボタン群 */}
           <div style={{ display: "flex", gap: 10 }}>
             {!isEditing ? (
               <>
-                <button
-                  onClick={() => navigate(`/schedule/${id}`)}
-                  style={{ ...styles.btn, ...styles.btnSecondary }}
-                >
+                <button onClick={() => navigate(`/schedule/${id}`)} style={{ ...styles.btn, ...styles.btnSecondary }}>
                   <Clock size={16} color={THEME.primary} /> 配信履歴
                 </button>
-                <button
-                  onClick={() => navigate(`/direct-sms/${id}`)}
-                  style={{ ...styles.btn, ...styles.btnSecondary }}
-                >
+                <button onClick={() => navigate(`/direct-sms/${id}`)} style={{ ...styles.btn, ...styles.btnSecondary }}>
                   <MessageSquare size={16} color={THEME.primary} /> SMS送信
                 </button>
-                <button
-                  onClick={() => setIsEditing(true)}
-                  style={{ ...styles.btn, ...styles.btnPrimary }}
-                >
+                <button onClick={() => setIsEditing(true)} style={{ ...styles.btn, ...styles.btnPrimary }}>
                   <Edit3 size={16} /> 情報を編集
                 </button>
               </>
             ) : (
               <>
-                <button
-                  onClick={handleCancel}
-                  style={{ ...styles.btn, ...styles.btnSecondary, color: THEME.danger, borderColor: `${THEME.danger}40` }}
-                >
+                <button onClick={handleCancel} style={{ ...styles.btn, ...styles.btnSecondary, color: THEME.danger, borderColor: `${THEME.danger}40` }}>
                   <X size={16} /> キャンセル
                 </button>
-                <button
-                  onClick={handleSave}
-                  disabled={syncingCount > 0}
-                  style={{ ...styles.btn, ...styles.btnPrimary, opacity: syncingCount > 0 ? 0.7 : 1 }}
-                >
+                <button onClick={handleSave} disabled={syncingCount > 0} style={{ ...styles.btn, ...styles.btnPrimary, opacity: syncingCount > 0 ? 0.7 : 1 }}>
                   {syncingCount > 0
                     ? <><Loader2 size={16} className="animate-spin" /> 保存中...</>
-                    : <><Save size={16} /> 変更を保存</>
-                  }
+                    : <><Save size={16} /> 変更を保存</>}
                 </button>
               </>
             )}
@@ -281,23 +259,20 @@ export default function CustomerDetail({
               {isEditing ? (
                 <>
                   <EditSelect
-                    label="対応ステータス"
-                    fieldName="対応ステータス"
+                    label="対応ステータス" fieldName="対応ステータス"
                     options={statuses.map((s) => s.name)}
+                    value={formData["対応ステータス"]} onChange={handleFieldChange}
                   />
                   <EditSelect
-                    label="担当者"
-                    fieldName="担当者メール"
-                    options={staffList.map((s) => ({
-                      value: s.email,
-                      label: `${s.lastName} ${s.firstName}`,
-                    }))}
+                    label="担当者" fieldName="担当者メール"
+                    options={staffList.map((s) => ({ value: s.email, label: `${s.lastName} ${s.firstName}` }))}
+                    value={formData["担当者メール"]} onChange={handleFieldChange}
                   />
                   {sources.length > 0 && (
                     <EditSelect
-                      label="流入元"
-                      fieldName="流入元"
+                      label="流入元" fieldName="流入元"
                       options={[{ value: "", label: "未選択" }, ...sources.map((s) => ({ value: s.name, label: s.name }))]}
+                      value={formData["流入元"]} onChange={handleFieldChange}
                     />
                   )}
                 </>
@@ -305,9 +280,7 @@ export default function CustomerDetail({
                 <>
                   <ViewField label="対応ステータス" value={formData["対応ステータス"]} />
                   <ViewField label="担当者" value={assignedName} />
-                  {sources.length > 0 && (
-                    <ViewField label="流入元" value={formData["流入元"] || "－"} />
-                  )}
+                  {sources.length > 0 && <ViewField label="流入元" value={formData["流入元"] || "－"} />}
                 </>
               )}
             </div>
@@ -316,9 +289,9 @@ export default function CustomerDetail({
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 20 }}>
               {isEditing ? (
                 <>
-                  <EditText label="姓" fieldName="姓" />
-                  <EditText label="名" fieldName="名" />
-                  <EditText label="電話番号" fieldName="電話番号" />
+                  <EditText label="姓" fieldName="姓" value={formData["姓"]} onChange={handleFieldChange} />
+                  <EditText label="名" fieldName="名" value={formData["名"]} onChange={handleFieldChange} />
+                  <EditText label="電話番号" fieldName="電話番号" value={formData["電話番号"]} onChange={handleFieldChange} />
                 </>
               ) : (
                 <>
@@ -337,7 +310,15 @@ export default function CustomerDetail({
                 <LayoutGrid size={15} /> カスタム項目
               </h3>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
-                {formSettings.map((field) => renderCustomField(field))}
+                {formSettings.map((field) => (
+                  <CustomField
+                    key={field.name}
+                    field={field}
+                    isEditing={isEditing}
+                    value={formData[field.name]}
+                    onChange={handleFieldChange}
+                  />
+                ))}
               </div>
             </div>
           )}
@@ -360,56 +341,17 @@ export default function CustomerDetail({
                 return (
                   <div
                     key={i}
-                    style={{
-                      paddingLeft: 20,
-                      borderLeft: `2px solid ${isHot ? THEME.danger : i === 0 ? THEME.primary : THEME.border}`,
-                      position: "relative",
-                      marginBottom: 20,
-                      paddingBottom: 4,
-                    }}
+                    style={{ paddingLeft: 20, borderLeft: `2px solid ${isHot ? THEME.danger : i === 0 ? THEME.primary : THEME.border}`, position: "relative", marginBottom: 20, paddingBottom: 4 }}
                   >
-                    {/* タイムラインドット */}
-                    <div style={{
-                      position: "absolute",
-                      left: -6,
-                      top: 3,
-                      width: 10,
-                      height: 10,
-                      borderRadius: "50%",
-                      backgroundColor: isHot ? THEME.danger : i === 0 ? THEME.primary : THEME.border,
-                      border: "2px solid white",
-                    }} />
-
-                    {/* クリック日時 + HOTバッジ */}
+                    <div style={{ position: "absolute", left: -6, top: 3, width: 10, height: 10, borderRadius: "50%", backgroundColor: isHot ? THEME.danger : i === 0 ? THEME.primary : THEME.border, border: "2px solid white" }} />
                     <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-                      <span style={{ fontSize: 11, color: THEME.textMuted, fontWeight: 700 }}>
-                        最終クリック: {formatDateJP(log.last_clicked_at) || "-"}
-                      </span>
-                      {isHot && (
-                        <span style={{ backgroundColor: THEME.danger, color: "white", fontSize: 9, padding: "1px 6px", borderRadius: 4, fontWeight: 900 }}>
-                          HOT
-                        </span>
-                      )}
+                      <span style={{ fontSize: 11, color: THEME.textMuted, fontWeight: 700 }}>最終クリック: {formatDateJP(log.last_clicked_at) || "-"}</span>
+                      {isHot && <span style={{ backgroundColor: THEME.danger, color: "white", fontSize: 9, padding: "1px 6px", borderRadius: 4, fontWeight: 900 }}>HOT</span>}
                     </div>
-
-                    {/* クリック数 */}
-                    <div style={{ fontSize: 13, fontWeight: 800, color: THEME.textMain, marginBottom: 4 }}>
-                      {parseInt(log.click_count)}回クリック
-                    </div>
-
-                    {/* 送信日時 */}
-                    <div style={{ fontSize: 11, color: THEME.textMuted, marginBottom: 4 }}>
-                      送信: {formatDateJP(log.sent_at) || "-"}
-                    </div>
-
-                    {/* URL */}
+                    <div style={{ fontSize: 13, fontWeight: 800, color: THEME.textMain, marginBottom: 4 }}>{parseInt(log.click_count)}回クリック</div>
+                    <div style={{ fontSize: 11, color: THEME.textMuted, marginBottom: 4 }}>送信: {formatDateJP(log.sent_at) || "-"}</div>
                     {log.original_url && (
-                      <a
-                        href={log.original_url}
-                        target="_blank"
-                        rel="noreferrer"
-                        style={{ fontSize: 11, color: THEME.primary, display: "flex", alignItems: "center", gap: 4, textDecoration: "none", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
-                      >
+                      <a href={log.original_url} target="_blank" rel="noreferrer" style={{ fontSize: 11, color: THEME.primary, display: "flex", alignItems: "center", gap: 4, textDecoration: "none", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                         <ExternalLink size={10} /> {log.original_url}
                       </a>
                     )}
