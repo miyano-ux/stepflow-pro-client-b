@@ -36,6 +36,7 @@ import ImportErrorList       from "./pages/ImportErrorList";
 import ResponseImportPortal  from "./pages/ResponseImportPortal";
 import CustomerStatusList    from "./pages/CustomerStatusList";
 import UserForm              from "./pages/UserForm";
+import SourceManager         from "./pages/SourceManager";
 
 // ==========================================
 // 🚀 App - 認証 & ルーティング
