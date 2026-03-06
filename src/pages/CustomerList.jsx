@@ -105,7 +105,7 @@ const localStyles = {
 
 export default function CustomerList({
   customers = [], displaySettings = [], formSettings = [],
-  scenarios = [], statuses = [], staffList = [], scenarioSettings = {}, gasUrl, onRefresh,
+  scenarios = [], statuses = [], staffList = [], scenarioSettings = {}, sources = [], gasUrl, onRefresh,
 }) {
   const navigate = useNavigate();
   const location = useLocation();
@@ -145,8 +145,10 @@ export default function CustomerList({
     const unique = Array.from(new Set(names));
     if (!unique.includes("対応ステータス")) unique.splice(2, 0, "対応ステータス");
     if (!unique.includes("担当者メール"))   unique.splice(3, 0, "担当者メール");
+    // 流入元が1件以上登録されていれば表示列に自動追加
+    if (sources.length > 0 && !unique.includes("流入元")) unique.splice(4, 0, "流入元");
     return unique;
-  }, [displaySettings]);
+  }, [displaySettings, sources]);
 
   const sCols = useMemo(() => {
     const names = displaySettings?.length > 0
@@ -251,6 +253,25 @@ export default function CustomerList({
       );
     }
 
+    // 流入元 → sourcesの選択肢
+    if (col === "流入元") {
+      return (
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          <label style={{ fontSize: "11px", fontWeight: "800", color: THEME.textMuted }}>流入元</label>
+          <select
+            style={{ ...localStyles.input, width: "100%", color: search[col] ? THEME.textMain : THEME.textMuted }}
+            value={search[col] || ""}
+            onChange={(e) => setSearch({ ...search, [col]: e.target.value })}
+          >
+            <option value="">すべて</option>
+            {sources.map((s) => (
+              <option key={s.name} value={s.name}>{s.name}</option>
+            ))}
+          </select>
+        </div>
+      );
+    }
+
     if (type === "date") {
       return (
         <DateRangePicker
@@ -323,6 +344,21 @@ export default function CustomerList({
           ]}
           onChange={(val) => setConfirmModal({ open: true, customer: c, field: col, newValue: val, oldValue: c[col] })}
         />
+      );
+    }
+    // 流入元 → バッジ表示
+    if (col === "流入元") {
+      const val = c[col];
+      if (!val) return <span style={{ color: THEME.textMuted, fontSize: 13 }}>－</span>;
+      return (
+        <span style={{
+          display: "inline-flex", alignItems: "center", gap: 4,
+          padding: "3px 10px", borderRadius: 20,
+          backgroundColor: "#EEF2FF", color: THEME.primary,
+          fontSize: 12, fontWeight: 700,
+        }}>
+          {val}
+        </span>
       );
     }
     // 日付フィールドは人が読める形式に変換

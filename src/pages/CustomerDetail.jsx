@@ -25,7 +25,7 @@ const formatDateJP = (v) => {
 };
 
 export default function CustomerDetail({
-  customers = [], formSettings = [], statuses = [],
+  customers = [], formSettings = [], statuses = [], sources = [],
   trackingLogs = [], staffList = [], gasUrl, onRefresh,
 }) {
   const { id } = useParams();
@@ -258,8 +258,8 @@ export default function CustomerDetail({
               <User size={15} /> 基本情報
             </h3>
 
-            {/* 対応ステータス・担当者 */}
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20, marginBottom: 20, padding: "20px", backgroundColor: THEME.bg, borderRadius: 12 }}>
+            {/* 対応ステータス・担当者・流入元 */}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr" + (sources.length > 0 ? " 1fr" : ""), gap: 20, marginBottom: 20, padding: "20px", backgroundColor: THEME.bg, borderRadius: 12 }}>
               {isEditing ? (
                 <>
                   <EditSelect
@@ -275,11 +275,21 @@ export default function CustomerDetail({
                       label: `${s.lastName} ${s.firstName}`,
                     }))}
                   />
+                  {sources.length > 0 && (
+                    <EditSelect
+                      label="流入元"
+                      fieldName="流入元"
+                      options={[{ value: "", label: "未選択" }, ...sources.map((s) => ({ value: s.name, label: s.name }))]}
+                    />
+                  )}
                 </>
               ) : (
                 <>
                   <ViewField label="対応ステータス" value={formData["対応ステータス"]} />
                   <ViewField label="担当者" value={assignedName} />
+                  {sources.length > 0 && (
+                    <ViewField label="流入元" value={formData["流入元"] || "－"} />
+                  )}
                 </>
               )}
             </div>
