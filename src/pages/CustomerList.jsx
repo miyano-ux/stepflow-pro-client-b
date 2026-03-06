@@ -139,29 +139,72 @@ export default function CustomerList({
 
 
   const vCols = useMemo(() => {
-    const names = displaySettings?.length > 0
-      ? displaySettings.filter((i) => i.visible).map((i) => i.name)
-      : ["姓", "名", "対応ステータス", "担当者メール", "電話番号", "登録日"];
-    const unique = Array.from(new Set(names));
-    if (!unique.includes("対応ステータス")) unique.splice(2, 0, "対応ステータス");
-    if (!unique.includes("担当者メール"))   unique.splice(3, 0, "担当者メール");
-    // 流入元が1件以上登録されていれば表示列に自動追加
-    if (sources.length > 0 && !unique.includes("流入元")) unique.splice(4, 0, "流入元");
-    return unique;
-  }, [displaySettings, sources]);
+    // displaySettings の visible な項目名セット
+    const visibleSet = displaySettings?.length > 0
+      ? new Set(displaySettings.filter((i) => i.visible).map((i) => i.name))
+      : new Set(["姓", "名", "電話番号", "登録日", "対応ステータス", "担当者メール", "シナリオID"]);
+
+    // カスタム項目キー（営業管理・デフォルト以外）
+    const SALES_KEYS    = ["対応ステータス", "流入元", "担当者メール", "シナリオID"];
+    const DEFAULT_KEYS  = ["姓", "名", "電話番号", "登録日", "メールアドレス"];
+    const allFixed      = new Set([...SALES_KEYS, ...DEFAULT_KEYS]);
+    const customKeys    = (formSettings || []).map(f => f.name).filter(k => !allFixed.has(k));
+
+    // ① デフォルト列（姓・名 → 「氏名」仮想列に統合）
+    const defaultCols = [];
+    if (visibleSet.has("姓") || visibleSet.has("名")) defaultCols.push("氏名"); // 仮想列
+    ["電話番号", "登録日", "メールアドレス"].forEach(k => {
+      if (visibleSet.has(k)) defaultCols.push(k);
+    });
+
+    // ② 営業管理列（流入元は sources 登録時のみ）
+    const salesCols = [];
+    ["対応ステータス", "担当者メール", "シナリオID"].forEach(k => {
+      if (visibleSet.has(k)) salesCols.push(k);
+    });
+    if (sources.length > 0 && visibleSet.has("流入元")) salesCols.push("流入元");
+
+    // ③ カスタム列
+    const customCols = customKeys.filter(k => visibleSet.has(k));
+
+    return [...defaultCols, ...salesCols, ...customCols];
+  }, [displaySettings, formSettings, sources]);
 
   const sCols = useMemo(() => {
-    const names = displaySettings?.length > 0
-      ? displaySettings.filter((i) => i.searchable).map((i) => i.name)
-      : ["姓", "シナリオID", "登録日"];
-    return Array.from(new Set(names));
-  }, [displaySettings]);
+    const SALES_KEYS   = ["対応ステータス", "流入元", "担当者メール", "シナリオID"];
+    const DEFAULT_KEYS = ["姓", "名", "電話番号", "登録日", "メールアドレス"];
+    const allFixed     = new Set([...SALES_KEYS, ...DEFAULT_KEYS]);
+    const customKeys   = (formSettings || []).map(f => f.name).filter(k => !allFixed.has(k));
+
+    const searchableSet = displaySettings?.length > 0
+      ? new Set(displaySettings.filter((i) => i.searchable).map((i) => i.name))
+      : new Set(["姓", "名", "対応ステータス", "担当者メール", "シナリオID", "登録日"]);
+
+    // デフォルト列：姓または名が検索可なら「氏名」に統合
+    const cols = [];
+    if (searchableSet.has("姓") || searchableSet.has("名")) cols.push("氏名");
+    ["電話番号", "登録日", "メールアドレス"].forEach(k => { if (searchableSet.has(k)) cols.push(k); });
+
+    // 営業管理列
+    ["対応ステータス", "担当者メール", "シナリオID"].forEach(k => { if (searchableSet.has(k)) cols.push(k); });
+    if (sources.length > 0 && searchableSet.has("流入元")) cols.push("流入元");
+
+    // カスタム列
+    customKeys.forEach(k => { if (searchableSet.has(k)) cols.push(k); });
+
+    return cols;
+  }, [displaySettings, formSettings, sources]);
 
   const filtered = useMemo(() => {
     let res = [...(localCustomers || [])].filter((c) => {
       const textMatch = Object.keys(search).every((k) => {
         const q = search[k];
         if (!q) return true;
+        // 「氏名」は姓・名の両方に対してマッチ
+        if (k === "氏名") {
+          const fullName = `${c["姓"] || ""} ${c["名"] || ""}`.toLowerCase();
+          return fullName.includes(String(q).toLowerCase());
+        }
         return String(c[k] || "").toLowerCase().includes(String(q).toLowerCase());
       });
       const dateMatch = Object.keys(dateRange).every((k) => {
@@ -179,7 +222,8 @@ export default function CustomerList({
     });
     if (sort.key) {
       res.sort((a, b) => {
-        const aV = a[sort.key] || "", bV = b[sort.key] || "";
+        const getVal = (c, key) => key === "氏名" ? `${c["姓"] || ""}${c["名"] || ""}` : (c[key] || "");
+        const aV = getVal(a, sort.key), bV = getVal(b, sort.key);
         return sort.dir === "asc"
           ? String(aV).localeCompare(String(bV), "ja")
           : String(bV).localeCompare(String(aV), "ja");
@@ -214,6 +258,24 @@ export default function CustomerList({
   // 検索フィールドを種別に応じてレンダリング
   const renderSearchField = (col) => {
     const type = getFieldType(col, formSettings);
+
+    // 氏名 → 姓・名をまとめてテキスト検索
+    if (col === "氏名") {
+      return (
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          <label style={{ fontSize: "11px", fontWeight: "800", color: THEME.textMuted }}>氏名</label>
+          <div style={{ position: "relative" }}>
+            <Search size={14} style={{ position: "absolute", left: 12, top: 13, color: "#94A3B8" }} />
+            <input
+              placeholder="氏名で検索..."
+              style={{ ...localStyles.input, paddingLeft: 38, width: "100%", boxSizing: "border-box" }}
+              value={search["氏名"] || ""}
+              onChange={(e) => setSearch({ ...search, "氏名": e.target.value })}
+            />
+          </div>
+        </div>
+      );
+    }
 
     // 対応ステータス → status-settings の選択肢
     if (col === "対応ステータス") {
@@ -272,6 +334,26 @@ export default function CustomerList({
       );
     }
 
+    // シナリオID → プルダウン選択（「適用シナリオ」表示）
+    if (col === "シナリオID") {
+      const scenarioIds = [...new Set((scenarios || []).map(s => s["シナリオID"]).filter(Boolean))];
+      return (
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          <label style={{ fontSize: "11px", fontWeight: "800", color: THEME.textMuted }}>適用シナリオ</label>
+          <select
+            style={{ ...localStyles.input, width: "100%", color: search[col] ? THEME.textMain : THEME.textMuted }}
+            value={search[col] || ""}
+            onChange={(e) => setSearch({ ...search, [col]: e.target.value })}
+          >
+            <option value="">すべて</option>
+            {scenarioIds.map((sid) => (
+              <option key={sid} value={sid}>{sid}</option>
+            ))}
+          </select>
+        </div>
+      );
+    }
+
     if (type === "date") {
       return (
         <DateRangePicker
@@ -318,6 +400,23 @@ export default function CustomerList({
 
   // テーブルセルをレンダリング
   const renderCell = (c, col) => {
+    // 氏名 → 姓・名を結合してテキストリンク
+    if (col === "氏名") {
+      const name = `${c["姓"] || ""} ${c["名"] || ""}`.trim() || "-";
+      return (
+        <Link
+          to={`/detail/${c.id}`}
+          style={{
+            color: THEME.primary, fontWeight: 800, fontSize: 14,
+            textDecoration: "none",
+          }}
+          onMouseEnter={(e) => e.currentTarget.style.textDecoration = "underline"}
+          onMouseLeave={(e) => e.currentTarget.style.textDecoration = "none"}
+        >
+          {name}
+        </Link>
+      );
+    }
     if (col === "対応ステータス") {
       return (
         <InlineDropdown
@@ -425,7 +524,7 @@ export default function CustomerList({
                       onClick={() => setSort({ key: col, dir: sort.key === col && sort.dir === "asc" ? "desc" : "asc" })}
                     >
                       <div style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", userSelect: "none" }}>
-                        {col === "担当者メール" ? "担当者" : col === "シナリオID" ? "適用シナリオ" : col}
+                        {col === "担当者メール" ? "担当者" : col === "シナリオID" ? "適用シナリオ" : col === "氏名" ? "氏名" : col}
                         <ArrowUpDown size={12} opacity={sort.key === col ? 1 : 0.3} color={sort.key === col ? THEME.primary : undefined} />
                       </div>
                     </th>

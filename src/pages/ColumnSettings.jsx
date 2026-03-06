@@ -29,7 +29,7 @@ const SALES_FIELDS = [
 const SALES_KEYS = SALES_FIELDS.map(f => f.key);
 
 // デフォルト項目（姓・名・電話番号・登録日・メールアドレス）
-const DEFAULT_FIELDS = ["姓", "名", "電話番号", "登録日", "メールアドレス"];
+const DEFAULT_FIELDS = ["氏名", "電話番号", "登録日", "メールアドレス"];
 
 // 必須バッジを付ける項目
 const REQUIRED_KEYS = ["姓", "電話番号", "対応ステータス"];
@@ -62,8 +62,15 @@ export default function ColumnSettings({ displaySettings = [], formSettings = []
     // ① 営業管理：固定順
     setSalesItems(SALES_KEYS.map(toItem));
 
-    // ② デフォルト項目：固定順
-    setDefaultItems(DEFAULT_FIELDS.map(toItem));
+    // ② デフォルト項目：固定順（姓・名は氏名として統合表示）
+    // displaySettings に "姓" または "名" がある場合は "氏名" の visible/searchable に使う
+    const fullNameVisible    = currentMap.get("姓")?.visible    ?? currentMap.get("氏名")?.visible    ?? true;
+    const fullNameSearchable = currentMap.get("姓")?.searchable ?? currentMap.get("氏名")?.searchable ?? true;
+    setDefaultItems(DEFAULT_FIELDS.map(k =>
+      k === "氏名"
+        ? { key: "氏名", visible: fullNameVisible, searchable: fullNameSearchable }
+        : toItem(k)
+    ));
 
     // ③ カスタム項目：formSettings の順
     const customKeys = (formSettings || [])
@@ -77,11 +84,15 @@ export default function ColumnSettings({ displaySettings = [], formSettings = []
   const handleSave = () => {
     setSaving(true);
     try {
-      const merged = [
-        ...salesItems,
-        ...defaultItems,
-        ...customItems,
-      ].map(it => ({ name: it.key, visible: it.visible, searchable: it.searchable }));
+      // 「氏名」仮想列を 姓・名 の両方として展開して保存
+    const expanded = [...salesItems, ...defaultItems, ...customItems].flatMap(it => {
+      if (it.key === "氏名") return [
+        { name: "姓",  visible: it.visible, searchable: it.searchable },
+        { name: "名",  visible: it.visible, searchable: it.searchable },
+      ];
+      return [{ name: it.key, visible: it.visible, searchable: it.searchable }];
+    });
+    const merged = expanded;
       onSaveDisplaySettings(merged);
       navigate("/");
     } finally {
