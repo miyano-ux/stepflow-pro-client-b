@@ -6,6 +6,7 @@ import { THEME, GAS_URL } from "../lib/constants";
 import { styles } from "../lib/styles";
 import { apiCall, smartNormalizePhone, downloadCSV } from "../lib/utils";
 import Page from "../components/Page";
+import StaffGroupSelect from "../components/StaffGroupSelect";
 import DynamicField from "../components/DynamicField";
 
 // ==========================================
@@ -202,19 +203,13 @@ function CustomerForm({ formSettings = [], scenarios = [], statuses = [], staffL
               <label htmlFor="form-staff" style={{ fontWeight: 700, fontSize: 12, color: THEME.primary, userSelect: "none" }}>
                 担当者
               </label>
-              <select
-                id="form-staff"
-                style={styles.input}
+              <StaffGroupSelect
+                inputId="form-staff"
                 value={fd["担当者メール"]}
-                onChange={(e) => setFd({ ...fd, "担当者メール": e.target.value })}
-              >
-                <option value="">未割当</option>
-                {staffList.map((s) => (
-                  <option key={s.email} value={s.email}>
-                    {s.lastName} {s.firstName}
-                  </option>
-                ))}
-              </select>
+                onChange={(email) => setFd({ ...fd, "担当者メール": email })}
+                staffList={staffList}
+                groups={groups}
+              />
             </div>
 
             {/* 対応ステータス */}

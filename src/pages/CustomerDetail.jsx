@@ -10,6 +10,7 @@ import { THEME, GAS_URL } from "../lib/constants";
 import { styles } from "../lib/styles";
 import { formatDate } from "../lib/utils";
 import DatePicker from "../components/DatePicker";
+import StaffGroupSelect from "../components/StaffGroupSelect";
 
 // ==========================================
 // 👤 CustomerDetail - 顧客詳細ページ
@@ -267,11 +268,16 @@ export default function CustomerDetail({
                     options={statuses.map((s) => s.name)}
                     value={formData["対応ステータス"]} onChange={handleFieldChange}
                   />
-                  <EditSelect
-                    label="担当者" fieldName="担当者メール"
-                    options={staffList.map((s) => ({ value: s.email, label: `${s.lastName} ${s.firstName}` }))}
-                    value={formData["担当者メール"]} onChange={handleFieldChange}
-                  />
+                  <div style={styles.inputGroup}>
+                    <label htmlFor="detail-担当者メール" style={{ ...styles.label, userSelect: "none" }}>担当者</label>
+                    <StaffGroupSelect
+                      inputId="detail-担当者メール"
+                      value={formData["担当者メール"]}
+                      onChange={(email) => handleFieldChange("担当者メール", email)}
+                      staffList={staffList}
+                      groups={groups}
+                    />
+                  </div>
                   {sources.length > 0 && (
                     <EditSelect
                       label="流入元" fieldName="流入元"

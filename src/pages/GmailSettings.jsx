@@ -4,6 +4,7 @@ import { THEME, GAS_URL } from "../lib/constants";
 import { styles } from "../lib/styles";
 import { apiCall } from "../lib/utils";
 import Page from "../components/Page";
+import StaffGroupSelect from "../components/StaffGroupSelect";
 
 // ==========================================
 // 📧 GmailSettings - Gmail自動取り込み設定
@@ -35,7 +36,7 @@ const FieldBox = ({ children, style }) => (
 
 function GmailSettings({
   gmailSettings = [], scenarios = [], formSettings = [],
-  statuses = [], sources = [], staffList = [], onRefresh,
+  statuses = [], sources = [], staffList = [], groups = [], onRefresh,
 }) {
   const [modal, setModal] = useState({ open: false, mode: "add", id: null, data: INITIAL_DATA });
   const [testBody, setTestBody] = useState("");
@@ -288,13 +289,12 @@ function GmailSettings({
                   {/* 担当者 */}
                   <FieldBox>
                     <LabelText>担当者</LabelText>
-                    <div style={{ position: "relative" }}>
-                      <select style={{ ...styles.input, appearance: "none", paddingRight: 32 }} value={modal.data.staffEmail} onChange={e => setData({ staffEmail: e.target.value })}>
-                        <option value="">未割当</option>
-                        {staffList.map(s => <option key={s.email} value={s.email}>{s.lastName} {s.firstName}</option>)}
-                      </select>
-                      <ChevronDown size={14} style={{ position: "absolute", right: 10, top: 14, pointerEvents: "none", color: THEME.textMuted }} />
-                    </div>
+                    <StaffGroupSelect
+                      value={modal.data.staffEmail}
+                      onChange={(email) => setData({ staffEmail: email })}
+                      staffList={staffList}
+                      groups={groups}
+                    />
                   </FieldBox>
 
                   {/* 適用シナリオ */}

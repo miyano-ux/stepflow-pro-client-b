@@ -53,6 +53,7 @@ function App() {
     trackingLogs: [],
     scenarioSettings: { wonScenarioId: "", dormantScenarioId: "" },
     sources: [],
+    groups: [],
   });
 
   // displaySettings: ユーザー個別に localStorage で管理
@@ -222,9 +223,9 @@ function App() {
               {/* 顧客管理 */}
               <Route path="/" element={<CustomerList customers={d?.customers} displaySettings={displaySettings} formSettings={d?.formSettings} scenarios={d?.scenarios} statuses={d?.statuses} staffList={staffList} scenarioSettings={d?.scenarioSettings} sources={d?.sources} gasUrl={GAS_URL} onRefresh={refresh} />} />
               <Route path="/customers" element={<CustomerList customers={d?.customers} displaySettings={displaySettings} formSettings={d?.formSettings} scenarios={d?.scenarios} statuses={d?.statuses} staffList={staffList} scenarioSettings={d?.scenarioSettings} sources={d?.sources} gasUrl={GAS_URL} onRefresh={refresh} />} />
-              <Route path="/add" element={<CustomerForm scenarios={d?.scenarios} formSettings={d?.formSettings} statuses={d?.statuses} staffList={staffList} sources={d?.sources} onRefresh={refresh} />} />
+              <Route path="/add" element={<CustomerForm scenarios={d?.scenarios} formSettings={d?.formSettings} statuses={d?.statuses} staffList={staffList} sources={d?.sources} groups={d?.groups} onRefresh={refresh} />} />
               <Route path="/schedule/:id" element={<CustomerSchedule customers={d?.customers} deliveryLogs={d?.deliveryLogs} onRefresh={refresh} />} />
-              <Route path="/detail/:id" element={<CustomerDetail customers={d?.customers} formSettings={d?.formSettings} statuses={d?.statuses} sources={d?.sources} trackingLogs={d?.trackingLogs} staffList={staffList} gasUrl={GAS_URL} onRefresh={refresh} />} />
+              <Route path="/detail/:id" element={<CustomerDetail customers={d?.customers} formSettings={d?.formSettings} statuses={d?.statuses} sources={d?.sources} trackingLogs={d?.trackingLogs} staffList={staffList} groups={d?.groups} gasUrl={GAS_URL} onRefresh={refresh} />} />
               <Route path="/direct-sms/:id" element={<DirectSms customers={d?.customers} templates={d?.templates} onRefresh={refresh} masterUrl={MASTER_WHITELIST_API} currentUserEmail={user?.email} />} />
 
               {/* 設定 */}
@@ -241,11 +242,11 @@ function App() {
 
               {/* 反響取り込み */}
               <Route path="/response-import" element={<ResponseImportPortal />} />
-              <Route path="/gmail-settings" element={<GmailSettings gmailSettings={d?.gmailSettings} scenarios={d?.scenarios} formSettings={d?.formSettings} statuses={d?.statuses} sources={d?.sources} staffList={staffList} onRefresh={refresh} />} />
+              <Route path="/gmail-settings" element={<GmailSettings gmailSettings={d?.gmailSettings} scenarios={d?.scenarios} formSettings={d?.formSettings} statuses={d?.statuses} sources={d?.sources} staffList={staffList} groups={d?.groups} onRefresh={refresh} />} />
               <Route path="/import-errors" element={<ImportErrorList errors={d?.importErrors} onRefresh={refresh} />} />
 
               {/* ユーザー管理 */}
-              <Route path="/users" element={<UserManager staffList={staffList} onRefreshStaff={refreshStaff} masterUrl={MASTER_WHITELIST_API} companyName={CLIENT_COMPANY_NAME} />} />
+              <Route path="/users" element={<UserManager staffList={staffList} groups={d?.groups} statuses={d?.statuses} onRefreshStaff={refreshStaff} onRefresh={refresh} masterUrl={MASTER_WHITELIST_API} companyName={CLIENT_COMPANY_NAME} gasUrl={GAS_URL} />} />
               <Route path="/users/add" element={<UserForm masterUrl={MASTER_WHITELIST_API} onRefreshStaff={refreshStaff} />} />
               <Route path="/users/edit/:id" element={<UserForm masterUrl={MASTER_WHITELIST_API} onRefreshStaff={refreshStaff} />} />
 
