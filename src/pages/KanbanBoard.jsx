@@ -1,3 +1,22 @@
+// 滞留日数を計算する（ステータス変更日 or 登録日から今日まで）
+function calcDaysInStatus(customer) {
+  const base = customer["ステータス変更日"] || customer["登録日"];
+  if (!base) return null;
+  const from = new Date(base);
+  if (isNaN(from.getTime())) return null;
+  const diff = Math.floor((Date.now() - from.getTime()) / (1000 * 60 * 60 * 24));
+  return diff;
+}
+
+// 滞留日数に応じた色を返す
+function daysColor(days) {
+  if (days === null) return null;
+  if (days <= 7)  return { bg: "#DCFCE7", text: "#166534" }; // 緑：7日以内
+  if (days <= 14) return { bg: "#FEF3C7", text: "#92400E" }; // 黄：8〜14日
+  if (days <= 30) return { bg: "#FED7AA", text: "#9A3412" }; // オレンジ：15〜30日
+  return               { bg: "#FEE2E2", text: "#991B1B" };   // 赤：31日〜
+}
+
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import axios from "axios";
@@ -251,6 +270,27 @@ export default function KanbanBoard({
                               <MessageSquare size={14} />
                             </Link>
                           </div>
+                          {/* 滞留日数バッジ */}
+                          {(() => {
+                            const days  = calcDaysInStatus(c);
+                            const color = daysColor(days);
+                            if (days === null) return null;
+                            const hasDate = !!c["ステータス変更日"];
+                            return (
+                              <div style={{ marginTop: 8, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                                <span style={{
+                                  fontSize: 11, fontWeight: 800,
+                                  backgroundColor: color.bg, color: color.text,
+                                  padding: "3px 10px", borderRadius: 99,
+                                }}>
+                                  {days === 0 ? "本日" : `${days}日滞留中`}
+                                </span>
+                                {!hasDate && (
+                                  <span style={{ fontSize: 10, color: THEME.textMuted, fontStyle: "italic" }}>登録日起算</span>
+                                )}
+                              </div>
+                            );
+                          })()}
                         </div>
                       );
                     })}
