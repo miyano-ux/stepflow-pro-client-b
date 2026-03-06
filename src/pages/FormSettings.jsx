@@ -21,7 +21,7 @@ const FIELD_TYPES = [
 ];
 
 // 固定項目（編集不可）
-const FIXED_FIELDS = ["姓", "名", "電話番号"];
+const FIXED_FIELDS = ["姓", "名", "電話番号", "メールアドレス"];
 
 function FormSettings({ formSettings = [], onRefresh }) {
   const nav = useNavigate();

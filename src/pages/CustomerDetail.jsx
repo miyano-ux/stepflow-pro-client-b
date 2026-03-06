@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, useLocation } from "react-router-dom";
 import axios from "axios";
 import {
   ArrowLeft, Save, MessageSquare, History, Loader2,
@@ -30,6 +30,7 @@ export default function CustomerDetail({
 }) {
   const { id } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
 
   const [isEditing, setIsEditing] = useState(false);
   const [syncingCount, setSyncingCount] = useState(0);
@@ -42,8 +43,17 @@ export default function CustomerDetail({
   );
 
   useEffect(() => {
+    // CustomerEdit から遷移直後は updatedCustomer を優先して即時反映
+    // GAS のデータが返ってきたら（syncingCount===0 かつ state クリア後）正式データに切り替わる
+    const updated = location.state?.updatedCustomer;
+    if (updated && String(updated.id) === String(id)) {
+      setFormData({ ...updated });
+      // state をクリアしてブラウザバック時に再適用されないようにする
+      window.history.replaceState({}, "");
+      return;
+    }
     if (customer && syncingCount === 0) setFormData({ ...customer });
-  }, [customer, syncingCount]);
+  }, [customer, syncingCount, location.state, id]);
 
 
 

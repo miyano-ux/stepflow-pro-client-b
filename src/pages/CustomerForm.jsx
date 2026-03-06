@@ -184,7 +184,7 @@ function CustomerForm({ formSettings = [], scenarios = [], statuses = [], staffL
             placeholder="09012345678"
           />
 
-          {/* 営業管理セクション（担当者・ステータス・流入元） */}
+          {/* 営業管理セクション（担当者・ステータス・流入元・シナリオ） */}
           <div
             style={{
               display: "grid",
@@ -197,6 +197,7 @@ function CustomerForm({ formSettings = [], scenarios = [], statuses = [], staffL
               border: `1px solid ${THEME.border}`,
             }}
           >
+            {/* 担当者 */}
             <div>
               <label htmlFor="form-staff" style={{ fontWeight: 700, fontSize: 12, color: THEME.primary, userSelect: "none" }}>
                 担当者
@@ -215,6 +216,8 @@ function CustomerForm({ formSettings = [], scenarios = [], statuses = [], staffL
                 ))}
               </select>
             </div>
+
+            {/* 対応ステータス */}
             <div>
               <label htmlFor="form-status" style={{ fontWeight: 700, fontSize: 12, color: THEME.primary, userSelect: "none" }}>
                 対応ステータス
@@ -223,20 +226,17 @@ function CustomerForm({ formSettings = [], scenarios = [], statuses = [], staffL
                 id="form-status"
                 style={styles.input}
                 value={fd["対応ステータス"]}
-                onChange={(e) =>
-                  setFd({ ...fd, "対応ステータス": e.target.value })
-                }
+                onChange={(e) => setFd({ ...fd, "対応ステータス": e.target.value })}
               >
                 {statuses.map((st) => (
-                  <option key={st.name} value={st.name}>
-                    {st.name}
-                  </option>
+                  <option key={st.name} value={st.name}>{st.name}</option>
                 ))}
               </select>
             </div>
-            {/* 流入元（sources が登録されている場合のみ表示） */}
-            {sources.length > 0 && (
-              <div style={{ gridColumn: "1 / -1" }}>
+
+            {/* 流入元 */}
+            {sources.length > 0 ? (
+              <div>
                 <label htmlFor="form-source" style={{ fontWeight: 700, fontSize: 12, color: THEME.primary, userSelect: "none" }}>
                   流入元
                 </label>
@@ -252,7 +252,24 @@ function CustomerForm({ formSettings = [], scenarios = [], statuses = [], staffL
                   ))}
                 </select>
               </div>
-            )}
+            ) : <div />}
+
+            {/* 適用シナリオ */}
+            <div>
+              <label htmlFor="form-scenario" style={{ fontWeight: 700, fontSize: 12, color: THEME.primary, userSelect: "none" }}>
+                適用シナリオ
+              </label>
+              <select
+                id="form-scenario"
+                style={styles.input}
+                value={sc}
+                onChange={(e) => setSc(e.target.value)}
+              >
+                {[...new Set(scenarios?.map((x) => x["シナリオID"]))].map((sid) => (
+                  <option key={sid} value={sid}>{sid}</option>
+                ))}
+              </select>
+            </div>
           </div>
 
           {/* カスタム項目 */}
@@ -266,20 +283,6 @@ function CustomerForm({ formSettings = [], scenarios = [], statuses = [], staffL
               />
             </div>
           ))}
-
-          {/* シナリオ選択 */}
-          <label style={{ fontWeight: "700" }}>適用シナリオ</label>
-          <select
-            style={{ ...styles.input, marginBottom: "32px" }}
-            value={sc}
-            onChange={(e) => setSc(e.target.value)}
-          >
-            {[...new Set(scenarios?.map((x) => x["シナリオID"]))].map((id) => (
-              <option key={id} value={id}>
-                {id}
-              </option>
-            ))}
-          </select>
 
           <button
             type="submit"

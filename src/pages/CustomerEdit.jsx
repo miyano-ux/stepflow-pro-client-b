@@ -97,8 +97,16 @@ function CustomerEdit({
       status: c["配信ステータス"],
       scenarioID: sc,
     });
-    onRefresh();
-    nav("/");
+    // 更新済みデータを state に乗せて詳細画面へ遷移
+    // CustomerDetail 側でこれを受け取り即時反映する（GAS反映を待たない）
+    const updatedCustomer = {
+      ...c,
+      姓: ln, 名: fn, 電話番号: ph,
+      シナリオID: sc,
+      ...fd,
+    };
+    onRefresh(); // バックグラウンドで正式データを取得
+    nav(`/detail/${id}`, { state: { updatedCustomer } });
   };
 
   return (

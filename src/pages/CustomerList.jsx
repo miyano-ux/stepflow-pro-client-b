@@ -425,7 +425,7 @@ export default function CustomerList({
                       onClick={() => setSort({ key: col, dir: sort.key === col && sort.dir === "asc" ? "desc" : "asc" })}
                     >
                       <div style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", userSelect: "none" }}>
-                        {col === "担当者メール" ? "担当者" : col === "シナリオID" ? "シナリオ" : col}
+                        {col === "担当者メール" ? "担当者" : col === "シナリオID" ? "適用シナリオ" : col}
                         <ArrowUpDown size={12} opacity={sort.key === col ? 1 : 0.3} color={sort.key === col ? THEME.primary : undefined} />
                       </div>
                     </th>

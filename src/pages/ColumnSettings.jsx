@@ -10,74 +10,148 @@ import { styles } from "../lib/styles";
 // ==========================================
 // ⚙️ ColumnSettings - 表示・検索項目設定
 // ==========================================
-// displaySettings はユーザー個別に localStorage で管理
-// GAS への保存は不要（onSaveDisplaySettings 経由で App.jsx に伝える）
 
 const localStyles = {
-  main:       { minHeight: "100vh", backgroundColor: THEME.bg, padding: "40px 64px" },
-  card:       { backgroundColor: THEME.card, borderRadius: "16px", border: `1px solid ${THEME.border}`, padding: "16px 20px", display: "flex", gap: "16px", alignItems: "center", marginBottom: "10px", transition: "all 0.2s", position: "relative" },
-  badge:      { fontSize: "10px", fontWeight: "900", padding: "2px 8px", borderRadius: "6px", backgroundColor: "#EEF2FF", color: THEME.primary, marginLeft: "8px" },
+  main:    { minHeight: "100vh", backgroundColor: THEME.bg, padding: "40px 64px" },
+  card:    { backgroundColor: "white", borderRadius: "12px", border: `1px solid ${THEME.border}`, padding: "14px 18px", display: "flex", gap: "14px", alignItems: "center", marginBottom: "8px", transition: "all 0.2s", position: "relative" },
+  badge:   { fontSize: "10px", fontWeight: "900", padding: "2px 8px", borderRadius: "6px", backgroundColor: "#EEF2FF", color: THEME.primary, marginLeft: "8px" },
+  section: { marginBottom: 32 },
+  sectionTitle: { fontSize: 11, fontWeight: 800, color: THEME.textMuted, marginBottom: 10, letterSpacing: "0.06em", textTransform: "uppercase" },
 };
 
-export default function ColumnSettings({ displaySettings = [], formSettings = [], onSaveDisplaySettings, onRefresh }) {
+// 営業管理系固定項目（内部キー → 表示ラベル）
+const SALES_FIELDS = [
+  { key: "対応ステータス", label: "対応ステータス" },
+  { key: "流入元",         label: "流入元" },
+  { key: "担当者メール",   label: "担当者" },
+  { key: "シナリオID",     label: "適用シナリオ" },
+];
+const SALES_KEYS = SALES_FIELDS.map(f => f.key);
+
+// デフォルト項目（姓・名・電話番号・登録日・メールアドレス）
+const DEFAULT_FIELDS = ["姓", "名", "電話番号", "登録日", "メールアドレス"];
+
+// 必須バッジを付ける項目
+const REQUIRED_KEYS = ["姓", "電話番号", "対応ステータス"];
+
+// 内部キーから表示ラベルを返す
+const getLabel = (key) => SALES_FIELDS.find(f => f.key === key)?.label || key;
+
+export default function ColumnSettings({ displaySettings = [], formSettings = [], onSaveDisplaySettings }) {
   const navigate = useNavigate();
-  const [items, setItems] = useState([]);
-  const [dragIdx, setDragIdx] = useState(null);
+
+  // セクションごとの items
+  const [salesItems,   setSalesItems]   = useState([]);
+  const [defaultItems, setDefaultItems] = useState([]);
+  const [customItems,  setCustomItems]  = useState([]);
+
   const [saving, setSaving] = useState(false);
 
-  // マスター同期ロジック: formSettings をマスターとして displaySettings を従属
   useEffect(() => {
-    const essential = ["姓", "名", "電話番号", "シナリオID", "登録日", "対応ステータス", "担当者メール"];
-    const fromMaster = (formSettings || []).map(f => f.name);
-    const allMasterNames = Array.from(new Set([...essential, ...fromMaster]));
-
     const currentMap = new Map();
     (displaySettings || []).forEach(d => {
-      if (d.name && !currentMap.has(d.name)) {
-        currentMap.set(d.name, { name: d.name, visible: d.visible !== false, searchable: d.searchable !== false });
-      }
+      if (d.name) currentMap.set(d.name, { visible: d.visible !== false, searchable: d.searchable !== false });
     });
 
-    const synchronized = allMasterNames.map(name =>
-      currentMap.get(name) || { name, visible: true, searchable: true }
-    );
-    setItems(synchronized);
+    const toItem = (key) => ({
+      key,
+      visible:    currentMap.get(key)?.visible    ?? true,
+      searchable: currentMap.get(key)?.searchable ?? true,
+    });
+
+    // ① 営業管理：固定順
+    setSalesItems(SALES_KEYS.map(toItem));
+
+    // ② デフォルト項目：固定順
+    setDefaultItems(DEFAULT_FIELDS.map(toItem));
+
+    // ③ カスタム項目：formSettings の順
+    const customKeys = (formSettings || [])
+      .map(f => f.name)
+      .filter(n => !SALES_KEYS.includes(n) && !DEFAULT_FIELDS.includes(n));
+    setCustomItems(customKeys.map(toItem));
+
   }, [displaySettings, formSettings]);
 
-  // ドラッグ＆ドロップ
-  const onDragStart = (idx) => setDragIdx(idx);
-  const onDragOver  = (e, i) => {
-    e.preventDefault();
-    if (dragIdx === null || dragIdx === i) return;
-    const n = [...items];
-    const d = n.splice(dragIdx, 1)[0];
-    n.splice(i, 0, d);
-    setDragIdx(i);
-    setItems(n);
-  };
-  const onDragEnd = () => setDragIdx(null);
-
-  // 保存: GAS不要・localStorage に保存して即反映
+  // 保存：3セクションをまとめて onSaveDisplaySettings に渡す
   const handleSave = () => {
     setSaving(true);
     try {
-      onSaveDisplaySettings(items); // App.jsx の saveDisplaySettings を呼ぶ
+      const merged = [
+        ...salesItems,
+        ...defaultItems,
+        ...customItems,
+      ].map(it => ({ name: it.key, visible: it.visible, searchable: it.searchable }));
+      onSaveDisplaySettings(merged);
       navigate("/");
     } finally {
       setSaving(false);
     }
   };
 
+  // ── セクションの行レンダリング ──────────────────
+  const renderRow = (it, setItems, idx, draggable = false) => (
+    <div
+      key={it.key}
+      style={{
+        ...localStyles.card,
+        cursor: draggable ? "grab" : "default",
+      }}
+    >
+      {draggable
+        ? <GripVertical size={18} color={THEME.border} />
+        : <div style={{ width: 18 }} />}
+
+      <div style={{ flex: 1, fontWeight: 800, color: THEME.textMain, display: "flex", alignItems: "center", fontSize: 14 }}>
+        {getLabel(it.key)}
+        {REQUIRED_KEYS.includes(it.key) && (
+          <span style={localStyles.badge}>必須項目</span>
+        )}
+      </div>
+
+      <div style={{ display: "flex", gap: 20 }}>
+        <button
+          onClick={() => setItems(prev => prev.map((x, i) => i === idx ? { ...x, visible: !x.visible } : x))}
+          style={{ background: "none", border: "none", cursor: "pointer", display: "flex", alignItems: "center", gap: 6, color: it.visible ? THEME.primary : THEME.textMuted, fontWeight: 800, fontSize: 13 }}
+        >
+          {it.visible ? <Eye size={17} /> : <EyeOff size={17} />}
+          {it.visible ? "表示中" : "非表示"}
+        </button>
+        <button
+          onClick={() => setItems(prev => prev.map((x, i) => i === idx ? { ...x, searchable: !x.searchable } : x))}
+          style={{ background: "none", border: "none", cursor: "pointer", display: "flex", alignItems: "center", gap: 6, color: it.searchable ? THEME.success : THEME.textMuted, fontWeight: 800, fontSize: 13 }}
+        >
+          <Search size={17} />
+          {it.searchable ? "検索可" : "検索不可"}
+        </button>
+      </div>
+    </div>
+  );
+
+  // カスタム項目のドラッグ
+  const [dragIdx, setDragIdx] = useState(null);
+  const onDragStart = (i) => setDragIdx(i);
+  const onDragOver  = (e, i) => {
+    e.preventDefault();
+    if (dragIdx === null || dragIdx === i) return;
+    const n = [...customItems];
+    const d = n.splice(dragIdx, 1)[0];
+    n.splice(i, 0, d);
+    setDragIdx(i);
+    setCustomItems(n);
+  };
+  const onDragEnd = () => setDragIdx(null);
+
   return (
     <div style={localStyles.main}>
-      <header style={{ marginBottom: "40px" }}>
+      <header style={{ marginBottom: 40 }}>
         <button
           onClick={() => navigate("/")}
-          style={{ background: "none", border: "none", color: THEME.textMuted, cursor: "pointer", display: "flex", alignItems: "center", gap: 8, fontWeight: "800", marginBottom: 12 }}
+          style={{ background: "none", border: "none", color: THEME.textMuted, cursor: "pointer", display: "flex", alignItems: "center", gap: 8, fontWeight: 800, marginBottom: 12 }}
         >
           <ArrowLeft size={18} /> ダッシュボードへ戻る
         </button>
-        <h1 style={{ fontSize: "32px", fontWeight: "900", color: THEME.textMain, margin: 0 }}>
+        <h1 style={{ fontSize: 32, fontWeight: 900, color: THEME.textMain, margin: 0 }}>
           表示・検索項目の設定
         </h1>
         <p style={{ fontSize: 13, color: THEME.textMuted, marginTop: 8 }}>
@@ -85,61 +159,72 @@ export default function ColumnSettings({ displaySettings = [], formSettings = []
         </p>
       </header>
 
-      <div style={{ maxWidth: "800px" }}>
+      <div style={{ maxWidth: 800 }}>
         {/* 説明バナー */}
-        <div style={{ marginBottom: 32, padding: "16px 20px", backgroundColor: "#EEF2FF", borderRadius: "14px", display: "flex", gap: "14px", alignItems: "flex-start", border: `1px solid ${THEME.border}` }}>
+        <div style={{ marginBottom: 32, padding: "16px 20px", backgroundColor: "#EEF2FF", borderRadius: 14, display: "flex", gap: 14, alignItems: "flex-start", border: `1px solid ${THEME.border}` }}>
           <AlertTriangle color={THEME.primary} size={20} style={{ flexShrink: 0, marginTop: 2 }} />
-          <div style={{ fontSize: "13px", color: THEME.textMain, lineHeight: "1.6" }}>
+          <div style={{ fontSize: 13, color: THEME.textMain, lineHeight: 1.6 }}>
             「項目設定」をマスターとして同期しています。ここでの変更は<strong>あなたの画面のみ</strong>に適用されます。
             表示順・表示/非表示・検索対象をカスタマイズできます。
           </div>
         </div>
 
-        {/* 項目リスト */}
-        <div style={{ marginBottom: "32px" }}>
-          {items.map((it, i) => (
-            <div
-              key={it.name}
-              draggable
-              onDragStart={() => onDragStart(i)}
-              onDragOver={(e) => onDragOver(e, i)}
-              onDragEnd={onDragEnd}
-              style={{
-                ...localStyles.card,
-                opacity: dragIdx === i ? 0.5 : 1,
-                border: dragIdx === i ? `2px solid ${THEME.primary}` : `1px solid ${THEME.border}`,
-                backgroundColor: dragIdx === i ? "#F5F3FF" : "white",
-                cursor: "grab",
-              }}
-            >
-              <GripVertical size={20} color={THEME.textMuted} />
+        {/* ① 営業管理項目 */}
+        <div style={localStyles.section}>
+          <p style={localStyles.sectionTitle}>① 営業管理項目</p>
+          {salesItems.map((it, i) => renderRow(it, setSalesItems, i, false))}
+        </div>
 
-              <div style={{ flex: 1, fontWeight: "800", color: THEME.textMain, display: "flex", alignItems: "center" }}>
-                {it.name}
-                {["姓", "電話番号", "対応ステータス"].includes(it.name) && (
-                  <span style={localStyles.badge}>必須項目</span>
-                )}
-              </div>
+        {/* ② デフォルト項目 */}
+        <div style={localStyles.section}>
+          <p style={localStyles.sectionTitle}>② デフォルト項目</p>
+          {defaultItems.map((it, i) => renderRow(it, setDefaultItems, i, false))}
+        </div>
 
-              <div style={{ display: "flex", gap: "24px" }}>
-                <button
-                  onClick={() => { const n = [...items]; n[i] = { ...n[i], visible: !n[i].visible }; setItems(n); }}
-                  style={{ background: "none", border: "none", cursor: "pointer", display: "flex", alignItems: "center", gap: 6, color: it.visible ? THEME.primary : THEME.textMuted, fontWeight: "800", fontSize: "13px" }}
-                >
-                  {it.visible ? <Eye size={18} /> : <EyeOff size={18} />}
-                  {it.visible ? "表示中" : "非表示"}
-                </button>
-
-                <button
-                  onClick={() => { const n = [...items]; n[i] = { ...n[i], searchable: !n[i].searchable }; setItems(n); }}
-                  style={{ background: "none", border: "none", cursor: "pointer", display: "flex", alignItems: "center", gap: 6, color: it.searchable ? THEME.success : THEME.textMuted, fontWeight: "800", fontSize: "13px" }}
-                >
-                  <Search size={18} />
-                  {it.searchable ? "検索可" : "検索不可"}
-                </button>
-              </div>
+        {/* ③ カスタム項目 */}
+        <div style={localStyles.section}>
+          <p style={localStyles.sectionTitle}>③ カスタム項目</p>
+          {customItems.length === 0 ? (
+            <div style={{ padding: "24px", textAlign: "center", color: THEME.textMuted, fontSize: 13, border: `1.5px dashed ${THEME.border}`, borderRadius: 12 }}>
+              カスタム項目はまだ登録されていません
             </div>
-          ))}
+          ) : (
+            customItems.map((it, i) => (
+              <div
+                key={it.key}
+                draggable
+                onDragStart={() => onDragStart(i)}
+                onDragOver={(e) => onDragOver(e, i)}
+                onDragEnd={onDragEnd}
+                style={{
+                  ...localStyles.card,
+                  opacity: dragIdx === i ? 0.5 : 1,
+                  border: dragIdx === i ? `2px solid ${THEME.primary}` : `1px solid ${THEME.border}`,
+                  backgroundColor: dragIdx === i ? "#F5F3FF" : "white",
+                  cursor: "grab",
+                }}
+              >
+                <GripVertical size={18} color={THEME.textMuted} />
+                <div style={{ flex: 1, fontWeight: 800, color: THEME.textMain, fontSize: 14 }}>{it.key}</div>
+                <div style={{ display: "flex", gap: 20 }}>
+                  <button
+                    onClick={() => setCustomItems(prev => prev.map((x, j) => j === i ? { ...x, visible: !x.visible } : x))}
+                    style={{ background: "none", border: "none", cursor: "pointer", display: "flex", alignItems: "center", gap: 6, color: it.visible ? THEME.primary : THEME.textMuted, fontWeight: 800, fontSize: 13 }}
+                  >
+                    {it.visible ? <Eye size={17} /> : <EyeOff size={17} />}
+                    {it.visible ? "表示中" : "非表示"}
+                  </button>
+                  <button
+                    onClick={() => setCustomItems(prev => prev.map((x, j) => j === i ? { ...x, searchable: !x.searchable } : x))}
+                    style={{ background: "none", border: "none", cursor: "pointer", display: "flex", alignItems: "center", gap: 6, color: it.searchable ? THEME.success : THEME.textMuted, fontWeight: 800, fontSize: 13 }}
+                  >
+                    <Search size={17} />
+                    {it.searchable ? "検索可" : "検索不可"}
+                  </button>
+                </div>
+              </div>
+            ))
+          )}
         </div>
 
         {/* 保存ボタン */}
