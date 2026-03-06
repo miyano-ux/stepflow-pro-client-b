@@ -3,7 +3,7 @@ import { Link, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Columns, UserPlus, BarChart3, LogOut,
   ChevronLeft, ChevronRight, ChevronDown,
-  MessageSquare, Copy, Users, Mail, Settings
+  MessageSquare, Copy, Users, Mail, Settings, Globe
 } from 'lucide-react';
 
 const EXPANDED_WIDTH  = "240px";
@@ -29,6 +29,7 @@ const SETTINGS_ITEMS = [
   { name: "シナリオ",      path: "/scenarios",      icon: <MessageSquare size={16} /> },
   { name: "テンプレート",  path: "/templates",      icon: <Copy size={16} /> },
   { name: "反響取り込み",  path: "/response-import",icon: <Mail size={16} /> },
+  { name: "流入元管理",    path: "/sources",          icon: <Globe size={16} /> },
   { name: "ステータス設定",path: "/status-settings", icon: <Settings size={16} /> },
   { name: "ユーザー管理",  path: "/users",           icon: <Users size={16} /> },
 ];

@@ -20,7 +20,7 @@ import DynamicField from "../components/DynamicField";
  * @param {string} masterUrl - マスタAPIのURL
  * @param {function} onRefresh - データ再取得コールバック
  */
-function CustomerForm({ formSettings = [], scenarios = [], statuses = [], staffList = [], onRefresh }) {
+function CustomerForm({ formSettings = [], scenarios = [], statuses = [], staffList = [], sources = [], onRefresh }) {
   const navigate = useNavigate();
 
   const [ln, setLn] = useState("");
@@ -184,7 +184,7 @@ function CustomerForm({ formSettings = [], scenarios = [], statuses = [], staffL
             placeholder="09012345678"
           />
 
-          {/* 営業管理セクション（担当者・ステータス） */}
+          {/* 営業管理セクション（担当者・ステータス・流入元） */}
           <div
             style={{
               display: "grid",
@@ -198,10 +198,11 @@ function CustomerForm({ formSettings = [], scenarios = [], statuses = [], staffL
             }}
           >
             <div>
-              <label style={{ fontWeight: 700, fontSize: 12, color: THEME.primary }}>
+              <label htmlFor="form-staff" style={{ fontWeight: 700, fontSize: 12, color: THEME.primary, userSelect: "none" }}>
                 担当者
               </label>
               <select
+                id="form-staff"
                 style={styles.input}
                 value={fd["担当者メール"]}
                 onChange={(e) => setFd({ ...fd, "担当者メール": e.target.value })}
@@ -215,10 +216,11 @@ function CustomerForm({ formSettings = [], scenarios = [], statuses = [], staffL
               </select>
             </div>
             <div>
-              <label style={{ fontWeight: 700, fontSize: 12, color: THEME.primary }}>
+              <label htmlFor="form-status" style={{ fontWeight: 700, fontSize: 12, color: THEME.primary, userSelect: "none" }}>
                 対応ステータス
               </label>
               <select
+                id="form-status"
                 style={styles.input}
                 value={fd["対応ステータス"]}
                 onChange={(e) =>
@@ -232,6 +234,25 @@ function CustomerForm({ formSettings = [], scenarios = [], statuses = [], staffL
                 ))}
               </select>
             </div>
+            {/* 流入元（sources が登録されている場合のみ表示） */}
+            {sources.length > 0 && (
+              <div style={{ gridColumn: "1 / -1" }}>
+                <label htmlFor="form-source" style={{ fontWeight: 700, fontSize: 12, color: THEME.primary, userSelect: "none" }}>
+                  流入元
+                </label>
+                <select
+                  id="form-source"
+                  style={styles.input}
+                  value={fd["流入元"] || ""}
+                  onChange={(e) => setFd({ ...fd, "流入元": e.target.value })}
+                >
+                  <option value="">未選択</option>
+                  {sources.map((s) => (
+                    <option key={s.name} value={s.name}>{s.name}</option>
+                  ))}
+                </select>
+              </div>
+            )}
           </div>
 
           {/* カスタム項目 */}

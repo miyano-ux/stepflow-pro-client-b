@@ -26,6 +26,7 @@ function CustomerEdit({
   scenarios = [],
   formSettings = [],
   statuses = [],
+  sources = [],
   masterUrl,
   onRefresh,
 }) {
@@ -186,6 +187,25 @@ function CustomerEdit({
                 ))}
               </select>
             </div>
+            {/* 流入元（sources が登録されている場合のみ表示） */}
+            {sources.length > 0 && (
+              <div style={{ gridColumn: "1 / -1" }}>
+                <label htmlFor="edit-source" style={{ fontWeight: 700, fontSize: 12, color: THEME.primary, userSelect: "none" }}>
+                  流入元
+                </label>
+                <select
+                  id="edit-source"
+                  style={styles.input}
+                  value={fd["流入元"] || ""}
+                  onChange={(e) => setFd({ ...fd, "流入元": e.target.value })}
+                >
+                  <option value="">未選択</option>
+                  {sources.map((s) => (
+                    <option key={s.name} value={s.name}>{s.name}</option>
+                  ))}
+                </select>
+              </div>
+            )}
           </div>
 
           {/* カスタム項目 */}
