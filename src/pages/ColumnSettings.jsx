@@ -108,6 +108,7 @@ export default function ColumnSettings({ displaySettings = [], formSettings = []
   });
 
   useEffect(() => {
+    // displaySettings に保存されている順序・表示設定をマップ化
     const currentMap = new Map();
     (displaySettings || []).forEach(d => {
       if (d.name) currentMap.set(d.name, { visible: d.visible !== false, searchable: d.searchable !== false });
@@ -118,23 +119,36 @@ export default function ColumnSettings({ displaySettings = [], formSettings = []
       searchable: currentMap.get(key)?.searchable ?? true,
     });
 
-    // 管理項目
-    setSalesItems(SALES_KEYS.map(toItem));
+    // 保存済みの並び順を活かして各セクションを復元する
+    // displaySettings に含まれるキーをセクション別に分類し、順序を維持
+    const savedKeys = (displaySettings || []).map(d => d.name).filter(Boolean);
 
-    // デフォルト項目（姓・名 → 氏名として統合）
+    // 管理項目：保存済み順 → 未登録キーを末尾に補完
+    const savedSales = savedKeys.filter(k => SALES_KEYS.includes(k));
+    const missingSales = SALES_KEYS.filter(k => !savedSales.includes(k));
+    setSalesItems([...savedSales, ...missingSales].map(toItem));
+
+    // デフォルト項目：姓・名 → 氏名として統合、保存済み順を復元
     const fullNameVisible    = currentMap.get("姓")?.visible    ?? currentMap.get("氏名")?.visible    ?? true;
     const fullNameSearchable = currentMap.get("姓")?.searchable ?? currentMap.get("氏名")?.searchable ?? true;
-    setDefaultItems(DEFAULT_FIELDS.map(k =>
+    // savedKeys 内で DEFAULT_FIELDS に対応するキーを順序付き取得（姓/名 → 氏名に変換）
+    const savedDefaultRaw = savedKeys
+      .map(k => (k === "姓" || k === "名") ? "氏名" : k)
+      .filter(k => DEFAULT_FIELDS.includes(k));
+    const savedDefault = Array.from(new Set(savedDefaultRaw)); // 氏名の重複を除去
+    const missingDefault = DEFAULT_FIELDS.filter(k => !savedDefault.includes(k));
+    setDefaultItems([...savedDefault, ...missingDefault].map(k =>
       k === "氏名"
         ? { key: "氏名", visible: fullNameVisible, searchable: fullNameSearchable }
         : toItem(k)
     ));
 
-    // カスタム項目
-    const customKeys = (formSettings || [])
-      .map(f => f.name)
-      .filter(n => !SALES_KEYS.includes(n) && !DEFAULT_FIELDS.includes(n) && n !== "姓" && n !== "名");
-    setCustomItems(customKeys.map(toItem));
+    // カスタム項目：保存済み順 → formSettings の順で補完
+    const allFixed = new Set([...SALES_KEYS, ...DEFAULT_FIELDS, "姓", "名"]);
+    const formCustomKeys = (formSettings || []).map(f => f.name).filter(k => !allFixed.has(k));
+    const savedCustom = savedKeys.filter(k => formCustomKeys.includes(k));
+    const missingCustom = formCustomKeys.filter(k => !savedCustom.includes(k));
+    setCustomItems([...savedCustom, ...missingCustom].map(toItem));
 
   }, [displaySettings, formSettings]);
 
