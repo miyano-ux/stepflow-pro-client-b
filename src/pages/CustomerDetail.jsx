@@ -112,7 +112,7 @@ const CustomField = ({ field, isEditing, value, onChange }) => {
 
 export default function CustomerDetail({
   customers = [], formSettings = [], statuses = [], sources = [],
-  trackingLogs = [], staffList = [], gasUrl, onRefresh,
+  trackingLogs = [], staffList = [], groups = [], gasUrl, onRefresh,
 }) {
   const { id } = useParams();
   const navigate = useNavigate();

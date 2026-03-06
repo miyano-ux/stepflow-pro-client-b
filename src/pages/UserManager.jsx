@@ -24,10 +24,11 @@ const lS = {
 
 // ── グループカード ─────────────────────────────────────────────
 function GroupCard({ group, staffList, onSave, onDelete }) {
-  const [open,    setOpen]    = useState(false);
-  const [name,    setName]    = useState(group.name);
-  const [members, setMembers] = useState(group.members);
-  const [saving,  setSaving]  = useState(false);
+  const [open,        setOpen]        = useState(false);
+  const [name,        setName]        = useState(group.name);
+  const [members,     setMembers]     = useState(group.members);
+  const [saving,      setSaving]      = useState(false);
+  const [savedLabel,  setSavedLabel]  = useState(null); // 楽観的表示用
 
   const toggle = (email) =>
     setMembers(prev =>
@@ -37,35 +38,45 @@ function GroupCard({ group, staffList, onSave, onDelete }) {
   const handleSave = async () => {
     if (!name.trim()) return alert("グループ名を入力してください");
     setSaving(true);
+    // 楽観的更新：即座にヘッダーに反映
+    setSavedLabel({ name: name.trim(), members: [...members] });
     try {
       await onSave({ groupId: group.groupId, name: name.trim(), members });
-    } finally { setSaving(false); }
+      setOpen(false); // 保存完了でパネルを閉じる
+    } catch {
+      setSavedLabel(null); // 失敗時は戻す
+    } finally {
+      setSaving(false);
+    }
   };
 
-  const memberNames = members.map(email => {
+  // 表示に使う名前・メンバー（楽観的更新優先）
+  const displayName    = savedLabel ? savedLabel.name    : group.name;
+  const displayMembers = savedLabel ? savedLabel.members : group.members;
+  const memberNames = displayMembers.map(email => {
     const s = staffList.find(u => u.email === email);
     return s ? `${s.lastName} ${s.firstName}` : email;
   });
 
   return (
-    <div style={{ border: `1px solid ${THEME.border}`, borderRadius: 14, overflow: "hidden", marginBottom: 12 }}>
+    <div style={{ border: `1px solid ${open ? THEME.primary : THEME.border}`, borderRadius: 14, overflow: "hidden", marginBottom: 12, transition: "border-color 0.15s" }}>
       {/* ヘッダー */}
       <div
         onClick={() => setOpen(o => !o)}
-        style={{ display: "flex", alignItems: "center", gap: 14, padding: "16px 20px", cursor: "pointer", backgroundColor: open ? "#F5F3FF" : "white", userSelect: "none" }}
+        style={{ display: "flex", alignItems: "center", gap: 14, padding: "16px 20px", cursor: "pointer", backgroundColor: open ? "#F5F3FF" : "white", userSelect: "none", transition: "background 0.15s" }}
       >
         <div style={{ width: 38, height: 38, borderRadius: "50%", backgroundColor: "#EEF2FF", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
           <Users size={18} color={THEME.primary} />
         </div>
         <div style={{ flex: 1 }}>
-          <div style={{ fontWeight: 900, fontSize: 15, color: THEME.textMain }}>{name || "（名称未設定）"}</div>
+          <div style={{ fontWeight: 900, fontSize: 15, color: THEME.textMain }}>{displayName || "（名称未設定）"}</div>
           <div style={{ fontSize: 12, color: THEME.textMuted, marginTop: 2 }}>
-            {members.length > 0 ? memberNames.join("・") : "メンバー未設定"}
+            {displayMembers.length > 0 ? memberNames.join("・") : "メンバー未設定"}
           </div>
         </div>
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
           <span style={{ fontSize: 12, backgroundColor: "#EEF2FF", color: THEME.primary, padding: "2px 10px", borderRadius: 99, fontWeight: 700 }}>
-            {members.length}名
+            {displayMembers.length}名
           </span>
           <button
             onClick={(e) => { e.stopPropagation(); onDelete(group.groupId); }}
@@ -77,11 +88,11 @@ function GroupCard({ group, staffList, onSave, onDelete }) {
         </div>
       </div>
 
-      {/* 展開エリア */}
+      {/* 編集パネル */}
       {open && (
-        <div style={{ padding: "20px 24px", borderTop: `1px solid ${THEME.border}`, background: "#FAFAFA" }}>
-          {/* グループ名編集 */}
-          <div style={{ marginBottom: 16 }}>
+        <div style={{ padding: "24px", borderTop: `1px solid ${THEME.border}`, background: "#FAFAFA" }}>
+          {/* グループ名 */}
+          <div style={{ marginBottom: 20 }}>
             <label style={{ ...styles.label, userSelect: "none" }}>グループ名</label>
             <input
               style={styles.input}
@@ -92,8 +103,11 @@ function GroupCard({ group, staffList, onSave, onDelete }) {
           </div>
 
           {/* メンバー選択 */}
-          <div style={{ marginBottom: 20 }}>
-            <label style={{ ...styles.label, userSelect: "none" }}>メンバー（クリックで追加/除外）</label>
+          <div style={{ marginBottom: 24 }}>
+            <label style={{ ...styles.label, userSelect: "none" }}>
+              メンバー
+              <span style={{ marginLeft: 8, fontWeight: 400, color: THEME.textMuted }}>（クリックで追加 / 除外）</span>
+            </label>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
               {staffList.map(s => {
                 const selected = members.includes(s.email);
@@ -102,15 +116,14 @@ function GroupCard({ group, staffList, onSave, onDelete }) {
                     key={s.email}
                     onClick={() => toggle(s.email)}
                     style={{
-                      padding: "6px 14px", borderRadius: 99, fontSize: 13, fontWeight: 700, cursor: "pointer",
+                      padding: "7px 16px", borderRadius: 99, fontSize: 13, fontWeight: 700, cursor: "pointer",
                       border: `1.5px solid ${selected ? THEME.primary : THEME.border}`,
                       backgroundColor: selected ? "#EEF2FF" : "white",
                       color: selected ? THEME.primary : THEME.textMuted,
                       transition: "all 0.15s",
                     }}
                   >
-                    {selected && <span style={{ marginRight: 4 }}>✓</span>}
-                    {s.lastName} {s.firstName}
+                    {selected && "✓ "}{s.lastName} {s.firstName}
                   </button>
                 );
               })}
@@ -120,13 +133,22 @@ function GroupCard({ group, staffList, onSave, onDelete }) {
             </div>
           </div>
 
-          <button
-            onClick={handleSave}
-            disabled={saving}
-            style={{ ...styles.btn, ...styles.btnPrimary, opacity: saving ? 0.7 : 1 }}
-          >
-            {saving ? <><Loader2 size={15} className="animate-spin" /> 保存中...</> : "保存"}
-          </button>
+          {/* ボタン */}
+          <div style={{ display: "flex", gap: 10 }}>
+            <button
+              onClick={handleSave}
+              disabled={saving}
+              style={{ ...styles.btn, ...styles.btnPrimary, opacity: saving ? 0.7 : 1 }}
+            >
+              {saving ? <><Loader2 size={15} className="animate-spin" /> 保存中...</> : "保存"}
+            </button>
+            <button
+              onClick={() => { setName(group.name); setMembers(group.members); setOpen(false); }}
+              style={{ ...styles.btn, ...styles.btnSecondary }}
+            >
+              キャンセル
+            </button>
+          </div>
         </div>
       )}
     </div>
@@ -142,6 +164,7 @@ export default function UserManager({
   const [refreshing, setRefreshing] = useState(false);
   const [addingGroup, setAddingGroup] = useState(false);
   const [newGroupName, setNewGroupName] = useState("");
+  const [newGroupMembers, setNewGroupMembers] = useState([]);
 
   const handleRefresh = async () => {
     setRefreshing(true);
@@ -180,12 +203,13 @@ export default function UserManager({
     if (!newGroupName.trim()) return alert("グループ名を入力してください");
     const groupId = "g_" + Date.now();
     try {
-      const res = await axios.post(GAS_URL, JSON.stringify({ action: "saveGroup", groupId, name: newGroupName.trim(), members: [] }), { headers: { "Content-Type": "text/plain;charset=utf-8" } });
+      const res = await axios.post(GAS_URL, JSON.stringify({ action: "saveGroup", groupId, name: newGroupName.trim(), members: newGroupMembers }), { headers: { "Content-Type": "text/plain;charset=utf-8" } });
       if (res.data?.status === "error") {
         alert("エラー: " + (res.data.message || "保存に失敗しました"));
         return;
       }
       setNewGroupName("");
+      setNewGroupMembers([]);
       setAddingGroup(false);
       if (onRefresh) await onRefresh();
     } catch(e) {
@@ -307,20 +331,56 @@ export default function UserManager({
 
         {/* 新規グループ作成フォーム */}
         {addingGroup && (
-          <div style={{ padding: 20, border: `2px solid ${THEME.primary}`, borderRadius: 14, marginBottom: 16, backgroundColor: "#F5F3FF", display: "flex", gap: 12, alignItems: "center" }}>
-            <Users size={20} color={THEME.primary} style={{ flexShrink: 0 }} />
-            <input
-              style={{ ...styles.input, flex: 1 }}
-              placeholder="グループ名を入力（例: 東日本営業）"
-              value={newGroupName}
-              onChange={e => setNewGroupName(e.target.value)}
-              onKeyDown={e => e.key === "Enter" && handleAddGroup()}
-              autoFocus
-            />
-            <button onClick={handleAddGroup} style={{ ...styles.btn, ...styles.btnPrimary, whiteSpace: "nowrap" }}>作成</button>
-            <button onClick={() => { setAddingGroup(false); setNewGroupName(""); }} style={{ background: "none", border: "none", cursor: "pointer", color: THEME.textMuted }}>
-              <X size={20} />
-            </button>
+          <div style={{ padding: 24, border: `2px solid ${THEME.primary}`, borderRadius: 14, marginBottom: 16, backgroundColor: "#F5F3FF" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <Users size={20} color={THEME.primary} />
+                <span style={{ fontWeight: 900, fontSize: 15, color: THEME.textMain }}>新しいグループ</span>
+              </div>
+              <button onClick={() => { setAddingGroup(false); setNewGroupName(""); setNewGroupMembers([]); }} style={{ background: "none", border: "none", cursor: "pointer", color: THEME.textMuted }}>
+                <X size={20} />
+              </button>
+            </div>
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ ...styles.label, userSelect: "none" }}>グループ名</label>
+              <input
+                style={styles.input}
+                placeholder="例: 東日本営業"
+                value={newGroupName}
+                onChange={e => setNewGroupName(e.target.value)}
+                autoFocus
+              />
+            </div>
+            <div style={{ marginBottom: 20 }}>
+              <label style={{ ...styles.label, userSelect: "none" }}>
+                メンバー
+                <span style={{ marginLeft: 8, fontWeight: 400, color: THEME.textMuted }}>（クリックで追加 / 除外）</span>
+              </label>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                {staffList.map(s => {
+                  const selected = newGroupMembers.includes(s.email);
+                  return (
+                    <button
+                      key={s.email}
+                      onClick={() => setNewGroupMembers(prev => selected ? prev.filter(e => e !== s.email) : [...prev, s.email])}
+                      style={{
+                        padding: "7px 16px", borderRadius: 99, fontSize: 13, fontWeight: 700, cursor: "pointer",
+                        border: `1.5px solid ${selected ? THEME.primary : THEME.border}`,
+                        backgroundColor: selected ? "#EEF2FF" : "white",
+                        color: selected ? THEME.primary : THEME.textMuted,
+                        transition: "all 0.15s",
+                      }}
+                    >
+                      {selected && "✓ "}{s.lastName} {s.firstName}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+            <div style={{ display: "flex", gap: 10 }}>
+              <button onClick={handleAddGroup} style={{ ...styles.btn, ...styles.btnPrimary }}>作成</button>
+              <button onClick={() => { setAddingGroup(false); setNewGroupName(""); setNewGroupMembers([]); }} style={{ ...styles.btn, ...styles.btnSecondary }}>キャンセル</button>
+            </div>
           </div>
         )}
 

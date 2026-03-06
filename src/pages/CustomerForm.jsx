@@ -21,7 +21,7 @@ import DynamicField from "../components/DynamicField";
  * @param {string} masterUrl - マスタAPIのURL
  * @param {function} onRefresh - データ再取得コールバック
  */
-function CustomerForm({ formSettings = [], scenarios = [], statuses = [], staffList = [], sources = [], onRefresh }) {
+function CustomerForm({ formSettings = [], scenarios = [], statuses = [], staffList = [], sources = [], groups = [], onRefresh }) {
   const navigate = useNavigate();
 
   const [ln, setLn] = useState("");
