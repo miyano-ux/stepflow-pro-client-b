@@ -29,6 +29,7 @@ function CustomerForm({ formSettings = [], scenarios = [], statuses = [], staffL
   const [ph, setPh] = useState("");
   const [fd, setFd] = useState({ "対応ステータス": "未対応", "担当者メール": "" });
   const [successModal, setSuccessModal] = useState(null); // 登録完了ポップアップ
+  const [submitting, setSubmitting] = useState(false); // 二重送信防止
   const [sc, setSc] = useState("");
 
   // 初期化：シナリオの先頭をデフォルト選択
@@ -102,6 +103,8 @@ function CustomerForm({ formSettings = [], scenarios = [], statuses = [], staffL
   // 顧客登録送信
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (submitting) return; // 二重送信防止
+    setSubmitting(true);
     try {
       let resolvedData = { ...fd };
       let assignedGroupName = null;
@@ -159,6 +162,7 @@ function CustomerForm({ formSettings = [], scenarios = [], statuses = [], staffL
       onRefresh();
     } catch (err) {
       alert(err.message);
+      setSubmitting(false); // エラー時はボタンを戻す
     }
   };
 
@@ -171,6 +175,7 @@ function CustomerForm({ formSettings = [], scenarios = [], statuses = [], staffL
 
   return (
     <>
+    <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     {/* 登録完了モーダル */}
     {successModal && (
       <div style={{ position: "fixed", inset: 0, backgroundColor: "rgba(0,0,0,0.55)", display: "flex", justifyContent: "center", alignItems: "center", zIndex: 3000 }}>
@@ -375,9 +380,15 @@ function CustomerForm({ formSettings = [], scenarios = [], statuses = [], staffL
 
           <button
             type="submit"
-            style={{ ...styles.btn, ...styles.btnPrimary, width: "100%", padding: "16px" }}
+            disabled={submitting}
+            style={{ ...styles.btn, ...styles.btnPrimary, width: "100%", padding: "16px", opacity: submitting ? 0.7 : 1, cursor: submitting ? "not-allowed" : "pointer" }}
           >
-            登録を確定する
+            {submitting ? (
+              <span style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+                <span style={{ display: "inline-block", width: 16, height: 16, border: "2.5px solid rgba(255,255,255,0.4)", borderTopColor: "white", borderRadius: "50%", animation: "spin 0.7s linear infinite" }} />
+                登録中...
+              </span>
+            ) : "登録を確定する"}
           </button>
         </form>
 
