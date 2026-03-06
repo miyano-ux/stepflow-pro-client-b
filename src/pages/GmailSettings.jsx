@@ -1,566 +1,348 @@
 import React, { useState } from "react";
-import { Plus, Edit3, Trash2, AlertCircle } from "lucide-react";
+import { Plus, Edit3, Trash2, X, AlertCircle, ChevronDown } from "lucide-react";
 import { THEME, GAS_URL } from "../lib/constants";
 import { styles } from "../lib/styles";
 import { apiCall } from "../lib/utils";
 import Page from "../components/Page";
 
 // ==========================================
-// 📧 GmailSettings - Gmail自動取り込み設定ページ
+// 📧 GmailSettings - Gmail自動取り込み設定
 // ==========================================
 
-// モーダルの初期データ
-const INITIAL_MODAL = {
-  open: false,
-  mode: "add",
-  id: null,
-  data: {
-    from: "",
-    subject: "",
-    nameKey: "氏名：",
-    phoneKey: "電話番号：",
-    scenarioID: "",
-    customKeys: {},
-  },
+const INITIAL_DATA = {
+  from: "",
+  subject: "",
+  nameKey: "氏名：",
+  phoneKey: "電話番号：",
+  // 管理項目（固定値として登録）
+  status: "",
+  source: "",
+  staffEmail: "",
+  scenarioID: "",
+  // カスタム項目（抽出キーワード）
+  customKeys: {},
 };
 
-/**
- * Gmailからの顧客自動取り込みルールを設定するページ
- * @param {Array} gmailSettings - 既存の取り込みルール一覧
- * @param {Array} scenarios - シナリオ一覧
- * @param {Array} formSettings - カスタム項目定義一覧
- * @param {function} onRefresh - データ再取得コールバック
- */
-function GmailSettings({ gmailSettings = [], scenarios = [], formSettings = [], onRefresh }) {
-  const [modal, setModal] = useState(INITIAL_MODAL);
+const LabelText = ({ children }) => (
+  <span style={{ fontSize: 11, fontWeight: 800, color: THEME.textMuted, display: "block", marginBottom: 6, userSelect: "none" }}>
+    {children}
+  </span>
+);
+
+const FieldBox = ({ children, style }) => (
+  <div style={{ display: "flex", flexDirection: "column", ...style }}>{children}</div>
+);
+
+function GmailSettings({
+  gmailSettings = [], scenarios = [], formSettings = [],
+  statuses = [], sources = [], staffList = [], onRefresh,
+}) {
+  const [modal, setModal] = useState({ open: false, mode: "add", id: null, data: INITIAL_DATA });
   const [testBody, setTestBody] = useState("");
   const [parsePreview, setParsePreview] = useState(null);
 
-  // 編集モーダルを開く
+  const scenarioIds = [...new Set((scenarios || []).map(s => s["シナリオID"]).filter(Boolean))];
+
+  const safeParseCustomKeys = (str) => {
+    try { return str ? JSON.parse(str) : {}; } catch { return {}; }
+  };
+
+  const setData = (patch) => setModal(m => ({ ...m, data: { ...m.data, ...patch } }));
+  const setCustomKey = (name, val) => setData({ customKeys: { ...modal.data.customKeys, [name]: val } });
+
   const handleEdit = (s, index) => {
-    let ck = {};
-    try {
-      ck = s["カスタム項目キー"] ? JSON.parse(s["カスタム項目キー"]) : {};
-    } catch (e) {
-      ck = {};
-    }
+    const ck = safeParseCustomKeys(s["カスタム項目キー"]);
     setModal({
-      open: true,
-      mode: "edit",
-      id: index,
+      open: true, mode: "edit", id: index,
       data: {
-        from: s["送信元"] || "",
-        subject: s["件名"] || "",
-        nameKey: s["氏名キー"] || "氏名：",
-        phoneKey: s["電話キー"] || "電話番号：",
+        from:       s["送信元"]    || "",
+        subject:    s["件名"]      || "",
+        nameKey:    s["氏名キー"]  || "氏名：",
+        phoneKey:   s["電話キー"]  || "電話番号：",
+        status:     s["対応ステータス"] || "",
+        source:     s["流入元"]    || "",
+        staffEmail: s["担当者メール"] || "",
         scenarioID: s["シナリオID"] || "",
         customKeys: ck,
       },
     });
+    setTestBody("");
     setParsePreview(null);
   };
 
-  // ルール削除
   const handleDelete = async (index) => {
     if (!window.confirm("削除しますか？")) return;
     await apiCall.post(GAS_URL, { action: "deleteGmailSetting", id: index });
     onRefresh();
   };
 
-  // 抽出テスト実行
-  const handleTestParse = () => {
-    if (!testBody) return alert("テスト用の本文を入力してください");
-    try {
-      const res = {
-        name:
-          (
-            testBody.match(
-              new RegExp(modal.data.nameKey + "\\s*(.+)")
-            ) || []
-          )[1]?.trim() || "失敗",
-        phone:
-          (
-            testBody.match(
-              new RegExp(modal.data.phoneKey + "\\s*([\\d-]+)")
-            ) || []
-          )[1]?.trim() || "失敗",
-        customs: {},
-      };
-      // カスタム項目の抽出テスト
-      Object.keys(modal.data.customKeys).forEach((key) => {
-        const k = modal.data.customKeys[key];
-        if (k) {
-          const m = testBody.match(new RegExp(k + "\\s*(.+)"));
-          res.customs[key] = m ? m[1].trim() : "失敗";
-        }
-      });
-      setParsePreview(res);
-    } catch (e) {
-      alert("抽出キーの形式が正しくありません");
-    }
-  };
-
-  // ルールを保存
   const handleSave = async () => {
-    if (!modal.data.from || !modal.data.scenarioID) {
-      return alert("送信元とシナリオは必須です");
-    }
-    const payload = {
-      ...modal.data,
-      customKeys: JSON.stringify(modal.data.customKeys),
-    };
+    if (!modal.data.from) return alert("送信元アドレスは必須です");
     await apiCall.post(GAS_URL, {
       action: "saveGmailSetting",
       id: modal.id,
-      ...payload,
+      from:       modal.data.from,
+      subject:    modal.data.subject,
+      nameKey:    modal.data.nameKey,
+      phoneKey:   modal.data.phoneKey,
+      status:     modal.data.status,
+      source:     modal.data.source,
+      staffEmail: modal.data.staffEmail,
+      scenarioID: modal.data.scenarioID,
+      customKeys: JSON.stringify(modal.data.customKeys),
     });
-    setModal({ ...modal, open: false });
+    setModal(m => ({ ...m, open: false }));
     onRefresh();
   };
 
-  // カスタム項目キーを更新
-  const handleCustomKeyChange = (fieldName, value) => {
-    setModal({
-      ...modal,
-      data: {
-        ...modal.data,
-        customKeys: { ...modal.data.customKeys, [fieldName]: value },
-      },
-    });
+  const handleTest = () => {
+    if (!testBody) return alert("テスト用の本文を入力してください");
+    try {
+      const extract = (key) => {
+        if (!key) return "－";
+        const m = testBody.match(new RegExp(key + "\\s*(.+)"));
+        return m ? m[1].trim() : "抽出失敗";
+      };
+      const customs = {};
+      Object.entries(modal.data.customKeys).forEach(([k, v]) => {
+        if (v) customs[k] = extract(v);
+      });
+      setParsePreview({ name: extract(modal.data.nameKey), phone: extract(modal.data.phoneKey), customs });
+    } catch { alert("キーの形式が正しくありません"); }
   };
 
-  // カスタム項目のJSON安全パース
-  const safeParseCustomKeys = (str) => {
-    try {
-      return str ? JSON.parse(str) : {};
-    } catch {
-      return {};
-    }
+  // カード上の管理項目サマリ表示用
+  const getStaffName = (email) => {
+    const s = staffList.find(s => s.email === email);
+    return s ? `${s.lastName} ${s.firstName}` : email;
   };
 
   return (
-    <Page
-      title="Gmail自動取り込み設定"
-      subtitle="フォーム設定の項目に合わせ、抽出ルールを定義できます"
-    >
-      {/* ルール一覧グリッド */}
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fill, minmax(400px, 1fr))",
-          gap: "24px",
-          marginBottom: "32px",
-        }}
-      >
+    <Page title="Gmail自動取り込み設定" subtitle="メールを受信したとき、自動で顧客を登録するルールを定義できます">
+
+      {/* ルール一覧 */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(420px, 1fr))", gap: 24, marginBottom: 32 }}>
         {gmailSettings.map((s, i) => {
-          const customKeys = safeParseCustomKeys(s["カスタム項目キー"]);
+          const ck = safeParseCustomKeys(s["カスタム項目キー"]);
+          const mgmt = [
+            s["対応ステータス"] && `ステータス: ${s["対応ステータス"]}`,
+            s["流入元"]         && `流入元: ${s["流入元"]}`,
+            s["担当者メール"]   && `担当者: ${getStaffName(s["担当者メール"])}`,
+            s["シナリオID"]     && `シナリオ: ${s["シナリオID"]}`,
+          ].filter(Boolean);
+
           return (
-            <div key={i} style={styles.card}>
-              {/* カードヘッダー */}
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  marginBottom: "16px",
-                }}
-              >
-                <span
-                  style={{
-                    ...styles.badge,
-                    backgroundColor: THEME.primary,
-                    color: "white",
-                  }}
-                >
+            <div key={i} style={{ ...styles.card, padding: 24 }}>
+              {/* ヘッダー */}
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+                <span style={{ ...styles.badge, backgroundColor: THEME.primary, color: "white", fontSize: 11, padding: "4px 10px" }}>
                   設定 {i + 1}
                 </span>
-                <div style={{ display: "flex", gap: "8px" }}>
-                  <button
-                    onClick={() => handleEdit(s, i)}
-                    style={{
-                      background: "none",
-                      border: "none",
-                      color: THEME.textMuted,
-                      cursor: "pointer",
-                    }}
-                  >
-                    <Edit3 size={18} />
+                <div style={{ display: "flex", gap: 4 }}>
+                  <button onClick={() => handleEdit(s, i)} style={{ background: "none", border: "none", color: THEME.textMuted, cursor: "pointer", padding: 6, borderRadius: 6 }}>
+                    <Edit3 size={16} />
                   </button>
-                  <button
-                    onClick={() => handleDelete(i)}
-                    style={{
-                      background: "none",
-                      border: "none",
-                      color: THEME.danger,
-                      cursor: "pointer",
-                    }}
-                  >
-                    <Trash2 size={18} />
+                  <button onClick={() => handleDelete(i)} style={{ background: "none", border: "none", color: THEME.danger, cursor: "pointer", padding: 6, borderRadius: 6 }}>
+                    <Trash2 size={16} />
                   </button>
                 </div>
               </div>
 
-              {/* カード本文 */}
-              <div style={{ fontSize: "14px", display: "grid", gap: "8px" }}>
+              {/* 送信元・件名 */}
+              <div style={{ display: "grid", gap: 8, fontSize: 13, marginBottom: 14 }}>
                 <div style={{ display: "flex", justifyContent: "space-between" }}>
                   <span style={{ color: THEME.textMuted }}>送信元:</span>
                   <span style={{ fontWeight: 700 }}>{s["送信元"]}</span>
                 </div>
                 <div style={{ display: "flex", justifyContent: "space-between" }}>
                   <span style={{ color: THEME.textMuted }}>件名キーワード:</span>
-                  <span style={{ fontWeight: 700 }}>{s["件名"]}</span>
-                </div>
-
-                {/* 主要項目 */}
-                <div
-                  style={{
-                    marginTop: "12px",
-                    padding: "12px",
-                    background: "#F8FAFC",
-                    borderRadius: "10px",
-                    border: `1px solid ${THEME.border}`,
-                  }}
-                >
-                  <div
-                    style={{
-                      fontSize: 11,
-                      fontWeight: 800,
-                      color: THEME.primary,
-                      marginBottom: 8,
-                    }}
-                  >
-                    主要項目
-                  </div>
-                  <div style={{ fontSize: 12 }}>
-                    氏名: {s["氏名キー"]} | 電話: {s["電話キー"]}
-                  </div>
-
-                  {/* カスタム項目 */}
-                  {Object.keys(customKeys).length > 0 && (
-                    <>
-                      <div
-                        style={{
-                          fontSize: 11,
-                          fontWeight: 800,
-                          color: THEME.primary,
-                          marginTop: 8,
-                          marginBottom: 4,
-                        }}
-                      >
-                        追加項目
-                      </div>
-                      {Object.entries(customKeys).map(([k, v]) => (
-                        <div key={k} style={{ fontSize: 12 }}>
-                          {k}: <span style={{ color: THEME.textMuted }}>{v}</span>
-                        </div>
-                      ))}
-                    </>
-                  )}
-                </div>
-
-                <div style={{ marginTop: 8, textAlign: "right" }}>
-                  <span
-                    style={{
-                      ...styles.badge,
-                      backgroundColor: "#F1F5F9",
-                      color: THEME.primary,
-                    }}
-                  >
-                    シナリオ: {s["シナリオID"]}
-                  </span>
+                  <span style={{ fontWeight: 700 }}>{s["件名"] || "（未設定）"}</span>
                 </div>
               </div>
+
+              {/* 抽出キー */}
+              <div style={{ padding: 14, background: "#F8FAFC", borderRadius: 10, border: `1px solid ${THEME.border}`, marginBottom: 12 }}>
+                <div style={{ fontSize: 11, fontWeight: 800, color: THEME.primary, marginBottom: 6 }}>抽出キーワード</div>
+                <div style={{ fontSize: 12, color: THEME.textMain }}>
+                  氏名: <span style={{ color: THEME.textMuted }}>{s["氏名キー"]}</span>
+                  　電話: <span style={{ color: THEME.textMuted }}>{s["電話キー"]}</span>
+                </div>
+                {Object.entries(ck).filter(([, v]) => v).map(([k, v]) => (
+                  <div key={k} style={{ fontSize: 12, marginTop: 4 }}>
+                    {k}: <span style={{ color: THEME.textMuted }}>{v}</span>
+                  </div>
+                ))}
+              </div>
+
+              {/* 管理項目 */}
+              {mgmt.length > 0 && (
+                <div style={{ padding: 14, background: "#EEF2FF", borderRadius: 10, border: `1px solid #C7D2FE`, marginBottom: 12 }}>
+                  <div style={{ fontSize: 11, fontWeight: 800, color: THEME.primary, marginBottom: 6 }}>管理項目（自動セット）</div>
+                  {mgmt.map((line, j) => (
+                    <div key={j} style={{ fontSize: 12, color: THEME.textMain }}>{line}</div>
+                  ))}
+                </div>
+              )}
             </div>
           );
         })}
 
         {/* 新規追加カード */}
         <button
-          onClick={() => setModal({ ...INITIAL_MODAL, open: true })}
-          style={{
-            ...styles.card,
-            border: `2px dashed ${THEME.border}`,
-            minHeight: "220px",
-            display: "flex",
-            flexDirection: "column",
-            alignItems: "center",
-            justifyContent: "center",
-            gap: "12px",
-            cursor: "pointer",
-            color: THEME.textMuted,
-            transition: "0.2s",
-            backgroundColor: "white",
-          }}
-          onMouseEnter={(e) =>
-            (e.currentTarget.style.borderColor = THEME.primary)
-          }
-          onMouseLeave={(e) =>
-            (e.currentTarget.style.borderColor = THEME.border)
-          }
+          onClick={() => setModal({ open: true, mode: "add", id: null, data: INITIAL_DATA })}
+          style={{ ...styles.card, border: `2px dashed ${THEME.border}`, minHeight: 200, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 12, cursor: "pointer", color: THEME.textMuted, backgroundColor: "white" }}
+          onMouseEnter={e => e.currentTarget.style.borderColor = THEME.primary}
+          onMouseLeave={e => e.currentTarget.style.borderColor = THEME.border}
         >
-          <Plus size={40} />
-          <span style={{ fontWeight: 800 }}>新しいルールを追加</span>
+          <Plus size={36} />
+          <span style={{ fontWeight: 800, fontSize: 14 }}>新しいルールを追加</span>
         </button>
       </div>
 
-      {/* 編集・追加モーダル */}
+      {/* モーダル */}
       {modal.open && (
-        <div
-          style={{
-            position: "fixed",
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            backgroundColor: "rgba(0,0,0,0.6)",
-            display: "flex",
-            justifyContent: "center",
-            alignItems: "center",
-            zIndex: 2000,
-          }}
-        >
-          <div
-            style={{
-              ...styles.card,
-              width: "950px",
-              display: "grid",
-              gridTemplateColumns: "1fr 350px",
-              gap: "32px",
-              padding: "32px",
-              maxHeight: "90vh",
-              overflowY: "auto",
-            }}
-          >
-            {/* 左側：設定フォーム */}
-            <div>
-              <h3 style={{ marginTop: 0, marginBottom: 24 }}>
-                {modal.mode === "add" ? "取り込みルールの作成" : "ルールの編集"}
-              </h3>
+        <div style={{ position: "fixed", inset: 0, backgroundColor: "rgba(0,0,0,0.55)", display: "flex", justifyContent: "center", alignItems: "center", zIndex: 2000, padding: 24 }}>
+          <div style={{ backgroundColor: "white", borderRadius: 20, width: "100%", maxWidth: 980, maxHeight: "92vh", overflowY: "auto", display: "grid", gridTemplateColumns: "1fr 320px", boxShadow: "0 24px 64px rgba(0,0,0,0.2)" }}>
 
-              <div style={{ display: "grid", gap: 16 }}>
-                {/* 送信元・件名 */}
-                <div style={{ display: "flex", gap: 16 }}>
-                  <div style={{ flex: 1 }}>
-                    <label
-                      style={{
-                        fontSize: 11,
-                        fontWeight: 800,
-                        color: THEME.textMuted,
-                      }}
-                    >
-                      送信元アドレス
-                    </label>
-                    <input
-                      style={styles.input}
-                      value={modal.data.from}
-                      onChange={(e) =>
-                        setModal({
-                          ...modal,
-                          data: { ...modal.data, from: e.target.value },
-                        })
-                      }
-                    />
-                  </div>
-                  <div style={{ flex: 1 }}>
-                    <label
-                      style={{
-                        fontSize: 11,
-                        fontWeight: 800,
-                        color: THEME.textMuted,
-                      }}
-                    >
-                      件名キーワード
-                    </label>
-                    <input
-                      style={styles.input}
-                      value={modal.data.subject}
-                      onChange={(e) =>
-                        setModal({
-                          ...modal,
-                          data: { ...modal.data, subject: e.target.value },
-                        })
-                      }
-                    />
-                  </div>
+            {/* 左：設定フォーム */}
+            <div style={{ padding: 36 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 28 }}>
+                <h3 style={{ margin: 0, fontSize: 20, fontWeight: 900, color: THEME.textMain }}>
+                  {modal.mode === "add" ? "取り込みルールの作成" : "ルールの編集"}
+                </h3>
+                <button onClick={() => setModal(m => ({ ...m, open: false }))} style={{ background: "none", border: "none", cursor: "pointer", color: THEME.textMuted, padding: 4 }}>
+                  <X size={22} />
+                </button>
+              </div>
+
+              {/* 送信元・件名 */}
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 20 }}>
+                <FieldBox>
+                  <LabelText>送信元アドレス *</LabelText>
+                  <input style={styles.input} value={modal.data.from} onChange={e => setData({ from: e.target.value })} placeholder="example@gmail.com" />
+                </FieldBox>
+                <FieldBox>
+                  <LabelText>件名キーワード</LabelText>
+                  <input style={styles.input} value={modal.data.subject} onChange={e => setData({ subject: e.target.value })} placeholder="例: 反響通知" />
+                </FieldBox>
+              </div>
+
+              {/* 抽出キーワード */}
+              <div style={{ padding: 20, background: "#F8FAFC", borderRadius: 14, border: `1px solid ${THEME.border}`, marginBottom: 20 }}>
+                <div style={{ fontSize: 12, fontWeight: 800, color: THEME.textMuted, marginBottom: 14 }}>
+                  抽出キーワード設定（その文字の「後ろ」を取得します）
                 </div>
-
-                {/* 抽出キーワード設定 */}
-                <div
-                  style={{
-                    padding: "16px",
-                    background: "#F1F5F9",
-                    borderRadius: "12px",
-                  }}
-                >
-                  <div style={{ fontSize: 11, fontWeight: 800, marginBottom: 12 }}>
-                    項目の抽出用キーワード設定（その文字の「後ろ」を抽出します）
-                  </div>
-                  <div
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: "1fr 1fr",
-                      gap: 16,
-                    }}
-                  >
-                    {/* 氏名キー */}
-                    <div>
-                      <label style={{ fontSize: 11 }}>氏名</label>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+                  <FieldBox>
+                    <LabelText>氏名</LabelText>
+                    <input style={styles.input} value={modal.data.nameKey} onChange={e => setData({ nameKey: e.target.value })} />
+                  </FieldBox>
+                  <FieldBox>
+                    <LabelText>電話番号</LabelText>
+                    <input style={styles.input} value={modal.data.phoneKey} onChange={e => setData({ phoneKey: e.target.value })} />
+                  </FieldBox>
+                  {formSettings.map(f => (
+                    <FieldBox key={f.name}>
+                      <LabelText>{f.name}</LabelText>
                       <input
                         style={styles.input}
-                        value={modal.data.nameKey}
-                        onChange={(e) =>
-                          setModal({
-                            ...modal,
-                            data: { ...modal.data, nameKey: e.target.value },
-                          })
-                        }
+                        value={modal.data.customKeys[f.name] || ""}
+                        onChange={e => setCustomKey(f.name, e.target.value)}
+                        placeholder={`例: ${f.name}：`}
                       />
-                    </div>
-                    {/* 電話番号キー */}
-                    <div>
-                      <label style={{ fontSize: 11 }}>電話番号</label>
-                      <input
-                        style={styles.input}
-                        value={modal.data.phoneKey}
-                        onChange={(e) =>
-                          setModal({
-                            ...modal,
-                            data: { ...modal.data, phoneKey: e.target.value },
-                          })
-                        }
-                      />
-                    </div>
-
-                    {/* カスタム項目（formSettings から動的生成） */}
-                    {formSettings.map((f) => (
-                      <div key={f.name}>
-                        <label style={{ fontSize: 11 }}>{f.name}</label>
-                        <input
-                          style={styles.input}
-                          value={modal.data.customKeys[f.name] || ""}
-                          onChange={(e) =>
-                            handleCustomKeyChange(f.name, e.target.value)
-                          }
-                          placeholder={`（例）${f.name}：`}
-                        />
-                      </div>
-                    ))}
-                  </div>
-                </div>
-
-                {/* シナリオ選択 */}
-                <div>
-                  <label
-                    style={{
-                      fontSize: 11,
-                      fontWeight: 800,
-                      color: THEME.textMuted,
-                    }}
-                  >
-                    適用シナリオ
-                  </label>
-                  <select
-                    style={styles.input}
-                    value={modal.data.scenarioID}
-                    onChange={(e) =>
-                      setModal({
-                        ...modal,
-                        data: { ...modal.data, scenarioID: e.target.value },
-                      })
-                    }
-                  >
-                    <option value="">選択してください</option>
-                    {[...new Set(scenarios?.map((x) => x["シナリオID"]))].map(
-                      (sid) => (
-                        <option key={sid} value={sid}>
-                          {sid}
-                        </option>
-                      )
-                    )}
-                  </select>
+                    </FieldBox>
+                  ))}
                 </div>
               </div>
 
-              {/* 保存・キャンセルボタン */}
-              <div style={{ display: "flex", gap: 12, marginTop: 32 }}>
-                <button
-                  onClick={handleSave}
-                  style={{ ...styles.btn, ...styles.btnPrimary, flex: 1 }}
-                >
-                  保存
-                </button>
-                <button
-                  onClick={() => setModal({ ...modal, open: false })}
-                  style={{ ...styles.btn, ...styles.btnSecondary }}
-                >
-                  キャンセル
-                </button>
+              {/* 管理項目（自動セット） */}
+              <div style={{ padding: 20, background: "#EEF2FF", borderRadius: 14, border: `1px solid #C7D2FE`, marginBottom: 24 }}>
+                <div style={{ fontSize: 12, fontWeight: 800, color: THEME.primary, marginBottom: 14 }}>
+                  管理項目（取り込み時に自動セットする値）
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+                  {/* 対応ステータス */}
+                  <FieldBox>
+                    <LabelText>対応ステータス</LabelText>
+                    <div style={{ position: "relative" }}>
+                      <select style={{ ...styles.input, appearance: "none", paddingRight: 32 }} value={modal.data.status} onChange={e => setData({ status: e.target.value })}>
+                        <option value="">未設定（デフォルト）</option>
+                        {statuses.map(st => <option key={st.name} value={st.name}>{st.name}</option>)}
+                      </select>
+                      <ChevronDown size={14} style={{ position: "absolute", right: 10, top: 14, pointerEvents: "none", color: THEME.textMuted }} />
+                    </div>
+                  </FieldBox>
+
+                  {/* 流入元 */}
+                  <FieldBox>
+                    <LabelText>流入元</LabelText>
+                    <div style={{ position: "relative" }}>
+                      <select style={{ ...styles.input, appearance: "none", paddingRight: 32 }} value={modal.data.source} onChange={e => setData({ source: e.target.value })}>
+                        <option value="">未設定</option>
+                        {sources.map(s => <option key={s.name} value={s.name}>{s.name}</option>)}
+                      </select>
+                      <ChevronDown size={14} style={{ position: "absolute", right: 10, top: 14, pointerEvents: "none", color: THEME.textMuted }} />
+                    </div>
+                  </FieldBox>
+
+                  {/* 担当者 */}
+                  <FieldBox>
+                    <LabelText>担当者</LabelText>
+                    <div style={{ position: "relative" }}>
+                      <select style={{ ...styles.input, appearance: "none", paddingRight: 32 }} value={modal.data.staffEmail} onChange={e => setData({ staffEmail: e.target.value })}>
+                        <option value="">未割当</option>
+                        {staffList.map(s => <option key={s.email} value={s.email}>{s.lastName} {s.firstName}</option>)}
+                      </select>
+                      <ChevronDown size={14} style={{ position: "absolute", right: 10, top: 14, pointerEvents: "none", color: THEME.textMuted }} />
+                    </div>
+                  </FieldBox>
+
+                  {/* 適用シナリオ */}
+                  <FieldBox>
+                    <LabelText>適用シナリオ</LabelText>
+                    <div style={{ position: "relative" }}>
+                      <select style={{ ...styles.input, appearance: "none", paddingRight: 32 }} value={modal.data.scenarioID} onChange={e => setData({ scenarioID: e.target.value })}>
+                        <option value="">未設定</option>
+                        {scenarioIds.map(sid => <option key={sid} value={sid}>{sid}</option>)}
+                      </select>
+                      <ChevronDown size={14} style={{ position: "absolute", right: 10, top: 14, pointerEvents: "none", color: THEME.textMuted }} />
+                    </div>
+                  </FieldBox>
+                </div>
+              </div>
+
+              {/* 保存・キャンセル */}
+              <div style={{ display: "flex", gap: 12 }}>
+                <button onClick={handleSave} style={{ ...styles.btn, ...styles.btnPrimary, flex: 1, height: 48, fontSize: 15 }}>保存</button>
+                <button onClick={() => setModal(m => ({ ...m, open: false }))} style={{ ...styles.btn, ...styles.btnSecondary, height: 48 }}>キャンセル</button>
               </div>
             </div>
 
-            {/* 右側：テストパネル */}
-            <div
-              style={{
-                borderLeft: `1px solid ${THEME.border}`,
-                paddingLeft: "32px",
-                backgroundColor: "#F8FAFC",
-                margin: "-32px",
-                padding: "32px",
-              }}
-            >
-              <h4 style={{ marginTop: 0, display: "flex", alignItems: "center", gap: 8 }}>
-                <AlertCircle size={18} color={THEME.primary} /> テスト
+            {/* 右：テストパネル */}
+            <div style={{ background: "#F8FAFC", borderRadius: "0 20px 20px 0", padding: 32, borderLeft: `1px solid ${THEME.border}` }}>
+              <h4 style={{ margin: "0 0 16px", display: "flex", alignItems: "center", gap: 8, fontSize: 15, color: THEME.textMain }}>
+                <AlertCircle size={17} color={THEME.primary} /> テスト
               </h4>
               <textarea
-                style={{
-                  ...styles.input,
-                  height: "180px",
-                  fontSize: "12px",
-                }}
+                style={{ ...styles.input, height: 200, fontSize: 12, resize: "vertical", width: "100%", boxSizing: "border-box" }}
                 value={testBody}
-                onChange={(e) => setTestBody(e.target.value)}
-                placeholder="メール本文を貼り付け"
+                onChange={e => setTestBody(e.target.value)}
+                placeholder="メール本文をここに貼り付け"
               />
-              <button
-                onClick={handleTestParse}
-                style={{
-                  ...styles.btn,
-                  ...styles.btnSecondary,
-                  width: "100%",
-                  marginTop: "12px",
-                  backgroundColor: "white",
-                }}
-              >
+              <button onClick={handleTest} style={{ ...styles.btn, ...styles.btnSecondary, width: "100%", marginTop: 12, backgroundColor: "white" }}>
                 テスト実行
               </button>
 
-              {/* 抽出結果プレビュー */}
               {parsePreview && (
-                <div
-                  style={{
-                    marginTop: "24px",
-                    padding: "16px",
-                    background: "white",
-                    borderRadius: "12px",
-                    border: `1px solid ${THEME.border}`,
-                  }}
-                >
-                  <div
-                    style={{
-                      fontSize: 11,
-                      fontWeight: 800,
-                      color: THEME.primary,
-                      marginBottom: 8,
-                    }}
-                  >
-                    抽出結果
+                <div style={{ marginTop: 20, padding: 16, background: "white", borderRadius: 12, border: `1px solid ${THEME.border}` }}>
+                  <div style={{ fontSize: 11, fontWeight: 800, color: THEME.primary, marginBottom: 10 }}>抽出結果</div>
+                  <div style={{ fontSize: 13, display: "grid", gap: 6 }}>
+                    <div>氏名: <strong>{parsePreview.name}</strong></div>
+                    <div>電話: <strong>{parsePreview.phone}</strong></div>
+                    {Object.entries(parsePreview.customs).map(([k, v]) => (
+                      <div key={k}>{k}: <strong>{v}</strong></div>
+                    ))}
                   </div>
-                  <div style={{ fontSize: 13 }}>氏名: {parsePreview.name}</div>
-                  <div style={{ fontSize: 13 }}>電話: {parsePreview.phone}</div>
-                  {Object.entries(parsePreview.customs).map(([k, v]) => (
-                    <div key={k} style={{ fontSize: 13 }}>
-                      {k}: {v}
-                    </div>
-                  ))}
                 </div>
               )}
             </div>
