@@ -7,7 +7,6 @@ import {
 } from "lucide-react";
 import { THEME, GAS_URL } from "../lib/constants";
 import { styles } from "../lib/styles";
-import { apiCall } from "../lib/utils";
 
 // ==========================================
 // 👥 UserManager - ユーザー管理 + グループ管理
@@ -164,25 +163,45 @@ export default function UserManager({
 
   // グループ保存（新規・更新共通）
   const handleSaveGroup = async ({ groupId, name, members }) => {
-    await apiCall.post(GAS_URL, { action: "saveGroup", groupId, name, members });
-    await onRefresh();
+    try {
+      const res = await axios.post(GAS_URL, JSON.stringify({ action: "saveGroup", groupId, name, members }), { headers: { "Content-Type": "text/plain;charset=utf-8" } });
+      if (res.data?.status === "error") {
+        alert("エラー: " + (res.data.message || "保存に失敗しました"));
+        return;
+      }
+      if (onRefresh) await onRefresh();
+    } catch(e) {
+      alert("通信エラー: " + (e?.message || "不明なエラー"));
+    }
   };
 
   // グループ新規作成
   const handleAddGroup = async () => {
     if (!newGroupName.trim()) return alert("グループ名を入力してください");
     const groupId = "g_" + Date.now();
-    await apiCall.post(GAS_URL, { action: "saveGroup", groupId, name: newGroupName.trim(), members: [] });
-    setNewGroupName("");
-    setAddingGroup(false);
-    await onRefresh();
+    try {
+      const res = await axios.post(GAS_URL, JSON.stringify({ action: "saveGroup", groupId, name: newGroupName.trim(), members: [] }), { headers: { "Content-Type": "text/plain;charset=utf-8" } });
+      if (res.data?.status === "error") {
+        alert("エラー: " + (res.data.message || "保存に失敗しました"));
+        return;
+      }
+      setNewGroupName("");
+      setAddingGroup(false);
+      if (onRefresh) await onRefresh();
+    } catch(e) {
+      alert("通信エラー: " + (e?.message || "不明なエラー"));
+    }
   };
 
   // グループ削除
   const handleDeleteGroup = async (groupId) => {
     if (!window.confirm("このグループを削除しますか？")) return;
-    await apiCall.post(GAS_URL, { action: "deleteGroup", groupId });
-    await onRefresh();
+    try {
+      await axios.post(GAS_URL, JSON.stringify({ action: "deleteGroup", groupId }), { headers: { "Content-Type": "text/plain;charset=utf-8" } });
+      if (onRefresh) await onRefresh();
+    } catch(e) {
+      alert("通信エラー: " + (e?.message || "不明なエラー"));
+    }
   };
 
   return (
