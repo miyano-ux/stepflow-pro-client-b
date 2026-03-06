@@ -10,6 +10,7 @@ import { THEME, GAS_URL } from "../lib/constants";
 import { styles } from "../lib/styles";
 import { formatDate } from "../lib/utils";
 import DatePicker from "../components/DatePicker";
+import StatusTimeline from "../components/StatusTimeline";
 import StaffGroupSelect from "../components/StaffGroupSelect";
 
 // ==========================================
@@ -112,7 +113,7 @@ const CustomField = ({ field, isEditing, value, onChange }) => {
 
 export default function CustomerDetail({
   customers = [], formSettings = [], statuses = [], sources = [],
-  trackingLogs = [], staffList = [], groups = [], gasUrl, onRefresh,
+  trackingLogs = [], staffList = [], groups = [], statusHistory = [], gasUrl, onRefresh,
 }) {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -136,6 +137,13 @@ export default function CustomerDetail({
     }
     if (customer && syncingCount === 0) setFormData({ ...customer });
   }, [customer, syncingCount, location.state, id]);
+
+  // ステータス履歴（この顧客のものだけ、古い順）
+  const customerStatusHistory = useMemo(() => {
+    return (statusHistory || [])
+      .filter(h => String(h["顧客ID"]) === String(id))
+      .sort((a, b) => new Date(a["変更日時"]) - new Date(b["変更日時"]));
+  }, [statusHistory, id]);
 
   const customerLogs = useMemo(
     () =>
@@ -348,6 +356,9 @@ export default function CustomerDetail({
             </div>
           )}
         </div>
+
+        {/* ステータス遷移タイムライン */}
+        <StatusTimeline history={customerStatusHistory} />
 
         {/* 右：アクティビティログ */}
         <div style={styles.card}>
