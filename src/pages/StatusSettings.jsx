@@ -187,7 +187,25 @@ export default function StatusSettings({ statuses: statusesProp = [], scenarios 
   };
 
   const handleSave = async () => {
+    if (flowRows.some(r => !r.name.trim())) { alert("ステータス名を入力してください"); return; }
+    if (!dormantRow.name.trim()) { alert("休眠のステータス名を入力してください"); return; }
+    if (!lostRow.name.trim())    { alert("失注のステータス名を入力してください"); return; }
 
+    const allStatuses = [
+      ...flowRows,
+      { ...dormantRow, terminalType: "dormant" },
+      { ...lostRow,    terminalType: "lost" },
+    ];
+    setSaving(true);
+    try {
+      await apiCall.post(gasUrl || GAS_URL, { action: "saveStatuses", statuses: allStatuses });
+      await onRefresh();
+      alert("保存しました");
+    } catch {
+      alert("保存に失敗しました");
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
