@@ -15,6 +15,9 @@ import Sidebar from "./components/Sidebar";
 // ── pages (既存) ──────────────────────────────────
 import TrackingDashboard  from "./pages/TrackingDashboard";
 import AnalysisReport     from "./pages/AnalysisReport.jsx";
+import ReportIndex        from "./pages/ReportIndex.jsx";
+import SourceReport       from "./pages/SourceReport.jsx";
+import LostReport         from "./pages/LostReport.jsx";
 import UserManager        from "./pages/UserManager.jsx";
 import KanbanBoard        from "./pages/KanbanBoard.jsx";
 import StatusSettings     from "./pages/StatusSettings.jsx";
@@ -257,7 +260,10 @@ function App() {
               <Route path="/users/edit/:id" element={<UserForm masterUrl={MASTER_WHITELIST_API} onRefreshStaff={refreshStaff} />} />
 
               {/* 分析・トラッキング */}
-              <Route path="/analysis" element={<AnalysisReport customers={d?.customers} statuses={d?.statuses} trackingLogs={d?.trackingLogs} staffList={staffList} />} />
+              <Route path="/analysis" element={<ReportIndex />} />
+              <Route path="/analysis/sales" element={<AnalysisReport customers={d?.customers} statuses={d?.statuses} trackingLogs={d?.trackingLogs} staffList={staffList} />} />
+              <Route path="/analysis/source" element={<SourceReport customers={d?.customers} statuses={d?.statuses} sources={d?.sources} contractTypes={d?.contractTypes} />} />
+              <Route path="/analysis/lost" element={<LostReport customers={d?.customers} statuses={d?.statuses} staffList={staffList} />} />
               <Route path="/tracking" element={<TrackingDashboard />} />
 
               {/* ステータス別リスト */}
