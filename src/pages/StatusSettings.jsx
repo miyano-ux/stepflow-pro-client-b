@@ -1,134 +1,234 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import axios from "axios";
-import { 
-  GripVertical, Trash2, Plus, Save, ArrowLeft, 
-  Trophy, Moon, Trash, LayoutGrid, CheckCircle2, Loader2
-} from "lucide-react";
+import { GripVertical, Plus, Trash2, ChevronLeft, Save } from "lucide-react";
+import { THEME, GAS_URL } from "../lib/constants";
+import { styles } from "../lib/styles";
+import { apiCall } from "../lib/utils";
 
-const THEME = {
-  primary: "#4F46E5", bg: "#F8FAFC", card: "#FFFFFF", textMain: "#1E293B", 
-  textMuted: "#64748B", border: "#E2E8F0", success: "#10B981", warning: "#F59E0B", danger: "#EF4444"
-};
+// ==========================================
+// ⚙️ StatusSettings - ステータス設定画面
+// ==========================================
 
-// 🆕 ホワイトアウトを防止するため styles を確実に定義
-const styles = {
-  main: { minHeight: "100vh", backgroundColor: THEME.bg },
-  wrapper: { padding: "48px 64px", maxWidth: "840px", margin: "0 auto" },
-  section: { marginBottom: "40px" },
-  sectionTitle: { fontSize: "18px", fontWeight: "900", color: THEME.textMain, marginBottom: "20px", display: "flex", alignItems: "center", gap: "10px" },
-  card: { backgroundColor: THEME.card, borderRadius: "16px", border: `1px solid ${THEME.border}`, padding: "16px", display: "flex", gap: "12px", alignItems: "center", marginBottom: "12px", boxShadow: "0 2px 4px rgba(0,0,0,0.02)" },
-  fixedCard: { backgroundColor: "#F1F5F9", borderRadius: "16px", border: `1px solid ${THEME.border}`, padding: "20px", display: "flex", gap: "16px", alignItems: "center", marginBottom: "16px" },
-  input: { flex: 1, border: "1px solid transparent", outline: "none", fontSize: "15px", fontWeight: "700", color: THEME.textMain, padding: "8px 12px", borderRadius: "8px", backgroundColor: "transparent" },
-  backBtn: { display: "flex", alignItems: "center", gap: "8px", background: "none", border: "none", color: THEME.textMuted, cursor: "pointer", fontWeight: "800", marginBottom: "24px", padding: "8px 0" }
-};
+const TERMINAL_OPTIONS = [
+  { value: "",        label: "通常（フロー列に表示）" },
+  { value: "dormant", label: "🌙 休眠（底部ゾーン）" },
+  { value: "lost",    label: "🗑 失注（底部ゾーン）" },
+];
 
-export default function StatusSettings({ statuses = [], onRefresh, gasUrl }) {
+function StatusRow({ s, idx, total, scenarios, onChange, onDelete, onDragStart, onDragOver, onDrop }) {
+  const isDormantOrLost = s.terminalType === "dormant" || s.terminalType === "lost";
+  return (
+    <div
+      draggable
+      onDragStart={e => onDragStart(e, idx)}
+      onDragOver={e => onDragOver(e, idx)}
+      onDrop={e => onDrop(e, idx)}
+      style={{
+        display: "flex", alignItems: "flex-start", gap: 12,
+        backgroundColor: isDormantOrLost ? "#F8FAFC" : "white",
+        border: `1px solid ${THEME.border}`, borderRadius: 12,
+        padding: "14px 16px", marginBottom: 8, cursor: "grab",
+      }}
+    >
+      {/* ドラッグハンドル */}
+      <div style={{ paddingTop: 6, color: THEME.textMuted, cursor: "grab" }}>
+        <GripVertical size={16} />
+      </div>
+
+      {/* 順番バッジ */}
+      <div style={{ minWidth: 24, height: 24, borderRadius: "50%", backgroundColor: isDormantOrLost ? "#E5E7EB" : THEME.primary, color: "white", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 900, flexShrink: 0, marginTop: 4 }}>
+        {idx + 1}
+      </div>
+
+      <div style={{ flex: 1, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+        {/* ステータス名 */}
+        <div>
+          <div style={{ fontSize: 11, fontWeight: 700, color: THEME.textMuted, marginBottom: 4 }}>ステータス名</div>
+          <input
+            style={{ ...styles.input, margin: 0 }}
+            value={s.name}
+            onChange={e => onChange(idx, "name", e.target.value)}
+            placeholder="例：接触済み（机上）"
+          />
+        </div>
+
+        {/* 終点種別 */}
+        <div>
+          <div style={{ fontSize: 11, fontWeight: 700, color: THEME.textMuted, marginBottom: 4 }}>種別</div>
+          <select
+            style={{ ...styles.input, margin: 0 }}
+            value={s.terminalType || ""}
+            onChange={e => onChange(idx, "terminalType", e.target.value)}
+          >
+            {TERMINAL_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </select>
+        </div>
+
+        {/* 自動シナリオ */}
+        <div>
+          <div style={{ fontSize: 11, fontWeight: 700, color: THEME.textMuted, marginBottom: 4 }}>自動適用シナリオ（任意）</div>
+          <select
+            style={{ ...styles.input, margin: 0 }}
+            value={s.scenarioId || ""}
+            onChange={e => onChange(idx, "scenarioId", e.target.value)}
+          >
+            <option value="">設定しない</option>
+            {[...new Set(scenarios.map(sc => sc["シナリオID"]))].filter(Boolean).map(sid => (
+              <option key={sid} value={sid}>{sid}</option>
+            ))}
+          </select>
+        </div>
+
+        {/* 集計対象 */}
+        <div>
+          <div style={{ fontSize: 11, fontWeight: 700, color: THEME.textMuted, marginBottom: 6 }}>レポート集計対象</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 13, fontWeight: 700 }}>
+              <input
+                type="checkbox"
+                checked={!!s.reportArrival}
+                onChange={e => onChange(idx, "reportArrival", e.target.checked)}
+                style={{ width: 16, height: 16, accentColor: THEME.primary }}
+              />
+              <span>到達率（到達期間を集計）</span>
+            </label>
+            <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 13, fontWeight: 700 }}>
+              <input
+                type="checkbox"
+                checked={!!s.reportCount}
+                onChange={e => onChange(idx, "reportCount", e.target.checked)}
+                style={{ width: 16, height: 16, accentColor: THEME.primary }}
+              />
+              <span>件数（数字の積み上げを集計）</span>
+            </label>
+          </div>
+        </div>
+      </div>
+
+      {/* 削除ボタン */}
+      <button
+        onClick={() => onDelete(idx)}
+        style={{ background: "none", border: "none", cursor: "pointer", padding: 6, borderRadius: 8, color: THEME.textMuted }}
+        title="削除"
+      >
+        <Trash2 size={15} />
+      </button>
+    </div>
+  );
+}
+
+export default function StatusSettings({ statuses: statusesProp = [], scenarios = [], onRefresh, gasUrl }) {
   const navigate = useNavigate();
-  const [pipeline, setPipeline] = useState([]); 
-  const [wonLabel, setWonLabel] = useState("成約");
-  const [dormantLabel, setDormantLabel] = useState("休眠");
-  const [lostLabel, setLostLabel] = useState("失注");
+  const [rows, setRows]       = useState([]);
+  const [saving, setSaving]   = useState(false);
   const [dragIdx, setDragIdx] = useState(null);
-  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    if (statuses.length >= 3) {
-      const all = statuses.map(s => s.name);
-      setLostLabel(all.pop());    
-      setDormantLabel(all.pop()); 
-      setWonLabel(all.pop());     
-      setPipeline(all);           
+    if (statusesProp.length > 0) {
+      setRows(statusesProp.map(s => ({ ...s })));
+    } else {
+      // デフォルト（初回）
+      setRows([
+        { name: "未対応",  terminalType: "", scenarioId: "", reportArrival: false, reportCount: true },
+        { name: "対応中",  terminalType: "", scenarioId: "", reportArrival: false, reportCount: true },
+        { name: "休眠",    terminalType: "dormant", scenarioId: "", reportArrival: false, reportCount: false },
+        { name: "失注",    terminalType: "lost",    scenarioId: "", reportArrival: false, reportCount: false },
+      ]);
     }
-  }, [statuses]);
+  }, [statusesProp]);
 
-  const onDragOver = (e, i) => {
+  const handleChange = (idx, key, val) => {
+    setRows(prev => prev.map((r, i) => i === idx ? { ...r, [key]: val } : r));
+  };
+
+  const handleDelete = (idx) => {
+    setRows(prev => prev.filter((_, i) => i !== idx));
+  };
+
+  const handleAdd = () => {
+    setRows(prev => [...prev, { name: "", terminalType: "", scenarioId: "", reportArrival: false, reportCount: false }]);
+  };
+
+  // ── D&Dソート ──
+  const handleDragStart = (e, idx) => { e.dataTransfer.effectAllowed = "move"; setDragIdx(idx); };
+  const handleDragOver  = (e, idx) => { e.preventDefault(); };
+  const handleDrop      = (e, toIdx) => {
     e.preventDefault();
-    if (dragIdx === null || dragIdx === i) return;
-    const n = [...pipeline];
-    const d = n.splice(dragIdx, 1)[0];
-    n.splice(i, 0, d);
-    setDragIdx(i);
-    setPipeline(n);
+    if (dragIdx === null || dragIdx === toIdx) return;
+    const next = [...rows];
+    const [moved] = next.splice(dragIdx, 1);
+    next.splice(toIdx, 0, moved);
+    setRows(next);
+    setDragIdx(null);
   };
 
   const handleSave = async () => {
-    if (pipeline.some(x => !x.trim()) || !wonLabel.trim() || !dormantLabel.trim() || !lostLabel.trim()) {
-      return alert("空の項目があります");
-    }
+    const invalid = rows.find(r => !r.name.trim());
+    if (invalid) { alert("ステータス名を入力してください"); return; }
+
+    // 休眠・失注が複数設定されていないか確認
+    const dormantCount = rows.filter(r => r.terminalType === "dormant").length;
+    const lostCount    = rows.filter(r => r.terminalType === "lost").length;
+    if (dormantCount > 1) { alert("休眠は1つだけ設定できます"); return; }
+    if (lostCount > 1)    { alert("失注は1つだけ設定できます"); return; }
+
     setSaving(true);
-    const finalStatuses = [...pipeline, wonLabel, dormantLabel, lostLabel];
     try {
-      await axios.post(gasUrl, 
-        JSON.stringify({ action: "saveStatuses", statuses: finalStatuses }), 
-        { headers: { 'Content-Type': 'text/plain;charset=utf-8' } }
-      );
+      await apiCall.post(gasUrl || GAS_URL, { action: "saveStatuses", statuses: rows });
       await onRefresh();
-      alert("設定を保存しました。");
-    } catch (e) {
-      alert("通信エラー");
+      alert("保存しました");
+    } catch {
+      alert("保存に失敗しました");
     } finally {
       setSaving(false);
     }
   };
 
   return (
-    <div style={styles.main}>
-      <div style={styles.wrapper}>
-        <button onClick={() => navigate("/kanban")} style={styles.backBtn}>
-          <ArrowLeft size={18} /> カンバンに戻る
-        </button>
-
-        <header style={{ marginBottom: "48px" }}>
-          <h1 style={{ fontSize: "32px", fontWeight: "900", color: THEME.textMain, margin: 0 }}>ステータス設定</h1>
-        </header>
-
-        <div style={styles.section}>
-          <div style={styles.sectionTitle}><LayoutGrid size={20} color={THEME.primary} /> 営業フェーズ（可変）</div>
-          {pipeline.map((it, i) => (
-            <div key={i} draggable onDragStart={() => setDragIdx(i)} onDragOver={(e) => onDragOver(e, i)} onDragEnd={() => setDragIdx(null)}
-              style={{ ...styles.card, opacity: dragIdx === i ? 0.5 : 1, border: dragIdx === i ? `1px solid ${THEME.primary}` : `1px solid ${THEME.border}` }}>
-              <GripVertical size={20} color={THEME.textMuted} style={{ cursor: "grab" }} />
-              <input style={styles.input} value={it} onChange={e => { const n = [...pipeline]; n[i] = e.target.value; setPipeline(n); }} />
-              <button onClick={() => setPipeline(pipeline.filter((_, idx) => idx !== i))} style={{ background: "none", border: "none", color: THEME.danger, cursor: "pointer" }}>
-                <Trash2 size={18} />
-              </button>
-            </div>
-          ))}
-          <button onClick={() => setPipeline([...pipeline, "新規フェーズ"])} style={{ width: "100%", padding: "16px", borderRadius: "12px", border: `2px dashed ${THEME.border}`, backgroundColor: "transparent", color: THEME.textMuted, fontWeight: "800", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, marginTop: 12 }}>
-            <Plus size={20} /> 新しいフェーズを追加
+    <div style={{ minHeight: "100vh", backgroundColor: THEME.bg, padding: "40px 48px" }}>
+      {/* ヘッダー */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 32 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+          <button onClick={() => navigate(-1)} style={{ background: "none", border: "none", cursor: "pointer", display: "flex", alignItems: "center", gap: 6, color: THEME.textMuted, fontWeight: 800, fontSize: 14 }}>
+            <ChevronLeft size={18} /> 戻る
           </button>
+          <h1 style={{ fontSize: 28, fontWeight: 900, color: THEME.textMain, margin: 0 }}>ステータス設定</h1>
         </div>
-
-        <div style={styles.section}>
-          <div style={styles.sectionTitle}><CheckCircle2 size={20} color={THEME.success} /> 終着ステータス（固定）</div>
-          <div style={styles.fixedCard}>
-            <div style={{ backgroundColor: THEME.success, padding: 10, borderRadius: 12, color: "white" }}><Trophy size={24} /></div>
-            <div style={{ flex: 1 }}>
-              <label style={{ fontSize: "11px", fontWeight: "900", color: THEME.textMuted }}>目的：成約</label>
-              <input style={styles.input} value={wonLabel} onChange={e => setWonLabel(e.target.value)} />
-            </div>
-          </div>
-          <div style={styles.fixedCard}>
-            <div style={{ backgroundColor: THEME.warning, padding: 10, borderRadius: 12, color: "white" }}><Moon size={24} /></div>
-            <div style={{ flex: 1 }}>
-              <label style={{ fontSize: "11px", fontWeight: "900", color: THEME.textMuted }}>目的：休眠</label>
-              <input style={styles.input} value={dormantLabel} onChange={e => setDormantLabel(e.target.value)} />
-            </div>
-          </div>
-          <div style={styles.fixedCard}>
-            <div style={{ backgroundColor: THEME.danger, padding: 10, borderRadius: 12, color: "white" }}><Trash size={24} /></div>
-            <div style={{ flex: 1 }}>
-              <label style={{ fontSize: "11px", fontWeight: "900", color: THEME.textMuted }}>目的：失注</label>
-              <input style={styles.input} value={lostLabel} onChange={e => setLostLabel(e.target.value)} />
-            </div>
-          </div>
-        </div>
-
-        <button onClick={handleSave} disabled={saving} style={{ width: "100%", padding: "20px", borderRadius: "16px", border: "none", backgroundColor: THEME.primary, color: "white", fontSize: "18px", fontWeight: "900", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 12 }}>
-          {saving ? <Loader2 className="animate-spin" /> : <Save size={22} />} 設定を保存して反映
+        <button
+          onClick={handleSave}
+          disabled={saving}
+          style={{ display: "flex", alignItems: "center", gap: 8, padding: "12px 28px", backgroundColor: THEME.primary, color: "white", border: "none", borderRadius: 12, fontWeight: 900, fontSize: 15, cursor: "pointer", opacity: saving ? 0.7 : 1 }}
+        >
+          <Save size={16} /> {saving ? "保存中..." : "保存する"}
         </button>
       </div>
+
+      {/* 説明 */}
+      <div style={{ backgroundColor: "#EEF2FF", borderRadius: 12, padding: "14px 20px", marginBottom: 24, fontSize: 13, color: THEME.primary, fontWeight: 700, lineHeight: 1.7 }}>
+        💡 ドラッグで順番を変更できます。「休眠」「失注」は底部ゾーンに表示されます。自動シナリオを設定すると、そのステータスに移動したとき配信が自動で始まります。
+      </div>
+
+      {/* ステータス一覧 */}
+      {rows.map((s, idx) => (
+        <StatusRow
+          key={idx}
+          s={s} idx={idx} total={rows.length}
+          scenarios={scenarios}
+          onChange={handleChange}
+          onDelete={handleDelete}
+          onDragStart={handleDragStart}
+          onDragOver={handleDragOver}
+          onDrop={handleDrop}
+        />
+      ))}
+
+      {/* 追加ボタン */}
+      <button
+        onClick={handleAdd}
+        style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", padding: "14px", border: `2px dashed ${THEME.border}`, borderRadius: 12, backgroundColor: "transparent", color: THEME.textMuted, fontWeight: 800, fontSize: 14, cursor: "pointer", justifyContent: "center", marginTop: 4 }}
+      >
+        <Plus size={16} /> ステータスを追加
+      </button>
     </div>
   );
 }

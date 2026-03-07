@@ -1,36 +1,13 @@
-// 滞留日数を計算する（ステータス変更日 or 登録日から今日まで）
-function calcDaysInStatus(customer) {
-  const base = customer["ステータス変更日"] || customer["登録日"];
-  if (!base) return null;
-  const from = new Date(base);
-  if (isNaN(from.getTime())) return null;
-  const diff = Math.floor((Date.now() - from.getTime()) / (1000 * 60 * 60 * 24));
-  return diff;
-}
-
-// 滞留日数に応じた色を返す
-function daysColor(days) {
-  if (days === null) return null;
-  if (days <= 7)  return { bg: "#DCFCE7", text: "#166534" }; // 緑：7日以内
-  if (days <= 14) return { bg: "#FEF3C7", text: "#92400E" }; // 黄：8〜14日
-  if (days <= 30) return { bg: "#FED7AA", text: "#9A3412" }; // オレンジ：15〜30日
-  return               { bg: "#FEE2E2", text: "#991B1B" };   // 赤：31日〜
-}
-
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import axios from "axios";
 import {
   ListTodo, UserCircle, MessageSquare,
-  Trophy, Moon, Trash2, ChevronDown, Loader2, Users, Check, ExternalLink
+  Moon, Trash2, Loader2, Users, ExternalLink
 } from "lucide-react";
 import { THEME } from "../lib/constants";
 import { StaffDropdown } from "../components/StaffDropdown";
-
-
-// ==========================================
-// 📋 KanbanBoard - 案件管理カンバン
-// ==========================================
+import { apiCall } from "../lib/utils";
 
 const S = {
   main:     { minHeight: "100vh", backgroundColor: THEME.bg, display: "flex", flexDirection: "column" },
@@ -40,67 +17,268 @@ const S = {
   card:     { backgroundColor: "#FFF", borderRadius: "14px", padding: "16px", boxShadow: "0 4px 6px -1px rgba(0,0,0,0.05)", cursor: "grab", border: "2px solid transparent", userSelect: "none", transition: "transform 0.15s, box-shadow 0.15s, opacity 0.15s" },
   bottomBar:{ position: "sticky", bottom: 0, backgroundColor: "rgba(255,255,255,0.95)", backdropFilter: "blur(12px)", padding: "20px 40px", borderTop: `1px solid ${THEME.border}`, display: "flex", gap: "24px", justifyContent: "center", zIndex: 10 },
   zone:     { flex: 1, maxWidth: "320px", height: "74px", borderRadius: "18px", display: "flex", alignItems: "center", justifyContent: "center", gap: "12px", fontWeight: "900", fontSize: "16px", border: "3px dashed transparent", transition: "all 0.2s" },
+  overlay:  { position: "fixed", inset: 0, backgroundColor: "rgba(15,23,42,0.6)", display: "flex", justifyContent: "center", alignItems: "center", zIndex: 2000, backdropFilter: "blur(4px)" },
+  modal:    { backgroundColor: "white", borderRadius: 24, padding: "40px", width: 460, boxShadow: "0 24px 48px rgba(0,0,0,0.15)" },
 };
+
+// 滞留日数計算
+function calcDaysInStatus(customer) {
+  const base = customer["ステータス変更日"] || customer["登録日"];
+  if (!base) return null;
+  const diff = Math.floor((Date.now() - new Date(base).getTime()) / (1000 * 60 * 60 * 24));
+  return isNaN(diff) ? null : diff;
+}
+function daysColor(days) {
+  if (days === null) return null;
+  if (days <= 7)  return { bg: "#DCFCE7", text: "#166534" };
+  if (days <= 14) return { bg: "#FEF3C7", text: "#92400E" };
+  if (days <= 30) return { bg: "#FED7AA", text: "#9A3412" };
+  return               { bg: "#FEE2E2", text: "#991B1B" };
+}
+
+// ── モーダル群 ────────────────────────────────────────
+
+// 汎用シナリオ確認モーダル（全ステータスのD&D後）
+function ScenarioConfirmModal({ info, onConfirm, onCancel }) {
+  if (!info) return null;
+  return (
+    <div style={S.overlay}>
+      <div style={S.modal}>
+        <div style={{ textAlign: "center", marginBottom: 28 }}>
+          <div style={{ fontSize: 48, marginBottom: 10 }}>🔄</div>
+          <h3 style={{ fontSize: 20, fontWeight: 900, color: THEME.textMain, margin: "0 0 12px" }}>
+            ステータスを変更しますか？
+          </h3>
+          <p style={{ fontSize: 14, color: THEME.textMuted, lineHeight: 1.8, margin: 0 }}>
+            <strong style={{ color: THEME.primary }}>「{info.newStatus}」</strong> に変更します。
+            {info.scenarioId && (
+              <><br />シナリオ <strong>「{info.scenarioId}」</strong> が自動で適用されます。</>
+            )}
+          </p>
+        </div>
+        <div style={{ display: "flex", gap: 12 }}>
+          <button onClick={onConfirm} style={{ flex: 1, padding: 14, borderRadius: 12, border: "none", backgroundColor: THEME.primary, color: "white", fontWeight: 900, fontSize: 15, cursor: "pointer" }}>
+            変更する
+          </button>
+          <button onClick={onCancel} style={{ flex: 1, padding: 14, borderRadius: 12, border: `1px solid ${THEME.border}`, backgroundColor: "white", color: THEME.textMuted, fontWeight: 800, fontSize: 15, cursor: "pointer" }}>
+            キャンセル
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// 休眠モーダル
+const REAPPROACH_OPTIONS = [
+  { months: 1, label: "1ヶ月後" },
+  { months: 2, label: "2ヶ月後" },
+  { months: 3, label: "3ヶ月後" },
+  { months: 6, label: "6ヶ月後" },
+  { months: 12, label: "12ヶ月後" },
+  { months: 0, label: "設定しない" },
+];
+
+function DormantModal({ info, scenarios, gasUrl, onDone, onCancel }) {
+  const [selected, setSelected] = useState(null);
+  const [scenarioId, setScenarioId] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  if (!info) return null;
+
+  const handleConfirm = async () => {
+    setSaving(true);
+    // まずステータスを休眠に更新
+    await axios.post(gasUrl, JSON.stringify({ action: "updateStatus", id: info.customerId, status: info.newStatus, applyScenario: "" }), { headers: { "Content-Type": "text/plain;charset=utf-8" } });
+    // 再アプローチ月が設定されていればスケジュール登録
+    if (selected?.months > 0 && scenarioId) {
+      await axios.post(gasUrl, JSON.stringify({ action: "scheduleDormantReapproach", id: info.customerId, months: selected.months, scenarioId }), { headers: { "Content-Type": "text/plain;charset=utf-8" } });
+    }
+    setSaving(false);
+    onDone();
+  };
+
+  return (
+    <div style={S.overlay}>
+      <div style={{ ...S.modal, width: 500 }}>
+        <div style={{ textAlign: "center", marginBottom: 24 }}>
+          <div style={{ fontSize: 48, marginBottom: 8 }}>🌙</div>
+          <h3 style={{ fontSize: 20, fontWeight: 900, color: THEME.textMain, margin: "0 0 8px" }}>休眠に変更</h3>
+          <p style={{ fontSize: 13, color: THEME.textMuted, margin: 0 }}>再アプローチするタイミングを設定できます</p>
+        </div>
+
+        <div style={{ marginBottom: 20 }}>
+          <div style={{ fontSize: 13, fontWeight: 800, color: THEME.textMuted, marginBottom: 10 }}>再アプローチ時期</div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+            {REAPPROACH_OPTIONS.map(opt => (
+              <button
+                key={opt.months}
+                onClick={() => setSelected(opt)}
+                style={{
+                  padding: "8px 18px", borderRadius: 99, fontWeight: 800, fontSize: 13, cursor: "pointer",
+                  border: `2px solid ${selected?.months === opt.months ? THEME.primary : THEME.border}`,
+                  backgroundColor: selected?.months === opt.months ? "#EEF2FF" : "white",
+                  color: selected?.months === opt.months ? THEME.primary : THEME.textMuted,
+                }}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {selected && selected.months > 0 && (
+          <div style={{ marginBottom: 20 }}>
+            <div style={{ fontSize: 13, fontWeight: 800, color: THEME.textMuted, marginBottom: 8 }}>適用シナリオ（任意）</div>
+            <select
+              value={scenarioId}
+              onChange={e => setScenarioId(e.target.value)}
+              style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: `1px solid ${THEME.border}`, fontSize: 14, fontWeight: 700 }}
+            >
+              <option value="">シナリオを選択しない</option>
+              {[...new Set(scenarios.map(s => s["シナリオID"]))].map(sid => (
+                <option key={sid} value={sid}>{sid}</option>
+              ))}
+            </select>
+          </div>
+        )}
+
+        <div style={{ display: "flex", gap: 12 }}>
+          <button
+            onClick={handleConfirm}
+            disabled={saving || selected === null}
+            style={{ flex: 1, padding: 14, borderRadius: 12, border: "none", backgroundColor: selected ? "#D97706" : "#E5E7EB", color: "white", fontWeight: 900, fontSize: 15, cursor: selected ? "pointer" : "not-allowed" }}
+          >
+            {saving ? "処理中..." : "確定する"}
+          </button>
+          <button onClick={onCancel} style={{ flex: 1, padding: 14, borderRadius: 12, border: `1px solid ${THEME.border}`, backgroundColor: "white", color: THEME.textMuted, fontWeight: 800, fontSize: 15, cursor: "pointer" }}>
+            キャンセル
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// 失注モーダル
+const LOST_REASONS = ["金額条件が合わなかった", "他社に決まった", "売却を取り止めた", "時期を再検討する", "連絡が取れなくなった", "その他"];
+
+function LostModal({ info, gasUrl, onDone, onCancel }) {
+  const [reason, setReason] = useState("");
+  const [freeText, setFreeText] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  if (!info) return null;
+
+  const handleConfirm = async () => {
+    if (!reason) return;
+    setSaving(true);
+    const finalReason = reason === "その他" ? freeText || "その他" : reason;
+    await axios.post(gasUrl, JSON.stringify({ action: "updateStatus", id: info.customerId, status: info.newStatus, applyScenario: "" }), { headers: { "Content-Type": "text/plain;charset=utf-8" } });
+    await axios.post(gasUrl, JSON.stringify({ action: "saveLostReason", id: info.customerId, reason: finalReason }), { headers: { "Content-Type": "text/plain;charset=utf-8" } });
+    setSaving(false);
+    onDone();
+  };
+
+  return (
+    <div style={S.overlay}>
+      <div style={{ ...S.modal, width: 480 }}>
+        <div style={{ textAlign: "center", marginBottom: 24 }}>
+          <div style={{ fontSize: 48, marginBottom: 8 }}>🗑</div>
+          <h3 style={{ fontSize: 20, fontWeight: 900, color: THEME.textMain, margin: "0 0 8px" }}>失注に変更</h3>
+          <p style={{ fontSize: 13, color: THEME.textMuted, margin: 0 }}>失注の理由を記録しておきましょう</p>
+        </div>
+
+        <div style={{ marginBottom: 20 }}>
+          <div style={{ fontSize: 13, fontWeight: 800, color: THEME.textMuted, marginBottom: 8 }}>失注理由 <span style={{ color: THEME.danger }}>*</span></div>
+          <select
+            value={reason}
+            onChange={e => setReason(e.target.value)}
+            style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: `1px solid ${reason ? THEME.border : THEME.danger}`, fontSize: 14, fontWeight: 700 }}
+          >
+            <option value="">選択してください</option>
+            {LOST_REASONS.map(r => <option key={r} value={r}>{r}</option>)}
+          </select>
+        </div>
+
+        {reason === "その他" && (
+          <div style={{ marginBottom: 20 }}>
+            <div style={{ fontSize: 13, fontWeight: 800, color: THEME.textMuted, marginBottom: 8 }}>詳細を入力</div>
+            <textarea
+              value={freeText}
+              onChange={e => setFreeText(e.target.value)}
+              placeholder="失注の詳細を入力してください"
+              rows={3}
+              style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: `1px solid ${THEME.border}`, fontSize: 14, resize: "vertical", boxSizing: "border-box" }}
+            />
+          </div>
+        )}
+
+        <div style={{ display: "flex", gap: 12 }}>
+          <button
+            onClick={handleConfirm}
+            disabled={saving || !reason}
+            style={{ flex: 1, padding: 14, borderRadius: 12, border: "none", backgroundColor: reason ? THEME.danger : "#E5E7EB", color: "white", fontWeight: 900, fontSize: 15, cursor: reason ? "pointer" : "not-allowed" }}
+          >
+            {saving ? "処理中..." : "確定する"}
+          </button>
+          <button onClick={onCancel} style={{ flex: 1, padding: 14, borderRadius: 12, border: `1px solid ${THEME.border}`, backgroundColor: "white", color: THEME.textMuted, fontWeight: 800, fontSize: 15, cursor: "pointer" }}>
+            キャンセル
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── メインコンポーネント ────────────────────────────────
 
 export default function KanbanBoard({
   customers = [], statuses = [], scenarios = [], scenarioSettings = {},
   onRefresh, staffList = [], gasUrl,
 }) {
   const navigate = useNavigate();
-  const [filterStaff, setFilterStaff] = useState("");
-
+  const [filterStaff, setFilterStaff]       = useState("");
   const [localCustomers, setLocalCustomers] = useState(customers);
-  const [draggingId, setDraggingId]   = useState(null);
-  const [overColumn, setOverColumn]   = useState(null);
-  const [syncing, setSyncing]         = useState(false);
-  const [confirmDrop, setConfirmDrop] = useState(null);
-  // confirmDrop: { customerId, newStatus, label, scenarioId, color, emoji }
+  const [draggingId, setDraggingId]         = useState(null);
+  const [overColumn, setOverColumn]         = useState(null);
+  const [syncing, setSyncing]               = useState(false);
+
+  // モーダル状態
+  const [scenarioModal, setScenarioModal] = useState(null); // { customerId, newStatus, prevStatus, scenarioId }
+  const [dormantModal, setDormantModal]   = useState(null); // { customerId, newStatus, prevStatus }
+  const [lostModal, setLostModal]         = useState(null); // { customerId, newStatus, prevStatus }
 
   const pendingIds = useRef(new Set());
 
-  // 親 customers が更新されたとき pending 中は上書きしない
   useEffect(() => {
-    setLocalCustomers((prev) =>
-      customers.map((c) =>
+    setLocalCustomers(prev =>
+      customers.map(c =>
         pendingIds.current.has(String(c.id))
-          ? (prev.find((p) => String(p.id) === String(c.id)) || c)
+          ? (prev.find(p => String(p.id) === String(c.id)) || c)
           : c
       )
     );
   }, [customers]);
 
-  // スタッフ取得
-
-
   // ステータス分類
-  const flowStatuses = statuses.slice(0, statuses.length - 3);
-  const wonLabel     = statuses[statuses.length - 3]?.name || "成約";
-  const dormantLabel = statuses[statuses.length - 2]?.name || "休眠";
-  const lostLabel    = statuses[statuses.length - 1]?.name || "失注";
+  // 終点種別: dormant / lost → ボトムゾーン。それ以外はすべてフロー列
+  const flowStatuses   = statuses.filter(s => s.terminalType !== "dormant" && s.terminalType !== "lost");
+  const dormantStatus  = statuses.find(s => s.terminalType === "dormant") || statuses[statuses.length - 2];
+  const lostStatus     = statuses.find(s => s.terminalType === "lost")    || statuses[statuses.length - 1];
+  const dormantLabel   = dormantStatus?.name || "休眠";
+  const lostLabel      = lostStatus?.name    || "失注";
 
-  // ── ドラッグ処理 ──────────────────────────────────
+  // ── ドラッグ処理 ──────────────────────────────────────
 
   const onDragStart = useCallback((e, cid) => {
     e.dataTransfer.setData("customerId", String(cid));
     e.dataTransfer.effectAllowed = "move";
     requestAnimationFrame(() => setDraggingId(String(cid)));
   }, []);
-
-  const onDragEnd = useCallback(() => {
-    setDraggingId(null);
-    setOverColumn(null);
-  }, []);
-
-  const onDragOver = useCallback((e, col) => {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = "move";
-    setOverColumn(col);
-  }, []);
-
-  const onDragLeave = useCallback((e) => {
-    if (e.currentTarget.contains(e.relatedTarget)) return;
-    setOverColumn(null);
-  }, []);
+  const onDragEnd   = useCallback(() => { setDraggingId(null); setOverColumn(null); }, []);
+  const onDragOver  = useCallback((e, col) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; setOverColumn(col); }, []);
+  const onDragLeave = useCallback((e) => { if (e.currentTarget.contains(e.relatedTarget)) return; setOverColumn(null); }, []);
 
   const onDrop = useCallback((e, newStatus) => {
     e.preventDefault();
@@ -109,35 +287,36 @@ export default function KanbanBoard({
     setOverColumn(null);
     if (!cid) return;
 
-    const target = localCustomers.find((c) => String(c.id) === cid);
+    const target = localCustomers.find(c => String(c.id) === cid);
     if (!target || target["対応ステータス"] === newStatus) return;
 
-    // 成約・休眠はモーダル確認
-    const isWon     = newStatus === wonLabel;
-    const isDormant = newStatus === dormantLabel;
-    if (isWon || isDormant) {
-      const scenarioId = isWon
-        ? scenarioSettings?.wonScenarioId
-        : scenarioSettings?.dormantScenarioId;
-      setConfirmDrop({
-        customerId: cid,
-        newStatus,
-        label: newStatus,
-        scenarioId,
-        color: isWon ? THEME.success : "#F59E0B",
-        emoji: isWon ? "🏆" : "🌙",
-      });
+    const prevStatus = target["対応ステータス"];
+
+    // 休眠 → 休眠モーダル
+    if (newStatus === dormantLabel) {
+      setDormantModal({ customerId: cid, newStatus, prevStatus });
+      return;
+    }
+    // 失注 → 失注モーダル
+    if (newStatus === lostLabel) {
+      setLostModal({ customerId: cid, newStatus, prevStatus });
       return;
     }
 
-    // 通常ステータスは即時更新
-    execUpdate(cid, newStatus, target["対応ステータス"], null);
-  }, [localCustomers, wonLabel, dormantLabel, scenarioSettings]);
+    // それ以外：そのステータスの自動シナリオを確認
+    const statusDef = statuses.find(s => s.name === newStatus);
+    const scenarioId = statusDef?.scenarioId || "";
+    if (scenarioId) {
+      setScenarioModal({ customerId: cid, newStatus, prevStatus, scenarioId });
+    } else {
+      execUpdate(cid, newStatus, prevStatus, "");
+    }
+  }, [localCustomers, dormantLabel, lostLabel, statuses]);
 
-  // 実際の更新処理（通常 & モーダル確定）
+  // 実際の更新
   const execUpdate = useCallback(async (cid, newStatus, prevStatus, scenarioId) => {
-    setLocalCustomers((prev) =>
-      prev.map((c) => String(c.id) === cid ? { ...c, "対応ステータス": newStatus } : c)
+    setLocalCustomers(prev =>
+      prev.map(c => String(c.id) === cid ? { ...c, "対応ステータス": newStatus } : c)
     );
     pendingIds.current.add(cid);
     setSyncing(true);
@@ -149,8 +328,8 @@ export default function KanbanBoard({
       );
       onRefresh();
     } catch {
-      setLocalCustomers((prev) =>
-        prev.map((c) => String(c.id) === cid ? { ...c, "対応ステータス": prevStatus } : c)
+      setLocalCustomers(prev =>
+        prev.map(c => String(c.id) === cid ? { ...c, "対応ステータス": prevStatus } : c)
       );
       alert("更新に失敗しました");
     } finally {
@@ -158,30 +337,33 @@ export default function KanbanBoard({
     }
   }, [gasUrl, onRefresh]);
 
-  // モーダルの「確定する」
-  const handleConfirm = useCallback(() => {
-    if (!confirmDrop) return;
-    const { customerId, newStatus, scenarioId } = confirmDrop;
-    const target = localCustomers.find((c) => String(c.id) === customerId);
-    setConfirmDrop(null);
-    execUpdate(customerId, newStatus, target?.["対応ステータス"] || "", scenarioId);
-  }, [confirmDrop, localCustomers, execUpdate]);
+  const handleScenarioConfirm = () => {
+    const { customerId, newStatus, prevStatus, scenarioId } = scenarioModal;
+    setScenarioModal(null);
+    execUpdate(customerId, newStatus, prevStatus, scenarioId);
+  };
 
-  // ── フィルタリング ──────────────────────────────────
+  const handleModalDone = () => {
+    setDormantModal(null);
+    setLostModal(null);
+    onRefresh();
+  };
+
+  // ── フィルタリング ────────────────────────────────────
 
   const filtered = filterStaff
-    ? localCustomers.filter((c) => c["担当者メール"] === filterStaff)
+    ? localCustomers.filter(c => c["担当者メール"] === filterStaff)
     : localCustomers;
 
   const colCustomers = (st, idx) =>
-    filtered.filter((c) => {
+    filtered.filter(c => {
       const cur = (c["対応ステータス"] || "").trim();
       if (cur === st.name.trim()) return true;
-      const known = statuses.some((s) => s.name.trim() === cur);
+      const known = statuses.some(s => s.name.trim() === cur);
       return idx === 0 && (!cur || !known);
     });
 
-  // ── レンダリング ──────────────────────────────────
+  // ── レンダリング ──────────────────────────────────────
 
   return (
     <>
@@ -209,10 +391,10 @@ export default function KanbanBoard({
             </div>
           </header>
 
-          {/* カンバン列 */}
+          {/* カンバン列（終点ステータス以外すべて） */}
           <div style={S.kanban}>
             {flowStatuses.map((st, idx) => {
-              const cards = colCustomers(st, idx);
+              const cards  = colCustomers(st, idx);
               const isOver = overColumn === st.name;
               return (
                 <div
@@ -228,18 +410,23 @@ export default function KanbanBoard({
                   }}
                 >
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px", padding: "0 8px" }}>
-                    <h3 style={{ fontSize: "14px", fontWeight: "900", color: THEME.textMain, textTransform: "uppercase", letterSpacing: "0.05em", margin: 0 }}>
-                      {st.name}
-                    </h3>
+                    <div>
+                      <h3 style={{ fontSize: "13px", fontWeight: "900", color: THEME.textMain, margin: 0 }}>{st.name}</h3>
+                      {st.scenarioId && (
+                        <div style={{ fontSize: 10, color: THEME.primary, fontWeight: 700, marginTop: 2 }}>▶ {st.scenarioId}</div>
+                      )}
+                    </div>
                     <span style={{ backgroundColor: THEME.primary, color: "white", padding: "2px 10px", borderRadius: "20px", fontSize: "12px", fontWeight: "900" }}>
                       {cards.length}
                     </span>
                   </div>
 
                   <div style={{ display: "flex", flexDirection: "column", gap: "12px", minHeight: "100px" }}>
-                    {cards.map((c) => {
+                    {cards.map(c => {
                       const dragging = draggingId === String(c.id);
-                      const staff    = staffList.find((s) => s.email === c["担当者メール"]);
+                      const staff    = staffList.find(s => s.email === c["担当者メール"]);
+                      const days     = calcDaysInStatus(c);
+                      const color    = daysColor(days);
                       return (
                         <div
                           key={c.id}
@@ -270,27 +457,16 @@ export default function KanbanBoard({
                               <MessageSquare size={14} />
                             </Link>
                           </div>
-                          {/* 滞留日数バッジ */}
-                          {(() => {
-                            const days  = calcDaysInStatus(c);
-                            const color = daysColor(days);
-                            if (days === null) return null;
-                            const hasDate = !!c["ステータス変更日"];
-                            return (
-                              <div style={{ marginTop: 8, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                                <span style={{
-                                  fontSize: 11, fontWeight: 800,
-                                  backgroundColor: color.bg, color: color.text,
-                                  padding: "3px 10px", borderRadius: 99,
-                                }}>
-                                  {days === 0 ? "本日" : `${days}日滞留中`}
-                                </span>
-                                {!hasDate && (
-                                  <span style={{ fontSize: 10, color: THEME.textMuted, fontStyle: "italic" }}>登録日起算</span>
-                                )}
-                              </div>
-                            );
-                          })()}
+                          {days !== null && color && (
+                            <div style={{ marginTop: 8, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                              <span style={{ fontSize: 11, fontWeight: 800, backgroundColor: color.bg, color: color.text, padding: "3px 10px", borderRadius: 99 }}>
+                                {days === 0 ? "本日" : `${days}日滞留中`}
+                              </span>
+                              {!c["ステータス変更日"] && (
+                                <span style={{ fontSize: 10, color: THEME.textMuted, fontStyle: "italic" }}>登録日起算</span>
+                              )}
+                            </div>
+                          )}
                         </div>
                       );
                     })}
@@ -301,14 +477,14 @@ export default function KanbanBoard({
           </div>
         </div>
 
-        {/* 終着ゾーン */}
+        {/* 底部ゾーン：休眠・失注のみ */}
         <div style={S.bottomBar}>
           {[
-            { label: wonLabel,     emoji: "🏆", color: THEME.success, bg: "#ECFDF5", border: "#86EFAC", type: "won"     },
-            { label: dormantLabel, emoji: "🌙", color: "#D97706",      bg: "#FFFBEB", border: "#FDE68A", type: "dormant" },
-            { label: lostLabel,    emoji: "🗑",  color: THEME.danger,  bg: "#FEE2E2", border: "#FCA5A5", type: "lost"    },
-          ].map(({ label, emoji, color, bg, border, type }) => {
-            const count = localCustomers.filter((c) => (c["対応ステータス"] || "").trim() === label.trim()).length;
+            { status: dormantStatus, emoji: "🌙", color: "#D97706", bg: "#FFFBEB", border: "#FDE68A", type: "dormant" },
+            { status: lostStatus,    emoji: "🗑",  color: THEME.danger,  bg: "#FEE2E2", border: "#FCA5A5", type: "lost"    },
+          ].filter(z => z.status).map(({ status, emoji, color, bg, border, type }) => {
+            const label = status.name;
+            const count = localCustomers.filter(c => (c["対応ステータス"] || "").trim() === label.trim()).length;
             return (
               <div
                 key={label}
@@ -316,44 +492,25 @@ export default function KanbanBoard({
                 onDragLeave={onDragLeave}
                 onDrop={(e) => onDrop(e, label)}
                 style={{
-                  ...S.zone,
-                  flexDirection: "column",
-                  gap: 6,
+                  ...S.zone, flexDirection: "column", gap: 6, padding: "14px 24px",
                   backgroundColor: overColumn === label ? bg : draggingId ? `${bg}99` : "#F9FAFB",
                   color,
                   borderColor: overColumn === label ? color : draggingId ? `${color}60` : THEME.border,
                   transform:   overColumn === label ? "scale(1.05)" : "scale(1)",
                   boxShadow:   overColumn === label ? `0 0 0 3px ${color}30` : "none",
-                  position: "relative",
-                  padding: "14px 24px",
                 }}
               >
-                {/* メインラベル */}
                 <div style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 900, fontSize: 15 }}>
                   <span style={{ fontSize: 22 }}>{emoji}</span>
                   {label}
-                  {/* 人数バッジ */}
-                  <span style={{
-                    backgroundColor: count > 0 ? color : THEME.textMuted,
-                    color: "white", fontSize: 12, fontWeight: 900,
-                    padding: "2px 8px", borderRadius: 20, minWidth: 24, textAlign: "center",
-                  }}>
+                  <span style={{ backgroundColor: count > 0 ? color : THEME.textMuted, color: "white", fontSize: 12, fontWeight: 900, padding: "2px 8px", borderRadius: 20 }}>
                     {count}
                   </span>
                 </div>
-                {/* リストへのリンク */}
                 <Link
                   to={`/status-list/${type}`}
                   onClick={(e) => e.stopPropagation()}
-                  style={{
-                    display: "flex", alignItems: "center", gap: 4,
-                    fontSize: 11, fontWeight: 800, color,
-                    backgroundColor: bg, border: `1px solid ${border}`,
-                    padding: "3px 10px", borderRadius: 8, textDecoration: "none",
-                    transition: "opacity 0.15s",
-                  }}
-                  onMouseEnter={(e) => (e.currentTarget.style.opacity = "0.7")}
-                  onMouseLeave={(e) => (e.currentTarget.style.opacity = "1")}
+                  style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, fontWeight: 800, color, backgroundColor: bg, border: `1px solid ${border}`, padding: "3px 10px", borderRadius: 8, textDecoration: "none" }}
                 >
                   <ExternalLink size={11} /> リストを見る
                 </Link>
@@ -363,55 +520,25 @@ export default function KanbanBoard({
         </div>
       </div>
 
-      {/* 成約・休眠 確認モーダル */}
-      {confirmDrop && (
-        <div style={{ position: "fixed", inset: 0, backgroundColor: "rgba(15,23,42,0.6)", display: "flex", justifyContent: "center", alignItems: "center", zIndex: 2000, backdropFilter: "blur(4px)" }}>
-          <div style={{ backgroundColor: "white", borderRadius: 24, padding: "40px", width: 440, boxShadow: "0 24px 48px rgba(0,0,0,0.15)" }}>
-            <div style={{ textAlign: "center", marginBottom: 28 }}>
-              <div style={{ fontSize: 52, marginBottom: 12 }}>{confirmDrop.emoji}</div>
-              <h3 style={{ fontSize: 20, fontWeight: 900, color: THEME.textMain, margin: "0 0 12px" }}>
-                {confirmDrop.label}に移動しますか？
-              </h3>
-              <p style={{ fontSize: 14, color: THEME.textMuted, margin: 0, lineHeight: 1.8 }}>
-                ステータスを
-                <strong style={{ color: confirmDrop.color }}>「{confirmDrop.label}」</strong>
-                に変更します。
-                {confirmDrop.scenarioId ? (
-                  <>
-                    <br />
-                    シナリオ
-                    <strong>「{confirmDrop.scenarioId}」</strong>
-                    の配信が自動で開始されます。
-                  </>
-                ) : (
-                  <>
-                    <br />
-                    <span style={{ color: "#F59E0B" }}>
-                      ⚠ 適用シナリオが未設定です
-                    </span>
-                    <br />
-                    <span style={{ fontSize: 12 }}>シナリオ管理から設定できます</span>
-                  </>
-                )}
-              </p>
-            </div>
-            <div style={{ display: "flex", gap: 12 }}>
-              <button
-                onClick={handleConfirm}
-                style={{ flex: 1, padding: "14px", borderRadius: 12, border: "none", backgroundColor: confirmDrop.color, color: "white", fontWeight: 900, fontSize: 15, cursor: "pointer" }}
-              >
-                確定する
-              </button>
-              <button
-                onClick={() => setConfirmDrop(null)}
-                style={{ flex: 1, padding: "14px", borderRadius: 12, border: `1px solid ${THEME.border}`, backgroundColor: "white", color: THEME.textMuted, fontWeight: 800, fontSize: 15, cursor: "pointer" }}
-              >
-                キャンセル
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* モーダル群 */}
+      <ScenarioConfirmModal
+        info={scenarioModal}
+        onConfirm={handleScenarioConfirm}
+        onCancel={() => setScenarioModal(null)}
+      />
+      <DormantModal
+        info={dormantModal}
+        scenarios={scenarios}
+        gasUrl={gasUrl}
+        onDone={handleModalDone}
+        onCancel={() => setDormantModal(null)}
+      />
+      <LostModal
+        info={lostModal}
+        gasUrl={gasUrl}
+        onDone={handleModalDone}
+        onCancel={() => setLostModal(null)}
+      />
     </>
   );
 }

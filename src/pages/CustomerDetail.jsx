@@ -120,6 +120,7 @@ export default function CustomerDetail({
   const location = useLocation();
 
   const [isEditing, setIsEditing] = useState(false);
+  const [scenarioConfirm, setScenarioConfirm] = useState(null); // { newStatus, scenarioId }
   const [syncingCount, setSyncingCount] = useState(0);
   const [formData, setFormData] = useState(null);
 
@@ -196,7 +197,17 @@ export default function CustomerDetail({
   };
 
   // フィールド値更新（トップレベルコンポーネントに props で渡す）
-  const handleFieldChange = (key, val) => setFormData((prev) => ({ ...prev, [key]: val }));
+  const handleFieldChange = (key, val) => {
+    if (key === "対応ステータス" && val !== formData["対応ステータス"]) {
+      const statusDef = (statuses || []).find(s => s.name === val);
+      if (statusDef?.scenarioId) {
+        // シナリオが設定されていたら確認モーダルを表示してから適用
+        setScenarioConfirm({ newStatus: val, scenarioId: statusDef.scenarioId });
+        return;
+      }
+    }
+    setFormData(prev => ({ ...prev, [key]: val }));
+  };
 
   if (!formData) {
     return (
@@ -209,6 +220,40 @@ export default function CustomerDetail({
   const assignedStaff = staffList.find((s) => s.email === formData["担当者メール"]);
   const assignedName = assignedStaff ? `${assignedStaff.lastName} ${assignedStaff.firstName}` : null;
 
+      {/* ステータス変更シナリオ確認モーダル */}
+      {scenarioConfirm && (
+        <div style={{ position: "fixed", inset: 0, backgroundColor: "rgba(15,23,42,0.6)", display: "flex", justifyContent: "center", alignItems: "center", zIndex: 3000, backdropFilter: "blur(4px)" }}>
+          <div style={{ backgroundColor: "white", borderRadius: 20, padding: 36, width: 440, boxShadow: "0 24px 48px rgba(0,0,0,0.15)" }}>
+            <div style={{ textAlign: "center", marginBottom: 24 }}>
+              <div style={{ fontSize: 44, marginBottom: 8 }}>🔄</div>
+              <h3 style={{ fontSize: 18, fontWeight: 900, color: "#0F172A", margin: "0 0 10px" }}>
+                ステータスを変更しますか？
+              </h3>
+              <p style={{ fontSize: 14, color: "#64748B", lineHeight: 1.8, margin: 0 }}>
+                <strong style={{ color: "#6366F1" }}>「{scenarioConfirm.newStatus}」</strong> に変更します。<br />
+                シナリオ <strong>「{scenarioConfirm.scenarioId}」</strong> が自動で適用されます。
+              </p>
+            </div>
+            <div style={{ display: "flex", gap: 12 }}>
+              <button
+                onClick={() => {
+                  setFormData(prev => ({ ...prev, "対応ステータス": scenarioConfirm.newStatus }));
+                  setScenarioConfirm(null);
+                }}
+                style={{ flex: 1, padding: 13, borderRadius: 10, border: "none", backgroundColor: "#6366F1", color: "white", fontWeight: 900, fontSize: 14, cursor: "pointer" }}
+              >
+                変更する
+              </button>
+              <button
+                onClick={() => setScenarioConfirm(null)}
+                style={{ flex: 1, padding: 13, borderRadius: 10, border: "1px solid #E2E8F0", backgroundColor: "white", color: "#64748B", fontWeight: 800, fontSize: 14, cursor: "pointer" }}
+              >
+                キャンセル
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
   return (
     <div style={{ minHeight: "100vh", backgroundColor: THEME.bg, padding: "40px 48px" }}>
 

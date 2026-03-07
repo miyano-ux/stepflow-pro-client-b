@@ -233,7 +233,7 @@ function App() {
               <Route path="/column-settings" element={<ColumnSettings displaySettings={displaySettings} formSettings={d?.formSettings} onSaveDisplaySettings={saveDisplaySettings} onRefresh={refresh} gasUrl={GAS_URL} />} />
               <Route path="/form-settings" element={<FormSettings formSettings={d?.formSettings} onRefresh={refresh} />} />
               <Route path="/sources" element={<SourceManager sources={d?.sources} onRefresh={refresh} gasUrl={GAS_URL} />} />
-              <Route path="/status-settings" element={<StatusSettings statuses={d?.statuses} onRefresh={refresh} gasUrl={GAS_URL} />} />
+              <Route path="/status-settings" element={<StatusSettings statuses={d?.statuses} scenarios={d?.scenarios} onRefresh={refresh} gasUrl={GAS_URL} />} />
 
               {/* テンプレート・シナリオ */}
               <Route path="/templates" element={<TemplateManager templates={d?.templates} onRefresh={refresh} gasUrl={GAS_URL} />} />
