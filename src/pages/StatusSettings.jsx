@@ -235,6 +235,9 @@ export default function StatusSettings({ statuses: statusesProp = [], scenarios 
     setDragIdx(null);
   };
 
+  // 使用中シナリオID一覧（重複防止用）
+  const usedScenarios = new Set([...flowRows, dormantRow, lostRow].map(r => r.scenarioId).filter(Boolean));
+
   const handleSave = async () => {
     if (flowRows.some(r => !r.name.trim())) { alert("ステータス名を入力してください"); return; }
     if (!dormantRow.name.trim()) { alert("休眠のステータス名を入力してください"); return; }
@@ -296,7 +299,7 @@ export default function StatusSettings({ statuses: statusesProp = [], scenarios 
           key={idx}
           s={s} idx={idx} total={flowRows.length}
           scenarios={scenarios}
-          usedScenarios={new Set([...flowRows, dormantRow, lostRow].map(r => r.scenarioId).filter(Boolean))}
+          usedScenarios={usedScenarios}
           onChange={handleChange}
           onDelete={handleDelete}
           onDragStart={handleDragStart}
