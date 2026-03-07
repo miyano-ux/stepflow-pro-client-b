@@ -129,11 +129,11 @@ function FormSettings({ formSettings = [], sheetCustomColumns = [], onRefresh })
             <AlertTriangle size={17} color="#C2410C" style={{ flexShrink: 0, marginTop: 2 }} />
             <div style={{ flex: 1 }}>
               <div style={{ fontSize: 13, fontWeight: 800, color: "#9A3412", marginBottom: 6 }}>
-                スプレッドシートに不要な列が残っています
+                不要な項目がデータに残っています
               </div>
               <div style={{ fontSize: 12, color: "#9A3412", lineHeight: 1.7, marginBottom: 8 }}>
                 定義にない列: <strong>{orphanedCols.join("、")}</strong><br />
-                「保存」するとこれらの列はスプレッドシートから<strong>削除</strong>されます。
+                「保存」するとこれらの項目はデータから<strong>削除</strong>されます。
               </div>
               <div style={{ fontSize: 11, color: "#C2410C", backgroundColor: "#FFF", padding: "6px 10px", borderRadius: 6, border: "1px solid #FED7AA", display: "inline-block" }}>
                 ⚠ 該当列にデータが入っている場合は削除されます。事前にバックアップをお取りください。
@@ -145,7 +145,7 @@ function FormSettings({ formSettings = [], sheetCustomColumns = [], onRefresh })
         <div style={{ marginBottom: 24, padding: "14px 18px", backgroundColor: "#F8FAFC", borderRadius: 12, border: `1px solid ${THEME.border}`, display: "flex", gap: 12, alignItems: "flex-start" }}>
           <AlertCircle size={17} color={THEME.textMuted} style={{ flexShrink: 0, marginTop: 2 }} />
           <p style={{ fontSize: 13, color: THEME.textMuted, lineHeight: 1.6, margin: 0 }}>
-            項目を追加・同期すると、スプレッドシートに新しい列が自動作成されます。既存項目の名前変更はデータの整合性が失われる可能性があるため慎重に行ってください。
+            項目を追加・保存すると、データが自動で更新されます。既存項目の名前変更はデータの整合性が失われる可能性があるため慎重に行ってください。
           </p>
         </div>
 
@@ -270,7 +270,7 @@ function FormSettings({ formSettings = [], sheetCustomColumns = [], onRefresh })
             ? <><CheckCircle2 size={18} /> 同期完了！</>
             : saving
               ? "同期中..."
-              : "スプレッドシートに同期して保存"
+              : "データに同期して保存"
           }
         </button>
       </div>
