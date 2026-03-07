@@ -11,6 +11,7 @@ import { styles } from "../lib/styles";
 import { formatDate } from "../lib/utils";
 import DatePicker from "../components/DatePicker";
 import StatusTimeline from "../components/StatusTimeline";
+import PromptFieldsModal from "../components/PromptFieldsModal";
 import StaffGroupSelect from "../components/StaffGroupSelect";
 
 // ==========================================
@@ -113,7 +114,7 @@ const CustomField = ({ field, isEditing, value, onChange }) => {
 
 export default function CustomerDetail({
   customers = [], formSettings = [], statuses = [], sources = [],
-  trackingLogs = [], staffList = [], groups = [], statusHistory = [], gasUrl, onRefresh,
+  contractTypes = [], trackingLogs = [], staffList = [], groups = [], statusHistory = [], gasUrl, onRefresh,
 }) {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -121,6 +122,7 @@ export default function CustomerDetail({
 
   const [isEditing, setIsEditing] = useState(false);
   const [scenarioConfirm, setScenarioConfirm] = useState(null); // { newStatus, scenarioId }
+  const [promptModal, setPromptModal]         = useState(null); // { promptFields }
   const [syncingCount, setSyncingCount] = useState(0);
   const [formData, setFormData] = useState(null);
 
@@ -200,13 +202,36 @@ export default function CustomerDetail({
   const handleFieldChange = (key, val) => {
     if (key === "対応ステータス" && val !== formData["対応ステータス"]) {
       const statusDef = (statuses || []).find(s => s.name === val);
+      const pf = statusDef?.promptFields || [];
       if (statusDef?.scenarioId) {
-        // シナリオが設定されていたら確認モーダルを表示してから適用
-        setScenarioConfirm({ newStatus: val, scenarioId: statusDef.scenarioId });
+        setScenarioConfirm({ newStatus: val, scenarioId: statusDef.scenarioId, promptFields: pf });
         return;
       }
+      // シナリオなしでもpromptFieldsがあればformData更新後にprompt表示
+      setFormData(prev => ({ ...prev, [key]: val }));
+      if (pf.length > 0) setPromptModal({ promptFields: pf });
+      return;
     }
     setFormData(prev => ({ ...prev, [key]: val }));
+  };
+
+  // promptFieldsが確定したら即座にGASに保存
+  const handlePromptConfirm = async (values) => {
+    const updates = Object.entries(values).filter(([, v]) => v);
+    if (updates.length > 0) {
+      setFormData(prev => ({ ...prev, ...Object.fromEntries(updates) }));
+      if (customer?.id) {
+        try {
+          await axios.post(
+            gasUrl,
+            JSON.stringify({ action: "updateFields", id: customer.id, fields: Object.fromEntries(updates) }),
+            { headers: { "Content-Type": "text/plain;charset=utf-8" } }
+          );
+          onRefresh();
+        } catch { /* silent fail - formDataは更新済み */ }
+      }
+    }
+    setPromptModal(null);
   };
 
   if (!formData) {
@@ -221,6 +246,17 @@ export default function CustomerDetail({
   const assignedName = assignedStaff ? `${assignedStaff.lastName} ${assignedStaff.firstName}` : null;
 
       {/* ステータス変更シナリオ確認モーダル */}
+      {promptModal && (
+        <PromptFieldsModal
+          newStatus={formData["対応ステータス"] || ""}
+          promptFields={promptModal.promptFields}
+          sources={sources}
+          contractTypes={contractTypes}
+          staffList={staffList}
+          onConfirm={handlePromptConfirm}
+          onSkip={() => setPromptModal(null)}
+        />
+      )}
       {scenarioConfirm && (
         <div style={{ position: "fixed", inset: 0, backgroundColor: "rgba(15,23,42,0.6)", display: "flex", justifyContent: "center", alignItems: "center", zIndex: 3000, backdropFilter: "blur(4px)" }}>
           <div style={{ backgroundColor: "white", borderRadius: 20, padding: 36, width: 440, boxShadow: "0 24px 48px rgba(0,0,0,0.15)" }}>
@@ -237,8 +273,10 @@ export default function CustomerDetail({
             <div style={{ display: "flex", gap: 12 }}>
               <button
                 onClick={() => {
+                  const pf = scenarioConfirm.promptFields || [];
                   setFormData(prev => ({ ...prev, "対応ステータス": scenarioConfirm.newStatus }));
                   setScenarioConfirm(null);
+                  if (pf.length > 0) setPromptModal({ promptFields: pf });
                 }}
                 style={{ flex: 1, padding: 13, borderRadius: 10, border: "none", backgroundColor: "#6366F1", color: "white", fontWeight: 900, fontSize: 14, cursor: "pointer" }}
               >

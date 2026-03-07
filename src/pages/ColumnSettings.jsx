@@ -33,6 +33,7 @@ const SALES_FIELDS = [
   { key: "流入元",         label: "流入元" },
   { key: "担当者メール",   label: "担当者" },
   { key: "シナリオID",     label: "適用シナリオ" },
+  { key: "契約種別",       label: "契約種別" },
 ];
 const SALES_KEYS = SALES_FIELDS.map(f => f.key);
 

@@ -8,6 +8,7 @@ import {
 import { THEME } from "../lib/constants";
 import { StaffDropdown } from "../components/StaffDropdown";
 import { apiCall } from "../lib/utils";
+import PromptFieldsModal from "../components/PromptFieldsModal";
 
 const S = {
   main:     { minHeight: "100vh", backgroundColor: THEME.bg, display: "flex", flexDirection: "column" },
@@ -244,7 +245,7 @@ function LostModal({ info, gasUrl, onDone, onCancel }) {
 
 export default function KanbanBoard({
   customers = [], statuses = [], scenarios = [], scenarioSettings = {},
-  onRefresh, staffList = [], gasUrl,
+  onRefresh, staffList = [], gasUrl, sources = [], contractTypes = [],
 }) {
   const navigate = useNavigate();
   const [filterStaff, setFilterStaff]       = useState("");
@@ -254,7 +255,8 @@ export default function KanbanBoard({
   const [syncing, setSyncing]               = useState(false);
 
   // モーダル状態
-  const [scenarioModal, setScenarioModal] = useState(null); // { customerId, newStatus, prevStatus, scenarioId }
+  const [scenarioModal, setScenarioModal]     = useState(null);
+  const [promptModal, setPromptModal]         = useState(null); // { customerId, promptFields } // { customerId, newStatus, prevStatus, scenarioId }
   const [dormantModal, setDormantModal]   = useState(null); // { customerId, newStatus, prevStatus }
   const [lostModal, setLostModal]         = useState(null); // { customerId, newStatus, prevStatus }
 
@@ -335,7 +337,14 @@ export default function KanbanBoard({
         JSON.stringify({ action: "updateStatus", id: cid, status: newStatus, applyScenario: scenarioId || "" }),
         { headers: { "Content-Type": "text/plain;charset=utf-8" } }
       );
-      onRefresh();
+      // promptFields があれば追加入力モーダルを表示
+      const statusDef = statuses.find(s => s.name === newStatus);
+      const pf = statusDef?.promptFields || [];
+      if (pf.length > 0) {
+        setPromptModal({ customerId: cid, promptFields: pf });
+      } else {
+        onRefresh();
+      }
     } catch {
       setLocalCustomers(prev =>
         prev.map(c => String(c.id) === cid ? { ...c, "対応ステータス": prevStatus } : c)
@@ -344,7 +353,25 @@ export default function KanbanBoard({
     } finally {
       setTimeout(() => { pendingIds.current.delete(cid); setSyncing(false); }, 2000);
     }
-  }, [gasUrl, onRefresh]);
+  }, [gasUrl, onRefresh, statuses]);
+
+  // promptFieldsの確定・スキップ
+  const handlePromptConfirm = useCallback(async (values) => {
+    if (!promptModal) return;
+    const { customerId } = promptModal;
+    const updates = Object.entries(values).filter(([, v]) => v);
+    if (updates.length > 0) {
+      try {
+        await axios.post(
+          gasUrl,
+          JSON.stringify({ action: "updateFields", id: customerId, fields: Object.fromEntries(updates) }),
+          { headers: { "Content-Type": "text/plain;charset=utf-8" } }
+        );
+      } catch { /* silent */ }
+    }
+    setPromptModal(null);
+    onRefresh();
+  }, [promptModal, gasUrl, onRefresh]);
 
   const handleScenarioConfirm = () => {
     const { customerId, newStatus, prevStatus, scenarioId } = scenarioModal;
@@ -548,6 +575,17 @@ export default function KanbanBoard({
         onDone={handleModalDone}
         onCancel={() => setLostModal(null)}
       />
+      {promptModal && (
+        <PromptFieldsModal
+          newStatus={localCustomers.find(c => String(c.id) === promptModal.customerId)?.["対応ステータス"] || ""}
+          promptFields={promptModal.promptFields}
+          sources={sources}
+          contractTypes={contractTypes}
+          staffList={staffList}
+          onConfirm={handlePromptConfirm}
+          onSkip={() => { setPromptModal(null); onRefresh(); }}
+        />
+      )}
     </>
   );
 }

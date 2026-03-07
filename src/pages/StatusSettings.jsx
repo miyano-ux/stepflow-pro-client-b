@@ -29,13 +29,20 @@ const selectStyle = {
   cursor: "pointer",
 };
 
+// 変更時に確認できる管理項目
+const PROMPT_FIELD_OPTIONS = [
+  { key: "契約種別", label: "📋 契約種別" },
+  { key: "流入元",   label: "🌐 流入元" },
+  { key: "担当者メール", label: "👤 担当者" },
+];
+
 const TERMINAL_OPTIONS = [
   { value: "",        label: "通常（フロー列に表示）" },
   { value: "dormant", label: "🌙 休眠（底部ゾーン）" },
   { value: "lost",    label: "🗑 失注（底部ゾーン）" },
 ];
 
-function StatusRow({ s, idx, total, scenarios, onChange, onDelete, onDragStart, onDragOver, onDrop }) {
+function StatusRow({ s, idx, total, scenarios, onChange, onDelete, onDragStart, onDragOver, onDrop, onPromptAdd, onPromptRemove }) {
   const isDormantOrLost = s.terminalType === "dormant" || s.terminalType === "lost";
   return (
     <div
@@ -123,6 +130,25 @@ function StatusRow({ s, idx, total, scenarios, onChange, onDelete, onDragStart, 
             </label>
           </div>
         </div>
+
+        {/* 変更時に確認する項目 */}
+        <div style={{ gridColumn: "1 / -1" }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: THEME.textMuted, marginBottom: 6 }}>変更時に確認する項目（任意）</div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" }}>
+            {(s.promptFields || []).map((pf, pi) => (
+              <span key={pi} style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 12, fontWeight: 800, padding: "4px 10px", borderRadius: 99, backgroundColor: "#EEF2FF", color: THEME.primary }}>
+                {PROMPT_FIELD_OPTIONS.find(o => o.key === pf)?.label || pf}
+                <button onClick={() => onPromptRemove(idx, pi)} style={{ background: "none", border: "none", cursor: "pointer", padding: 0, color: THEME.primary, lineHeight: 1, fontSize: 14 }}>×</button>
+              </span>
+            ))}
+            {/* 追加ボタン：未選択の項目だけ表示 */}
+            {PROMPT_FIELD_OPTIONS.filter(o => !(s.promptFields || []).includes(o.key)).map(o => (
+              <button key={o.key} onClick={() => onPromptAdd(idx, o.key)} style={{ fontSize: 12, fontWeight: 800, padding: "4px 10px", borderRadius: 99, border: `1px dashed ${THEME.border}`, backgroundColor: "transparent", color: THEME.textMuted, cursor: "pointer" }}>
+                ＋ {o.label}
+              </button>
+            ))}
+          </div>
+        </div>
       </div>
 
       {/* 削除ボタン */}
@@ -163,6 +189,24 @@ export default function StatusSettings({ statuses: statusesProp = [], scenarios 
 
   const handleChange = (idx, key, val) => {
     setFlowRows(prev => prev.map((r, i) => i === idx ? { ...r, [key]: val } : r));
+  };
+
+  const handlePromptAdd = (idx, fieldKey) => {
+    setFlowRows(prev => prev.map((r, i) => {
+      if (i !== idx) return r;
+      const pf = [...(r.promptFields || [])];
+      if (!pf.includes(fieldKey)) pf.push(fieldKey);
+      return { ...r, promptFields: pf };
+    }));
+  };
+
+  const handlePromptRemove = (idx, pi) => {
+    setFlowRows(prev => prev.map((r, i) => {
+      if (i !== idx) return r;
+      const pf = [...(r.promptFields || [])];
+      pf.splice(pi, 1);
+      return { ...r, promptFields: pf };
+    }));
   };
 
   const handleDelete = (idx) => {
@@ -243,6 +287,8 @@ export default function StatusSettings({ statuses: statusesProp = [], scenarios 
           onDragStart={handleDragStart}
           onDragOver={handleDragOver}
           onDrop={handleDrop}
+          onPromptAdd={handlePromptAdd}
+          onPromptRemove={handlePromptRemove}
         />
       ))}
 
