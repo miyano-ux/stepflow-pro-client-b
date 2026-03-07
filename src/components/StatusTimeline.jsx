@@ -10,31 +10,44 @@ function formatDate(val) {
   if (!val) return "－";
   const d = new Date(val);
   if (isNaN(d)) return "－";
-  return `${d.getFullYear()}/${String(d.getMonth()+1).padStart(2,"0")}/${String(d.getDate()).padStart(2,"0")}`;
+  return `${d.getFullYear()}/${String(d.getMonth()+1).padStart(2,"0")}/${String(d.getDate()).padStart(2,"0")} ${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`;
 }
 
-function calcDays(from, to) {
+function calcDuration(from, to) {
   const a = new Date(from);
   const b = to ? new Date(to) : new Date();
   if (isNaN(a) || isNaN(b)) return null;
-  return Math.max(0, Math.floor((b - a) / (1000 * 60 * 60 * 24)));
+  const totalMin = Math.max(0, Math.floor((b - a) / (1000 * 60)));
+  const days  = Math.floor(totalMin / (60 * 24));
+  const hours = Math.floor((totalMin % (60 * 24)) / 60);
+  const mins  = totalMin % 60;
+  return { days, hours, mins, totalMin };
 }
 
-function DaysBadge({ days, isCurrent }) {
-  if (days === null) return null;
+function formatDuration({ days, hours, mins }) {
+  if (days > 0)  return `${days}日 ${hours}時間`;
+  if (hours > 0) return `${hours}時間 ${mins}分`;
+  return `${mins}分`;
+}
+
+function DaysBadge({ duration, isCurrent }) {
+  if (!duration) return null;
+  const { days } = duration;
   const color =
-    isCurrent ? { bg: "#EEF2FF", text: THEME.primary } :
-    days <= 7  ? { bg: "#DCFCE7", text: "#166534" } :
-    days <= 14 ? { bg: "#FEF3C7", text: "#92400E" } :
-    days <= 30 ? { bg: "#FED7AA", text: "#9A3412" } :
-                 { bg: "#FEE2E2", text: "#991B1B" };
+    isCurrent         ? { bg: "#EEF2FF", text: THEME.primary } :
+    days === 0        ? { bg: "#DCFCE7", text: "#166534" } :
+    days <= 7         ? { bg: "#DCFCE7", text: "#166534" } :
+    days <= 14        ? { bg: "#FEF3C7", text: "#92400E" } :
+    days <= 30        ? { bg: "#FED7AA", text: "#9A3412" } :
+                        { bg: "#FEE2E2", text: "#991B1B" };
+  const label = formatDuration(duration);
   return (
     <span style={{
       fontSize: 11, fontWeight: 800, padding: "2px 10px",
       borderRadius: 99, backgroundColor: color.bg, color: color.text,
       whiteSpace: "nowrap",
     }}>
-      {isCurrent ? `${days}日目（継続中）` : `${days}日間`}
+      {isCurrent ? `${label}（継続中）` : label}
     </span>
   );
 }
@@ -68,7 +81,7 @@ export default function StatusTimeline({ history = [] }) {
           {sorted.map((h, i) => {
             const isCurrent = i === sorted.length - 1;
             const next      = sorted[i + 1];
-            const days      = calcDays(h["変更日時"], next?.["変更日時"]);
+            const duration  = calcDuration(h["変更日時"], next?.["変更日時"]);
 
             return (
               <div key={i} style={{ display: "flex", gap: 0 }}>
@@ -99,7 +112,7 @@ export default function StatusTimeline({ history = [] }) {
                         backgroundColor: THEME.primary, color: "white", borderRadius: 99,
                       }}>現在</span>
                     )}
-                    <DaysBadge days={days} isCurrent={isCurrent} />
+                    <DaysBadge duration={duration} isCurrent={isCurrent} />
                   </div>
                   <span style={{ fontSize: 11, color: THEME.textMuted, fontWeight: 600 }}>
                     {formatDate(h["変更日時"])}
