@@ -194,7 +194,16 @@ function LostModal({ info, gasUrl, onDone, onCancel }) {
           <select
             value={reason}
             onChange={e => setReason(e.target.value)}
-            style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: `1px solid ${reason ? THEME.border : THEME.danger}`, fontSize: 14, fontWeight: 700 }}
+            style={{
+              width: "100%", padding: "11px 16px", borderRadius: 10,
+              border: `1px solid ${reason ? THEME.border : THEME.danger}`,
+              fontSize: 14, fontWeight: 700, outline: "none",
+              backgroundColor: "white", color: "#1E293B",
+              appearance: "none",
+              backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2364748B' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E")`,
+              backgroundRepeat: "no-repeat", backgroundPosition: "right 12px center",
+              cursor: "pointer", boxSizing: "border-box",
+            }}
           >
             <option value="">選択してください</option>
             {LOST_REASONS.map(r => <option key={r} value={r}>{r}</option>)}
@@ -263,11 +272,11 @@ export default function KanbanBoard({
 
   // ステータス分類
   // 終点種別: dormant / lost → ボトムゾーン。それ以外はすべてフロー列
-  const flowStatuses   = statuses.filter(s => s.terminalType !== "dormant" && s.terminalType !== "lost");
   const dormantStatus  = statuses.find(s => s.terminalType === "dormant") || statuses[statuses.length - 2];
   const lostStatus     = statuses.find(s => s.terminalType === "lost")    || statuses[statuses.length - 1];
   const dormantLabel   = dormantStatus?.name || "休眠";
   const lostLabel      = lostStatus?.name    || "失注";
+  const flowStatuses   = statuses.filter(s => s.name !== dormantLabel && s.name !== lostLabel);
 
   // ── ドラッグ処理 ──────────────────────────────────────
 
