@@ -42,7 +42,7 @@ const TERMINAL_OPTIONS = [
   { value: "lost",    label: "🗑 失注（底部ゾーン）" },
 ];
 
-function StatusRow({ s, idx, total, scenarios, onChange, onDelete, onDragStart, onDragOver, onDrop, onPromptAdd, onPromptRemove }) {
+function StatusRow({ s, idx, total, scenarios, onChange, onDelete, onDragStart, onDragOver, onDrop, onPromptAdd, onPromptRemove, usedScenarios }) {
   const isDormantOrLost = s.terminalType === "dormant" || s.terminalType === "lost";
   return (
     <div
@@ -100,9 +100,14 @@ function StatusRow({ s, idx, total, scenarios, onChange, onDelete, onDragStart, 
             onChange={e => onChange(idx, "scenarioId", e.target.value)}
           >
             <option value="">設定しない</option>
-            {[...new Set(scenarios.map(sc => sc["シナリオID"]))].filter(Boolean).map(sid => (
-              <option key={sid} value={sid}>{sid}</option>
-            ))}
+            {[...new Set(scenarios.map(sc => sc["シナリオID"]))].filter(Boolean).map(sid => {
+              const isUsed = usedScenarios?.has(sid) && sid !== s.scenarioId;
+              return (
+                <option key={sid} value={sid} disabled={isUsed} style={{ color: isUsed ? "#aaa" : undefined }}>
+                  {sid}{isUsed ? "（他のステータスで使用中）" : ""}
+                </option>
+              );
+            })}
           </select>
         </div>
 
@@ -235,6 +240,15 @@ export default function StatusSettings({ statuses: statusesProp = [], scenarios 
     if (!dormantRow.name.trim()) { alert("休眠のステータス名を入力してください"); return; }
     if (!lostRow.name.trim())    { alert("失注のステータス名を入力してください"); return; }
 
+    // シナリオの重複チェック（1シナリオ = 1ステータスのみ）
+    const allRows = [...flowRows, dormantRow, lostRow];
+    const scenarioIds = allRows.map(r => r.scenarioId).filter(Boolean);
+    const duplicates = scenarioIds.filter((id, i) => scenarioIds.indexOf(id) !== i);
+    if (duplicates.length > 0) {
+      alert(`シナリオ「${[...new Set(duplicates)].join("、")}」が複数のステータスに設定されています。\n1つのシナリオは1つのステータスにのみ設定できます。`);
+      return;
+    }
+
     const allStatuses = [
       ...flowRows,
       { ...dormantRow, terminalType: "dormant" },
@@ -282,6 +296,7 @@ export default function StatusSettings({ statuses: statusesProp = [], scenarios 
           key={idx}
           s={s} idx={idx} total={flowRows.length}
           scenarios={scenarios}
+          usedScenarios={new Set([...flowRows, dormantRow, lostRow].map(r => r.scenarioId).filter(Boolean))}
           onChange={handleChange}
           onDelete={handleDelete}
           onDragStart={handleDragStart}
@@ -341,9 +356,14 @@ export default function StatusSettings({ statuses: statusesProp = [], scenarios 
                 onChange={e => setRow(prev => ({ ...prev, scenarioId: e.target.value }))}
               >
                 <option value="">設定しない</option>
-                {[...new Set(scenarios.map(sc => sc["シナリオID"]))].filter(Boolean).map(sid => (
-                  <option key={sid} value={sid}>{sid}</option>
-                ))}
+                {[...new Set(scenarios.map(sc => sc["シナリオID"]))].filter(Boolean).map(sid => {
+                  const isUsed = usedScenarios.has(sid) && sid !== row.scenarioId;
+                  return (
+                    <option key={sid} value={sid} disabled={isUsed} style={{ color: isUsed ? "#aaa" : undefined }}>
+                      {sid}{isUsed ? "（他で使用中）" : ""}
+                    </option>
+                  );
+                })}
               </select>
             </div>
 
