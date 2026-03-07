@@ -78,11 +78,14 @@ export const parseLocalDate = (dateStr, isEnd = false) => {
 export const apiCall = {
   post: async (url, data) => {
     if (!url) throw new Error("GAS URLが設定されていません（VITE_GAS_URL を確認してください）");
-    const res = await axios.post(url, JSON.stringify(data), {
+    const body = JSON.stringify(data);
+    console.log("[apiCall.post] action:", data?.action, "url:", url?.slice(0, 60));
+    const res = await axios.post(url, body, {
       headers: { "Content-Type": "text/plain;charset=utf-8" },
     });
     // GASが302リダイレクト→doGetを返す場合など、statusフィールドがない場合もエラー扱い
     const result = typeof res.data === "string" ? JSON.parse(res.data) : res.data;
+    console.log("[apiCall.post] response:", result?.status, result?.message || "");
     if (!result || result.status !== "success") {
       throw new Error(result?.message || "GASからエラーレスポンスが返りました");
     }

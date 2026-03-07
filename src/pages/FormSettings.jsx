@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Lock, Trash2, AlertCircle, AlertTriangle, Plus, ChevronDown, ChevronUp,
@@ -102,11 +102,13 @@ function FormSettings({ formSettings = [], sheetCustomColumns = [], onRefresh })
         removeOrphanedCols: orphanedCols,
       });
       setSyncStatus("ok");
-      await onRefresh();
-      setTimeout(() => nav("/add"), 800);
-    } catch {
+      // データ更新を待ってから画面遷移
+      if (onRefresh) await onRefresh();
+      nav("/add");
+    } catch (err) {
+      console.error("saveFormSettings error:", err);
       setSyncStatus("error");
-      alert("同期に失敗しました");
+      alert("保存に失敗しました: " + (err?.message || "不明なエラー"));
     } finally {
       setSaving(false);
     }
