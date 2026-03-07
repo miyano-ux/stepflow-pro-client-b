@@ -1,7 +1,7 @@
 import React, { useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import {
-  Lock, Trash2, AlertTriangle, Plus, ChevronDown, ChevronUp,
+  Lock, Trash2, Plus, ChevronDown, ChevronUp,
   Type, Calendar, List, ToggleLeft, ToggleRight, GripVertical, X, CheckCircle2
 } from "lucide-react";
 import { THEME, GAS_URL } from "../lib/constants";
@@ -21,17 +21,10 @@ const FIELD_TYPES = [
 
 const FIXED_FIELDS = ["姓", "名", "電話番号", "メールアドレス"];
 
-const SYSTEM_COLS = new Set([
-  "顧客ID","姓","名","電話番号","メールアドレス",
-  "登録日","シナリオID","配信ステータス","対応ステータス",
-  "担当者メール","流入元","ステータス変更日","失注理由","契約種別"
-]);
-
-// formSettings配列 → items配列に変換（1回のみ使用）
 function buildItems(formSettings) {
   return (formSettings || []).map(f => ({
-    name:     f.name    || "",
-    type:     f.type    || "text",
+    name:     f.name || "",
+    type:     f.type || "text",
     required: f.required !== false && f.required !== "false",
     options:  (typeof f.options === "string" && f.options)
                 ? f.options.split(",").map(o => o.trim()).filter(Boolean)
@@ -42,23 +35,22 @@ function buildItems(formSettings) {
 export default function FormSettings({ formSettings = [], sheetCustomColumns = [], onRefresh }) {
   const nav = useNavigate();
 
-  // ★ useEffectを使わず、初回マウント時の値のみで初期化（無限ループ防止）
+  // 初回マウント時のみ初期化（useEffectなし → 無限ループ防止）
   const [items, setItems]         = useState(() => buildItems(formSettings));
   const [openIndex, setOpenIndex] = useState(null);
   const [saving, setSaving]       = useState(false);
   const [saved, setSaved]         = useState(false);
-
-  // シートにあるが定義にない孤立列
-  const definedNames  = new Set(items.map(it => it.name));
-  const orphanedCols  = sheetCustomColumns.filter(n => !SYSTEM_COLS.has(n) && !definedNames.has(n));
 
   // ── 項目操作 ──────────────────────────────────────
   const updateItem = useCallback((index, patch) =>
     setItems(prev => prev.map((item, i) => i === index ? { ...item, ...patch } : item)), []);
 
   const handleAdd = () => {
-    setItems(prev => [...prev, { name: "", type: "text", required: true, options: [""] }]);
-    setOpenIndex(items.length); // 追加した項目を開く
+    setItems(prev => {
+      const next = [...prev, { name: "", type: "text", required: true, options: [""] }];
+      setOpenIndex(next.length - 1);
+      return next;
+    });
   };
 
   const handleDelete = (index) => {
@@ -73,30 +65,25 @@ export default function FormSettings({ formSettings = [], sheetCustomColumns = [
     updateItem(ii, { options: opts.length ? opts : [""] });
   };
 
-  // ── 保存 ──────────────────────────────────────────
+  // ── 保存（差分計算はGAS側で行う） ─────────────────
   const handleSave = async () => {
     for (const item of items) {
-      if (!item.name.trim())
-        return alert("項目名が未入力の項目があります");
+      if (!item.name.trim()) return alert("項目名が未入力の項目があります");
       if (item.type === "dropdown" && !item.options.filter(o => o.trim()).length)
         return alert(`「${item.name}」の選択肢が空です`);
     }
 
     const settings = items.map(item => ({
-      name:    item.name.trim(),
-      type:    item.type,
+      name:     item.name.trim(),
+      type:     item.type,
       required: item.required,
-      options: item.type === "dropdown" ? item.options.filter(o => o.trim()).join(",") : "",
+      options:  item.type === "dropdown" ? item.options.filter(o => o.trim()).join(",") : "",
     }));
 
     setSaving(true);
     setSaved(false);
     try {
-      await apiCall.post(GAS_URL, {
-        action: "saveFormSettings",
-        settings,
-        removeOrphanedCols: orphanedCols,
-      });
+      await apiCall.post(GAS_URL, { action: "saveFormSettings", settings });
       setSaved(true);
       if (onRefresh) await onRefresh();
       nav("/add");
@@ -120,25 +107,6 @@ export default function FormSettings({ formSettings = [], sheetCustomColumns = [
     >
       <div style={{ maxWidth: "720px" }}>
 
-        {/* 孤立列の警告 */}
-        {orphanedCols.length > 0 && (
-          <div style={{ marginBottom: 20, padding: "16px 18px", backgroundColor: "#FFF7ED", borderRadius: 12, border: "1px solid #FED7AA", display: "flex", gap: 12, alignItems: "flex-start" }}>
-            <AlertTriangle size={17} color="#C2410C" style={{ flexShrink: 0, marginTop: 2 }} />
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 13, fontWeight: 800, color: "#9A3412", marginBottom: 6 }}>
-                不要な項目がデータに残っています
-              </div>
-              <div style={{ fontSize: 12, color: "#9A3412", lineHeight: 1.7, marginBottom: 8 }}>
-                定義にない項目: <strong>{orphanedCols.join("、")}</strong><br />
-                「保存」するとこれらの項目はデータから<strong>削除</strong>されます。
-              </div>
-              <div style={{ fontSize: 11, color: "#C2410C", backgroundColor: "#FFF", padding: "6px 10px", borderRadius: 6, border: "1px solid #FED7AA", display: "inline-block" }}>
-                ⚠ 該当項目にデータが入っている場合は削除されます。
-              </div>
-            </div>
-          </div>
-        )}
-
         {/* 案内 */}
         <div style={{ marginBottom: 24, padding: "14px 18px", backgroundColor: "#F8FAFC", borderRadius: 12, border: `1px solid ${THEME.border}`, fontSize: 13, color: THEME.textMuted, lineHeight: 1.6 }}>
           項目を追加・保存すると、データが自動で更新されます。既存項目の名前変更はデータの整合性が失われる可能性があるため慎重に行ってください。
@@ -150,7 +118,7 @@ export default function FormSettings({ formSettings = [], sheetCustomColumns = [
             固定項目（変更不可）
           </p>
           {FIXED_FIELDS.map(f => (
-            <div key={f} style={{ display: "flex", alignItems: "center", gap: 14, padding: "14px 20px", backgroundColor: THEME.locked || "#F8FAFC", borderRadius: 10, border: `1px solid ${THEME.border}`, marginBottom: 6, opacity: 0.7 }}>
+            <div key={f} style={{ display: "flex", alignItems: "center", gap: 14, padding: "14px 20px", backgroundColor: "#F8FAFC", borderRadius: 10, border: `1px solid ${THEME.border}`, marginBottom: 6, opacity: 0.7 }}>
               <Lock size={15} color={THEME.textMuted} />
               <span style={{ fontSize: 14, fontWeight: 700, color: THEME.textMain, flex: 1 }}>{f}</span>
               <span style={{ fontSize: 12, color: THEME.textMuted, backgroundColor: "white", padding: "3px 10px", borderRadius: 99, border: `1px solid ${THEME.border}` }}>テキスト</span>
