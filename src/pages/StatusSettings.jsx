@@ -187,25 +187,7 @@ export default function StatusSettings({ statuses: statusesProp = [], scenarios 
   };
 
   const handleSave = async () => {
-    const invalid = rows.find(r => !r.name.trim());
-    if (invalid) { alert("ステータス名を入力してください"); return; }
 
-    // 休眠・失注が複数設定されていないか確認
-    const dormantCount = rows.filter(r => r.terminalType === "dormant").length;
-    const lostCount    = rows.filter(r => r.terminalType === "lost").length;
-    if (dormantCount > 1) { alert("休眠は1つだけ設定できます"); return; }
-    if (lostCount > 1)    { alert("失注は1つだけ設定できます"); return; }
-
-    setSaving(true);
-    try {
-      await apiCall.post(gasUrl || GAS_URL, { action: "saveStatuses", statuses: rows });
-      await onRefresh();
-      alert("保存しました");
-    } catch {
-      alert("保存に失敗しました");
-    } finally {
-      setSaving(false);
-    }
   };
 
   return (
@@ -236,7 +218,7 @@ export default function StatusSettings({ statuses: statusesProp = [], scenarios 
       {flowRows.map((s, idx) => (
         <StatusRow
           key={idx}
-          s={s} idx={idx} total={rows.length}
+          s={s} idx={idx} total={flowRows.length}
           scenarios={scenarios}
           onChange={handleChange}
           onDelete={handleDelete}
