@@ -21,7 +21,7 @@ import DynamicField from "../components/DynamicField";
  * @param {string} masterUrl - マスタAPIのURL
  * @param {function} onRefresh - データ再取得コールバック
  */
-function CustomerForm({ formSettings = [], scenarios = [], statuses = [], staffList = [], sources = [], groups = [], onRefresh }) {
+function CustomerForm({ formSettings = [], scenarios = [], statuses = [], staffList = [], sources = [], groups = [], contractTypes = [], onRefresh }) {
   const navigate = useNavigate();
 
   const [ln, setLn] = useState("");
@@ -143,6 +143,7 @@ function CustomerForm({ formSettings = [], scenarios = [], statuses = [], staffL
       setSuccessModal({
         name: `${ln} ${fn}`,
         status: resolvedData["対応ステータス"] || "未対応",
+        contractType: resolvedData["契約種別"] || null,
         source: resolvedData["流入元"] || null,
         assignedGroupName,
         assignedStaffName,
@@ -196,6 +197,12 @@ function CustomerForm({ formSettings = [], scenarios = [], statuses = [], staffL
               <div style={{ display: "flex", justifyContent: "space-between" }}>
                 <span style={{ color: "#6B7280" }}>流入元</span>
                 <strong>{successModal.source}</strong>
+              </div>
+            )}
+                    {successModal.contractType && (
+              <div style={{ display: "flex", justifyContent: "space-between" }}>
+                <span style={{ color: "#6B7280" }}>契約種別</span>
+                <strong>{successModal.contractType}</strong>
               </div>
             )}
             {successModal.assignedGroupName ? (
@@ -348,8 +355,28 @@ function CustomerForm({ formSettings = [], scenarios = [], statuses = [], staffL
               </div>
             ) : <div />}
 
-            {/* 適用シナリオ */}
-            <div>
+            {/* 契約種別 */}
+            {contractTypes.length > 0 ? (
+              <div>
+                <label htmlFor="form-contract" style={{ fontWeight: 700, fontSize: 12, color: THEME.primary, userSelect: "none" }}>
+                  契約種別
+                </label>
+                <select
+                  id="form-contract"
+                  style={styles.input}
+                  value={fd["契約種別"] || ""}
+                  onChange={(e) => setFd({ ...fd, "契約種別": e.target.value })}
+                >
+                  <option value="">未選択</option>
+                  {contractTypes.map((t) => (
+                    <option key={t} value={t}>{t}</option>
+                  ))}
+                </select>
+              </div>
+            ) : <div />}
+
+            {/* 適用シナリオ（2カラム全幅） */}
+            <div style={{ gridColumn: "1 / -1" }}>
               <label htmlFor="form-scenario" style={{ fontWeight: 700, fontSize: 12, color: THEME.primary, userSelect: "none" }}>
                 適用シナリオ
               </label>

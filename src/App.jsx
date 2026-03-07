@@ -36,6 +36,8 @@ import ResponseImportPortal  from "./pages/ResponseImportPortal";
 import CustomerStatusList    from "./pages/CustomerStatusList";
 import UserForm              from "./pages/UserForm";
 import SourceManager         from "./pages/SourceManager";
+import ContractTypeManager   from "./pages/ContractTypeManager";
+import MasterSettings        from "./pages/MasterSettings";
 
 // ==========================================
 // 🚀 App - 認証 & ルーティング
@@ -55,6 +57,7 @@ function App() {
     sources: [],
     groups: [],
     statusHistory: [],
+    contractTypes: [],
   });
 
   // displaySettings: ユーザー個別に localStorage で管理
@@ -224,7 +227,7 @@ function App() {
               {/* 顧客管理 */}
               <Route path="/" element={<CustomerList customers={d?.customers} displaySettings={displaySettings} formSettings={d?.formSettings} scenarios={d?.scenarios} statuses={d?.statuses} staffList={staffList} scenarioSettings={d?.scenarioSettings} sources={d?.sources} gasUrl={GAS_URL} onRefresh={refresh} />} />
               <Route path="/customers" element={<CustomerList customers={d?.customers} displaySettings={displaySettings} formSettings={d?.formSettings} scenarios={d?.scenarios} statuses={d?.statuses} staffList={staffList} scenarioSettings={d?.scenarioSettings} sources={d?.sources} gasUrl={GAS_URL} onRefresh={refresh} />} />
-              <Route path="/add" element={<CustomerForm scenarios={d?.scenarios} formSettings={d?.formSettings} statuses={d?.statuses} staffList={staffList} sources={d?.sources} groups={d?.groups} onRefresh={refresh} />} />
+              <Route path="/add" element={<CustomerForm scenarios={d?.scenarios} formSettings={d?.formSettings} statuses={d?.statuses} staffList={staffList} sources={d?.sources} groups={d?.groups} contractTypes={d?.contractTypes} onRefresh={refresh} />} />
               <Route path="/schedule/:id" element={<CustomerSchedule customers={d?.customers} deliveryLogs={d?.deliveryLogs} onRefresh={refresh} />} />
               <Route path="/detail/:id" element={<CustomerDetail customers={d?.customers} formSettings={d?.formSettings} statuses={d?.statuses} sources={d?.sources} trackingLogs={d?.trackingLogs} staffList={staffList} groups={d?.groups} statusHistory={d?.statusHistory} gasUrl={GAS_URL} onRefresh={refresh} />} />
               <Route path="/direct-sms/:id" element={<DirectSms customers={d?.customers} templates={d?.templates} onRefresh={refresh} masterUrl={MASTER_WHITELIST_API} currentUserEmail={user?.email} />} />
@@ -233,6 +236,8 @@ function App() {
               <Route path="/column-settings" element={<ColumnSettings displaySettings={displaySettings} formSettings={d?.formSettings} onSaveDisplaySettings={saveDisplaySettings} onRefresh={refresh} gasUrl={GAS_URL} />} />
               <Route path="/form-settings" element={<FormSettings formSettings={d?.formSettings} onRefresh={refresh} />} />
               <Route path="/sources" element={<SourceManager sources={d?.sources} onRefresh={refresh} gasUrl={GAS_URL} />} />
+              <Route path="/contract-types" element={<ContractTypeManager contractTypes={d?.contractTypes} onRefresh={refresh} gasUrl={GAS_URL} />} />
+              <Route path="/master-settings" element={<MasterSettings statuses={d?.statuses} sources={d?.sources} contractTypes={d?.contractTypes} scenarios={d?.scenarios} />} />
               <Route path="/status-settings" element={<StatusSettings statuses={d?.statuses} scenarios={d?.scenarios} onRefresh={refresh} gasUrl={GAS_URL} />} />
 
               {/* テンプレート・シナリオ */}

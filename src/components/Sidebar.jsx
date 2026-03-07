@@ -26,19 +26,17 @@ const MAIN_ITEMS = [
 
 // ── 設定グループ（折りたたみ） ──
 const SETTINGS_ITEMS = [
-  { name: "シナリオ",      path: "/scenarios",      icon: <MessageSquare size={16} /> },
-  { name: "テンプレート",  path: "/templates",      icon: <Copy size={16} /> },
-  { name: "反響取り込み",  path: "/response-import",icon: <Mail size={16} /> },
-  { name: "流入元管理",    path: "/sources",          icon: <Globe size={16} /> },
-  { name: "ステータス設定",path: "/status-settings", icon: <Settings size={16} /> },
-  { name: "ユーザー管理",  path: "/users",           icon: <Users size={16} /> },
+  { name: "管理項目設定",  path: "/master-settings",  icon: <Settings size={16} /> },
+  { name: "テンプレート",  path: "/templates",         icon: <Copy size={16} /> },
+  { name: "反響取り込み",  path: "/response-import",  icon: <Mail size={16} /> },
+  { name: "ユーザー管理",  path: "/users",             icon: <Users size={16} /> },
 ];
 
 // 設定グループに含まれるパスかどうか
 const isSettingsPath = (pathname) =>
   SETTINGS_ITEMS.some((item) =>
     pathname === item.path || (item.path !== "/" && pathname.startsWith(item.path))
-  );
+  ) || ["/status-settings", "/sources", "/contract-types", "/scenarios"].some(p => pathname.startsWith(p));
 
 const Sidebar = ({ onLogout }) => {
   const location = useLocation();
