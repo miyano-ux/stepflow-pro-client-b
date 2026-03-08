@@ -16,16 +16,20 @@ import PromptFieldsModal from "../components/PromptFieldsModal";
 const S = {
   main:    { minHeight: "100vh", backgroundColor: THEME.bg, display: "flex", flexDirection: "column" },
   wrapper: { padding: "40px 40px 0", flex: 1, display: "flex", flexDirection: "column", minHeight: 0 },
-  body:    { flex: 1, display: "flex", gap: 0, minHeight: 0, overflow: "hidden" },
+  body:    { flex: 1, display: "flex", gap: 0, overflow: "hidden" },
   // 左：フロー列エリア
   flowArea:  { flex: 1, display: "flex", flexDirection: "column", minWidth: 0, overflow: "hidden" },
+  // kanban: 横スクロール。各列は高さ固定でカード内部だけスクロール
   kanban:    { display: "flex", gap: "16px", overflowX: "auto", paddingBottom: "24px", flex: 1, alignItems: "flex-start" },
-  col:       { minWidth: "300px", width: "300px", borderRadius: "20px", padding: "16px", minHeight: "60vh", border: `1px solid ${THEME.border}`, transition: "background-color 0.2s, border-color 0.2s", flexShrink: 0 },
-  card:      { backgroundColor: "#FFF", borderRadius: "14px", padding: "16px", boxShadow: "0 4px 6px -1px rgba(0,0,0,0.05)", cursor: "grab", border: "2px solid transparent", userSelect: "none", transition: "transform 0.15s, box-shadow 0.15s, opacity 0.15s" },
-  // 右：終点パネル
-  rightPanel: { width: "240px", flexShrink: 0, display: "flex", flexDirection: "column", borderLeft: `1px solid ${THEME.border}`, marginLeft: "16px" },
-  rightZone:  { flex: 1, padding: "16px", display: "flex", flexDirection: "column", gap: "10px", overflowY: "auto" },
-  excludedZone: { padding: "16px", borderTop: `1px solid ${THEME.border}`, backgroundColor: "#F3F4F6" },
+  // col: 固定高さ・内部スクロール構造のコンテナ
+  col:       { minWidth: "300px", width: "300px", borderRadius: "20px", border: `1px solid ${THEME.border}`, transition: "background-color 0.2s, border-color 0.2s", flexShrink: 0, display: "flex", flexDirection: "column", maxHeight: "calc(100vh - 220px)" },
+  colHeader: { padding: "16px 16px 12px", flexShrink: 0 },         // スティッキーヘッダー
+  colCards:  { padding: "0 16px 16px", overflowY: "auto", flex: 1 }, // スクロール対象
+  card:      { backgroundColor: "#FFF", borderRadius: "14px", padding: "16px", boxShadow: "0 4px 6px -1px rgba(0,0,0,0.05)", cursor: "grab", border: "2px solid transparent", userSelect: "none", transition: "transform 0.15s, box-shadow 0.15s, opacity 0.15s", marginBottom: "10px" },
+  // 右：終点パネル（除外ゾーンを常に下部固定）
+  rightPanel: { width: "240px", flexShrink: 0, display: "flex", flexDirection: "column", borderLeft: `1px solid ${THEME.border}`, marginLeft: "16px", overflow: "hidden" },
+  rightZone:  { flex: 1, padding: "16px", display: "flex", flexDirection: "column", gap: "10px", overflowY: "auto", minHeight: 0 },
+  excludedZone: { padding: "14px 16px", borderTop: `1px solid ${THEME.border}`, backgroundColor: "#F3F4F6", flexShrink: 0 },
   // 下部バー
   bottomBar: { position: "sticky", bottom: 0, backgroundColor: "rgba(255,255,255,0.95)", backdropFilter: "blur(12px)", padding: "16px 40px", borderTop: `1px solid ${THEME.border}`, display: "flex", gap: "16px", justifyContent: "center", zIndex: 10, flexWrap: "wrap" },
   zone:      { minWidth: "220px", height: "72px", borderRadius: "16px", display: "flex", alignItems: "center", justifyContent: "center", gap: "10px", fontWeight: "900", fontSize: "15px", border: "3px dashed transparent", transition: "all 0.2s", cursor: "default", padding: "0 20px" },
@@ -456,15 +460,19 @@ export default function KanbanBoard({
                       onDrop={e => onDrop(e, st.name)}
                       style={{ ...S.col, backgroundColor: isOver ? "#E0E7FF" : "#EDF2F7", borderColor: isOver ? THEME.primary : THEME.border, boxShadow: isOver ? `0 0 0 2px ${THEME.primary}40` : "none" }}
                     >
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "14px", padding: "0 4px" }}>
-                        <div>
-                          <h3 style={{ fontSize: "13px", fontWeight: "900", color: THEME.textMain, margin: 0 }}>{st.name}</h3>
-                          {st.scenarioId && <div style={{ fontSize: 10, color: THEME.primary, fontWeight: 700, marginTop: 2 }}>▶ {st.scenarioId}</div>}
+                      {/* ── 固定ヘッダー ── */}
+                      <div style={{ ...S.colHeader, backgroundColor: isOver ? "#E0E7FF" : "#EDF2F7", borderRadius: "20px 20px 0 0" }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                          <div>
+                            <h3 style={{ fontSize: "13px", fontWeight: "900", color: THEME.textMain, margin: 0 }}>{st.name}</h3>
+                            {st.scenarioId && <div style={{ fontSize: 10, color: THEME.primary, fontWeight: 700, marginTop: 2 }}>▶ {st.scenarioId}</div>}
+                          </div>
+                          <span style={{ backgroundColor: THEME.primary, color: "white", padding: "2px 10px", borderRadius: "20px", fontSize: "12px", fontWeight: "900" }}>{cards.length}</span>
                         </div>
-                        <span style={{ backgroundColor: THEME.primary, color: "white", padding: "2px 10px", borderRadius: "20px", fontSize: "12px", fontWeight: "900" }}>{cards.length}</span>
                       </div>
 
-                      <div style={{ display: "flex", flexDirection: "column", gap: "10px", minHeight: "80px" }}>
+                      {/* ── スクロールするカード領域 ── */}
+                      <div style={S.colCards}>
                         {cards.map(c => {
                           const dragging = draggingId === String(c.id);
                           const staff    = staffList.find(s => s.email === c["担当者メール"]);
@@ -489,7 +497,7 @@ export default function KanbanBoard({
                                 </Link>
                               </div>
                               {days !== null && color && (
-                                <div style={{ marginTop: 8, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                                <div style={{ marginTop: 8 }}>
                                   <span style={{ fontSize: 11, fontWeight: 800, backgroundColor: color.bg, color: color.text, padding: "3px 10px", borderRadius: 99 }}>
                                     {days === 0 ? "本日" : `${days}日滞留中`}
                                   </span>
@@ -498,6 +506,8 @@ export default function KanbanBoard({
                             </div>
                           );
                         })}
+                        {/* ドロップ受け取り用の最低高さ確保 */}
+                        {cards.length === 0 && <div style={{ height: 80 }} />}
                       </div>
                     </div>
                   );
@@ -508,31 +518,35 @@ export default function KanbanBoard({
             {/* ── 右パネル ── */}
             {hasRightPanel && (
               <div style={S.rightPanel}>
-                {/* 右側終点ゾーン */}
-                {rightTerminals.length > 0 && (
-                  <div style={S.rightZone}>
-                    <div style={{ fontSize: 11, fontWeight: 800, color: THEME.textMuted, marginBottom: 2 }}>終点エリア</div>
-                    {rightTerminals.map(st => {
-                      const visual = TERMINAL_VISUAL[st.terminalType] || TERMINAL_VISUAL.dormant;
-                      return (
-                        <DropZone
-                          key={st.name}
-                          status={st}
-                          count={termCount(st)}
-                          isDragging={!!draggingId}
-                          isOver={overColumn === st.name}
-                          visual={visual}
-                          onDragOver={e => onDragOver(e, st.name)}
-                          onDragLeave={onDragLeave}
-                          onDrop={e => onDrop(e, st.name)}
-                          compact
-                        />
-                      );
-                    })}
-                  </div>
-                )}
+                {/* 右側終点ゾーン（flex:1で上部を占有） */}
+                <div style={S.rightZone}>
+                  {rightTerminals.length > 0 && (
+                    <>
+                      <div style={{ fontSize: 11, fontWeight: 800, color: THEME.textMuted, marginBottom: 2 }}>終点エリア</div>
+                      {rightTerminals.map(st => {
+                        const visual = TERMINAL_VISUAL[st.terminalType] || TERMINAL_VISUAL.dormant;
+                        return (
+                          <DropZone
+                            key={st.name}
+                            status={st}
+                            count={termCount(st)}
+                            isDragging={!!draggingId}
+                            isOver={overColumn === st.name}
+                            visual={visual}
+                            onDragOver={e => onDragOver(e, st.name)}
+                            onDragLeave={onDragLeave}
+                            onDrop={e => onDrop(e, st.name)}
+                            compact
+                          />
+                        );
+                      })}
+                    </>
+                  )}
+                  {/* rightTerminalsがない場合のスペーサー */}
+                  {rightTerminals.length === 0 && <div style={{ flex: 1 }} />}
+                </div>
 
-                {/* 除外ゾーン（右下コーナー） */}
+                {/* 除外ゾーン：常に右パネル下部に固定 */}
                 <ExcludedZone
                   statuses={excludedStatuses}
                   customers={localCustomers}

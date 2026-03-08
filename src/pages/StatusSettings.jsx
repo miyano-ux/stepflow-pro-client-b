@@ -25,9 +25,9 @@ const PROMPT_FIELD_OPTIONS = [
 // ─────────────────────────────────────────────────────────
 const TERMINAL_META = {
   dormant:  { icon: "⏸",  color: "#D97706", bg: "#FFFBEB", label: "終点ステータス", canDelete: true,  canRename: true,  hasPlacement: true,  canAdd: true  },
-  won:      { icon: "🏆", color: "#059669", bg: "#ECFDF5", label: "成約",           canDelete: false, canRename: false, hasPlacement: true,  canAdd: false },
-  lost:     { icon: "🗑",  color: "#DC2626", bg: "#FEF2F2", label: "失注",           canDelete: false, canRename: false, hasPlacement: true,  canAdd: false },
-  excluded: { icon: "🚫", color: "#9CA3AF", bg: "#F3F4F6", label: "除外",           canDelete: false, canRename: false, hasPlacement: false, canAdd: false },
+  won:      { icon: "🏆", color: "#059669", bg: "#ECFDF5", label: "成約",           canDelete: false, canRename: true,  hasPlacement: true,  canAdd: false },
+  lost:     { icon: "🗑",  color: "#DC2626", bg: "#FEF2F2", label: "失注",           canDelete: false, canRename: true,  hasPlacement: true,  canAdd: false },
+  excluded: { icon: "🚫", color: "#9CA3AF", bg: "#F3F4F6", label: "除外",           canDelete: false, canRename: true,  hasPlacement: false, canAdd: false },
 };
 
 const PLACEMENT_OPTIONS = [
