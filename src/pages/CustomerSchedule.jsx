@@ -20,7 +20,7 @@ import SmartDateTimePicker from "../components/SmartDateTimePicker";
 function CustomerSchedule({ customers = [], deliveryLogs = [], onRefresh }) {
   const navigate = useNavigate();
   const { id } = useParams();
-  const c = customers?.find((x) => x.id === Number(id));
+  const c = customers?.find((x) => String(x.id) === String(id));
 
   // 編集モーダルの開閉と編集データを管理
   const [edit, setEdit] = useState(null);
