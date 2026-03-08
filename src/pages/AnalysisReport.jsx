@@ -25,6 +25,20 @@ const STAY_COLORS = {
   danger:  { bg: "#FEF2F2", border: "#EF4444", text: "#DC2626", label: "要対応" },
 };
 
+// 終点ステータスの見た目定義
+function terminalStyle(terminalType) {
+  switch (terminalType) {
+    case "won":
+      return { emoji: "🏆", color: "#059669", bg: "#D1FAE5", border: "#6EE7B7" };
+    case "dormant":
+      return { emoji: "⏸",  color: "#D97706", bg: "#FEF3C7", border: "#FDE68A" };
+    case "lost":
+      return { emoji: "🗑",  color: "#DC2626", bg: "#FEE2E2", border: "#FECACA" };
+    default:
+      return { emoji: "📋", color: "#64748B", bg: "#F1F5F9", border: "#CBD5E1" };
+  }
+}
+
 // ── ドリルダウンモーダル ──────────────────────────────
 function DrillModal({ statusName, customers, staffList, avgDays, onClose }) {
   const now = new Date();
@@ -131,30 +145,40 @@ export default function AnalysisReport({ customers = [], statuses = [], tracking
   const [drillStatus, setDrillStatus] = useState(null);
   const navigate = useNavigate();
 
-  const dormantStatus = statuses.find(s => s.terminalType === "dormant") || statuses[statuses.length - 2];
-  const lostStatus    = statuses.find(s => s.terminalType === "lost")    || statuses[statuses.length - 1];
-  const dormantLabel  = dormantStatus?.name || "休眠";
-  const lostLabel     = lostStatus?.name    || "失注";
-
   const filtered = useMemo(() =>
     customers.filter(c => !filterStaff || c["担当者メール"] === filterStaff),
     [customers, filterStaff]
   );
 
-  const successPathStatuses = useMemo(() =>
-    statuses.filter(s => s.name !== dormantLabel && s.name !== lostLabel),
-    [statuses, dormantLabel, lostLabel]
+  // ── 棒グラフ・フェーズ別滞在日数の対象：
+  //    excluded（右下コーナー固定）のみ除外し、
+  //    カンバン上部の通常フロー + 右側終点ステータス（won / dormant / lost）を含む
+  const chartStatuses = useMemo(() =>
+    statuses.filter(s => s.terminalType !== "excluded"),
+    [statuses]
   );
 
-  const successPathData = useMemo(() =>
-    successPathStatuses.map((st, i) => {
+  // ── 下部サマリカード用：終点ステータス（won / dormant / lost）のみ
+  const terminalStatuses = useMemo(() =>
+    statuses.filter(s => ["won", "dormant", "lost"].includes(s.terminalType)),
+    [statuses]
+  );
+
+  const chartData = useMemo(() =>
+    chartStatuses.map((st, i) => {
       const list = filtered.filter(c => (c["対応ステータス"] || "").trim() === st.name);
-      return { name: st.name, count: list.length, customers: list, color: THEME.colors[i % THEME.colors.length] };
+      return {
+        name: st.name,
+        count: list.length,
+        customers: list,
+        color: THEME.colors[i % THEME.colors.length],
+        terminalType: st.terminalType,
+      };
     }),
-    [filtered, successPathStatuses]
+    [filtered, chartStatuses]
   );
 
-  const maxCount = Math.max(...successPathData.map(d => d.count), 1);
+  const maxCount = Math.max(...chartData.map(d => d.count), 1);
 
   // ── フェーズ別平均滞在日数 ──
   const avgDaysMap = useMemo(() => {
@@ -189,17 +213,23 @@ export default function AnalysisReport({ customers = [], statuses = [], tracking
   }, [statusHistory]);
 
   const phaseTransitions = useMemo(() =>
-    successPathStatuses.map(st => ({
+    chartStatuses.map(st => ({
       name: st.name,
       avgDays: avgDaysMap[st.name] ?? null,
+      terminalType: st.terminalType,
     })),
-    [successPathStatuses, avgDaysMap]
+    [chartStatuses, avgDaysMap]
   );
 
-  const drillData     = drillStatus ? successPathData.find(d => d.name === drillStatus) : null;
-  const drillAvgDays  = drillStatus ? (avgDaysMap[drillStatus] ?? null) : null;
+  const drillData    = drillStatus ? chartData.find(d => d.name === drillStatus) : null;
+  const drillAvgDays = drillStatus ? (avgDaysMap[drillStatus] ?? null) : null;
   const countByStatus = label => filtered.filter(c => (c["対応ステータス"] || "").trim() === label.trim()).length;
   const maxAvgDays    = Math.max(...phaseTransitions.map(p => p.avgDays ?? 0), 1);
+
+  // 下部グリッド列数
+  const terminalGridCols = terminalStatuses.length <= 4
+    ? `repeat(${terminalStatuses.length}, 1fr)`
+    : "repeat(auto-fill, minmax(240px, 1fr))";
 
   return (
     <>
@@ -221,34 +251,49 @@ export default function AnalysisReport({ customers = [], statuses = [], tracking
             <StaffDropdown staffList={staffList} value={filterStaff} onChange={setFilterStaff} />
           </header>
 
-          {/* 成功パス棒グラフ */}
+          {/* 棒グラフ */}
           <div style={S.card}>
             <h3 style={{ fontSize: 17, fontWeight: 900, marginBottom: 28, display: "flex", alignItems: "center", gap: 8 }}>
-              <Activity size={18} color={THEME.primary} /> 成功パスの案件分布
+              <Activity size={18} color={THEME.primary} /> 案件分布
               <span style={{ fontSize: 12, fontWeight: 700, color: THEME.textMuted, marginLeft: 8 }}>— バーをクリックで顧客リスト（停滞色分け）表示</span>
             </h3>
             <div style={{ height: 280, display: "flex", alignItems: "flex-end", gap: 12, paddingBottom: 16, borderBottom: `2px solid ${THEME.border}` }}>
-              {successPathData.map(d => (
-                <div key={d.name} style={{ flex: 1, display: "flex", flexDirection: "column", height: "100%", cursor: d.count > 0 ? "pointer" : "default" }}
-                  onClick={() => d.count > 0 && setDrillStatus(d.name)}
-                >
-                  <div style={{ flex: 1, display: "flex", alignItems: "flex-end", justifyContent: "center", marginBottom: 10 }}>
-                    <div style={{
-                      width: "60%", borderRadius: "8px 8px 2px 2px",
-                      backgroundColor: d.color, position: "relative",
-                      height: `${Math.max((d.count / maxCount) * 100, d.count > 0 ? 4 : 0)}%`,
-                      transition: "height 0.8s ease, filter 0.15s",
-                      minHeight: d.count > 0 ? 8 : 0,
-                    }}
-                      onMouseEnter={e => { if (d.count > 0) e.currentTarget.style.filter = "brightness(0.88)"; }}
-                      onMouseLeave={e => e.currentTarget.style.filter = "none"}
-                    >
-                      {d.count > 0 && <span style={{ position: "absolute", top: -24, left: "50%", transform: "translateX(-50%)", fontWeight: 900, color: d.color, fontSize: 14 }}>{d.count}</span>}
+              {chartData.map(d => {
+                const isTerminal = !!d.terminalType;
+                const ts = isTerminal ? terminalStyle(d.terminalType) : null;
+                const barColor = isTerminal ? ts.color : d.color;
+                return (
+                  <div key={d.name} style={{ flex: 1, display: "flex", flexDirection: "column", height: "100%", cursor: d.count > 0 ? "pointer" : "default" }}
+                    onClick={() => d.count > 0 && setDrillStatus(d.name)}
+                  >
+                    <div style={{ flex: 1, display: "flex", alignItems: "flex-end", justifyContent: "center", marginBottom: 10 }}>
+                      <div style={{
+                        width: "60%", borderRadius: "8px 8px 2px 2px",
+                        backgroundColor: barColor, position: "relative",
+                        height: `${Math.max((d.count / maxCount) * 100, d.count > 0 ? 4 : 0)}%`,
+                        transition: "height 0.8s ease, filter 0.15s",
+                        minHeight: d.count > 0 ? 8 : 0,
+                        opacity: isTerminal ? 0.85 : 1,
+                      }}
+                        onMouseEnter={e => { if (d.count > 0) e.currentTarget.style.filter = "brightness(0.88)"; }}
+                        onMouseLeave={e => e.currentTarget.style.filter = "none"}
+                      >
+                        {d.count > 0 && (
+                          <span style={{ position: "absolute", top: -24, left: "50%", transform: "translateX(-50%)", fontWeight: 900, color: barColor, fontSize: 14 }}>
+                            {d.count}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <div style={{ textAlign: "center" }}>
+                      {isTerminal && <div style={{ fontSize: 13, lineHeight: 1, marginBottom: 2 }}>{ts.emoji}</div>}
+                      <div style={{ fontSize: 11, fontWeight: 800, color: isTerminal ? ts.color : THEME.textMain, lineHeight: 1.3 }}>
+                        {d.name}
+                      </div>
                     </div>
                   </div>
-                  <div style={{ fontSize: 11, fontWeight: 800, textAlign: "center", color: THEME.textMain, lineHeight: 1.3 }}>{d.name}</div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
 
@@ -263,19 +308,26 @@ export default function AnalysisReport({ customers = [], statuses = [], tracking
               {phaseTransitions.map((pt, i) => {
                 const days = pt.avgDays;
                 const barPct = days != null ? Math.min((days / maxAvgDays) * 100, 100) : 0;
+                const isTerminal = !!pt.terminalType;
+                const ts = isTerminal ? terminalStyle(pt.terminalType) : null;
+                const cardBg     = isTerminal ? ts.bg      : "#F5F3FF";
+                const cardBorder = isTerminal ? ts.border  : THEME.border;
+                const numColor   = isTerminal ? ts.color   : THEME.primary;
+                const barTrack   = isTerminal ? `${ts.border}66` : "#E0E7FF";
                 return (
                   <React.Fragment key={pt.name}>
                     <div style={{ minWidth: 130, flexShrink: 0 }}>
-                      <div style={{ backgroundColor: "#F5F3FF", borderRadius: 14, padding: "18px 12px", textAlign: "center", border: `1.5px solid ${THEME.border}`, height: "100%", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 6 }}>
-                        <div style={{ fontSize: 10, fontWeight: 800, color: THEME.textMuted, lineHeight: 1.4 }}>{pt.name}</div>
+                      <div style={{ backgroundColor: cardBg, borderRadius: 14, padding: "18px 12px", textAlign: "center", border: `1.5px solid ${cardBorder}`, height: "100%", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 6 }}>
+                        {isTerminal && <div style={{ fontSize: 16 }}>{ts.emoji}</div>}
+                        <div style={{ fontSize: 10, fontWeight: 800, color: isTerminal ? ts.color : THEME.textMuted, lineHeight: 1.4 }}>{pt.name}</div>
                         {days != null ? (
                           <>
-                            <div style={{ fontSize: 28, fontWeight: 900, color: THEME.primary, lineHeight: 1 }}>
+                            <div style={{ fontSize: 28, fontWeight: 900, color: numColor, lineHeight: 1 }}>
                               {days < 1 ? `${(days * 24).toFixed(1)}` : days.toFixed(1)}
                             </div>
                             <div style={{ fontSize: 11, color: THEME.textMuted }}>{days < 1 ? "時間" : "日"}</div>
-                            <div style={{ width: "80%", height: 6, backgroundColor: "#E0E7FF", borderRadius: 99 }}>
-                              <div style={{ height: "100%", width: `${barPct}%`, backgroundColor: THEME.primary, borderRadius: 99 }} />
+                            <div style={{ width: "80%", height: 6, backgroundColor: barTrack, borderRadius: 99 }}>
+                              <div style={{ height: "100%", width: `${barPct}%`, backgroundColor: numColor, borderRadius: 99 }} />
                             </div>
                           </>
                         ) : (
@@ -310,31 +362,36 @@ export default function AnalysisReport({ customers = [], statuses = [], tracking
             </div>
           </div>
 
-          {/* 休眠・失注サマリ */}
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24, marginBottom: 32 }}>
-            {[
-              { label: dormantLabel, emoji: "🌙", color: "#D97706", bg: "#FEF3C7", border: "#FDE68A", type: "dormant" },
-              { label: lostLabel,    emoji: "🗑",  color: "#DC2626", bg: "#FEE2E2", border: "#FECACA", type: "lost"    },
-            ].map(({ label, emoji, color, bg, border, type }) => (
-              <Link key={type} to={`/status-list/${type}`} style={{ textDecoration: "none" }}>
-                <div style={{ backgroundColor: "white", borderRadius: 20, border: `1px solid ${border}`, padding: "24px 28px", boxShadow: "0 2px 8px rgba(0,0,0,0.04)", transition: "all 0.18s" }}
-                  onMouseEnter={e => { e.currentTarget.style.transform = "translateY(-2px)"; e.currentTarget.style.boxShadow = `0 10px 28px ${color}22`; }}
-                  onMouseLeave={e => { e.currentTarget.style.transform = "none"; e.currentTarget.style.boxShadow = "0 2px 8px rgba(0,0,0,0.04)"; }}
-                >
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <div>
-                      <div style={{ fontSize: 28, marginBottom: 6 }}>{emoji}</div>
-                      <div style={{ fontSize: 13, fontWeight: 800, color: THEME.textMuted, marginBottom: 2 }}>{label}</div>
-                      <div style={{ fontSize: 32, fontWeight: 900, color }}>{countByStatus(label)} <span style={{ fontSize: 14, fontWeight: 700 }}>名</span></div>
+          {/* 終点ステータスサマリ（全 won / dormant / lost を動的表示） */}
+          {terminalStatuses.length > 0 && (
+            <div style={{ display: "grid", gridTemplateColumns: terminalGridCols, gap: 20, marginBottom: 32 }}>
+              {terminalStatuses.map(st => {
+                const ts = terminalStyle(st.terminalType);
+                return (
+                  <Link key={`${st.terminalType}-${st.name}`} to={`/status-list/${st.terminalType}`} style={{ textDecoration: "none" }}>
+                    <div
+                      style={{ backgroundColor: "white", borderRadius: 20, border: `1px solid ${ts.border}`, padding: "24px 28px", boxShadow: "0 2px 8px rgba(0,0,0,0.04)", transition: "all 0.18s" }}
+                      onMouseEnter={e => { e.currentTarget.style.transform = "translateY(-2px)"; e.currentTarget.style.boxShadow = `0 10px 28px ${ts.color}22`; }}
+                      onMouseLeave={e => { e.currentTarget.style.transform = "none"; e.currentTarget.style.boxShadow = "0 2px 8px rgba(0,0,0,0.04)"; }}
+                    >
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                        <div>
+                          <div style={{ fontSize: 28, marginBottom: 6 }}>{ts.emoji}</div>
+                          <div style={{ fontSize: 13, fontWeight: 800, color: THEME.textMuted, marginBottom: 2 }}>{st.name}</div>
+                          <div style={{ fontSize: 32, fontWeight: 900, color: ts.color }}>
+                            {countByStatus(st.name)} <span style={{ fontSize: 14, fontWeight: 700 }}>名</span>
+                          </div>
+                        </div>
+                        <div style={{ backgroundColor: ts.bg, border: `1px solid ${ts.border}`, borderRadius: 10, padding: "6px 14px", fontSize: 12, fontWeight: 800, color: ts.color }}>
+                          一覧 →
+                        </div>
+                      </div>
                     </div>
-                    <div style={{ backgroundColor: bg, border: `1px solid ${border}`, borderRadius: 10, padding: "6px 14px", fontSize: 12, fontWeight: 800, color }}>
-                      一覧 →
-                    </div>
-                  </div>
-                </div>
-              </Link>
-            ))}
-          </div>
+                  </Link>
+                );
+              })}
+            </div>
+          )}
 
         </div>
       </div>
