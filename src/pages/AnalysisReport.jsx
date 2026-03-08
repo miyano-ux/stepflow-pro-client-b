@@ -151,8 +151,8 @@ export default function AnalysisReport({ customers = [], statuses = [], tracking
   );
 
   // ── 棒グラフ・フェーズ別滞在日数の対象：
-  //    excluded（右下コーナー固定）のみ除外し、
-  //    カンバン上部の通常フロー + 右側終点ステータス（won / dormant / lost）を含む
+  //    通常フロー列 ＋ 右側終点ステータス（won / dormant / lost）を含む。
+  //    右下コーナー固定の excluded のみ除外。
   const chartStatuses = useMemo(() =>
     statuses.filter(s => s.terminalType !== "excluded"),
     [statuses]
