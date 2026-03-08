@@ -262,7 +262,7 @@ function App() {
 
               {/* 分析・トラッキング */}
               <Route path="/analysis" element={<ReportIndex />} />
-              <Route path="/analysis/sales" element={<AnalysisReport customers={d?.customers} statuses={d?.statuses} trackingLogs={d?.trackingLogs} staffList={staffList} />} />
+              <Route path="/analysis/sales" element={<AnalysisReport customers={d?.customers} statuses={d?.statuses} trackingLogs={d?.trackingLogs} staffList={staffList} statusHistory={d?.statusHistory} />} />
               <Route path="/analysis/source" element={<SourceReport customers={d?.customers} statuses={d?.statuses} sources={d?.sources} contractTypes={d?.contractTypes} />} />
               <Route path="/analysis/lost" element={<LostReport customers={d?.customers} statuses={d?.statuses} staffList={staffList} />} />
               <Route path="/tracking" element={<TrackingDashboard />} />
