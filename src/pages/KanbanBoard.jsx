@@ -54,7 +54,8 @@ function daysColor(days) {
 // terminalType ごとのビジュアル設定
 // ─────────────────────────────────────────────────────────
 const TERMINAL_VISUAL = {
-  dormant:  { emoji: "🌙", color: "#D97706", bg: "#FFFBEB", border: "#FDE68A", routeType: "dormant" },
+  dormant:  { emoji: "⏸",  color: "#D97706", bg: "#FFFBEB", border: "#FDE68A", routeType: "dormant" },
+  won:      { emoji: "🏆", color: "#059669", bg: "#ECFDF5", border: "#6EE7B7", routeType: "won"     },
   lost:     { emoji: "🗑",  color: "#DC2626", bg: "#FEF2F2", border: "#FCA5A5", routeType: "lost"    },
   excluded: { emoji: "🚫", color: "#9CA3AF", bg: "#F3F4F6", border: "#E5E7EB", routeType: null       },
 };
@@ -332,6 +333,16 @@ export default function KanbanBoard({
     // 失注
     if (statusDef?.terminalType === "lost") {
       setLostModal({ customerId: cid, newStatus, prevStatus });
+      return;
+    }
+    // 成約 → シンプル確認モーダル経由で更新
+    if (statusDef?.terminalType === "won") {
+      const scenarioId = statusDef?.scenarioId || "";
+      if (scenarioId) {
+        setScenarioModal({ customerId: cid, newStatus, prevStatus, scenarioId });
+      } else {
+        execUpdate(cid, newStatus, prevStatus, "");
+      }
       return;
     }
     // 休眠系（dormant）→ 再アプローチモーダル
