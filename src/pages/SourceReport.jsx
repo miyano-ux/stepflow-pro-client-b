@@ -29,12 +29,12 @@ function SectionTitle({ children, color }) {
 function HBar({ value, maxVal, color, suffix = "" }) {
   const pct = maxVal > 0 ? Math.max((value / maxVal) * 100, value > 0 ? 3 : 0) : 0;
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 6, width: "100%" }}>
+      <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
         <span style={{ fontSize: 22, fontWeight: 900, color: THEME.textMain, lineHeight: 1 }}>{value}</span>
         <span style={{ fontSize: 12, fontWeight: 700, color: THEME.textMuted }}>{suffix}</span>
       </div>
-      <div style={{ backgroundColor: "#EEF2FF", borderRadius: 6, overflow: "hidden", height: 16 }}>
+      <div style={{ width: "100%", backgroundColor: "#EEF2FF", borderRadius: 6, overflow: "hidden", height: 16 }}>
         <div style={{ width: `${pct}%`, height: "100%", backgroundColor: color,
           borderRadius: 6, transition: "width 0.6s ease" }} />
       </div>
