@@ -14,25 +14,29 @@ import PromptFieldsModal from "../components/PromptFieldsModal";
 // スタイル定数
 // ─────────────────────────────────────────────────────────
 const S = {
-  main:    { minHeight: "100vh", backgroundColor: THEME.bg, display: "flex", flexDirection: "column" },
-  wrapper: { padding: "40px 40px 0", flex: 1, display: "flex", flexDirection: "column", minHeight: 0 },
-  body:    { flex: 1, display: "flex", gap: 0, overflow: "hidden" },
-  // 左：フロー列エリア
-  flowArea:  { flex: 1, display: "flex", flexDirection: "column", minWidth: 0, overflow: "hidden" },
-  // kanban: 横スクロール。各列は高さ固定でカード内部だけスクロール
-  kanban:    { display: "flex", gap: "16px", overflowX: "auto", paddingBottom: "24px", flex: 1, alignItems: "flex-start" },
-  // col: 固定高さ・内部スクロール構造のコンテナ
-  col:       { minWidth: "300px", width: "300px", borderRadius: "20px", border: `1px solid ${THEME.border}`, transition: "background-color 0.2s, border-color 0.2s", flexShrink: 0, display: "flex", flexDirection: "column", maxHeight: "calc(100vh - 220px)" },
-  colHeader: { padding: "16px 16px 12px", flexShrink: 0 },         // スティッキーヘッダー
-  colCards:  { padding: "0 16px 16px", overflowY: "auto", flex: 1 }, // スクロール対象
+  // ページ全体を 100vh に収める → ページ自体はスクロールしない
+  main:    { height: "100vh", backgroundColor: THEME.bg, display: "flex", flexDirection: "column", overflow: "hidden" },
+  // wrapper: ヘッダー固定 + body がのこりを占有
+  wrapper: { padding: "0", flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", minHeight: 0 },
+  // ヘッダー：高さ固定で縮まない
+  header:  { padding: "28px 40px 20px", flexShrink: 0, display: "flex", justifyContent: "space-between", alignItems: "center", backgroundColor: THEME.bg, borderBottom: `1px solid ${THEME.border}`, zIndex: 20 },
+  // body：残り高さを占有、横に並ぶ
+  body:    { flex: 1, display: "flex", minHeight: 0, overflow: "hidden" },
+  // 左：フロー列エリア（横スクロールのみ）
+  flowArea:  { flex: 1, display: "flex", flexDirection: "column", minWidth: 0, overflow: "hidden", padding: "16px 0 0 40px" },
+  kanban:    { display: "flex", gap: "16px", overflowX: "auto", overflowY: "hidden", flex: 1, alignItems: "stretch", paddingBottom: "16px", paddingRight: "16px" },
+  // col：高さいっぱいに伸ばしてカードのみ縦スクロール
+  col:       { minWidth: "300px", width: "300px", borderRadius: "20px", border: `1px solid ${THEME.border}`, transition: "background-color 0.2s, border-color 0.2s", flexShrink: 0, display: "flex", flexDirection: "column" },
+  colHeader: { padding: "16px 16px 12px", flexShrink: 0, borderRadius: "20px 20px 0 0" },
+  colCards:  { padding: "0 16px 16px", overflowY: "auto", flex: 1 },
   card:      { backgroundColor: "#FFF", borderRadius: "14px", padding: "16px", boxShadow: "0 4px 6px -1px rgba(0,0,0,0.05)", cursor: "grab", border: "2px solid transparent", userSelect: "none", transition: "transform 0.15s, box-shadow 0.15s, opacity 0.15s", marginBottom: "10px" },
-  // 右：終点パネル（除外ゾーンはbottomRowコーナーに移動）
-  rightPanel: { width: "240px", flexShrink: 0, display: "flex", flexDirection: "column", borderLeft: `1px solid ${THEME.border}`, marginLeft: "16px", overflow: "hidden" },
+  // 右：終点パネル（bodyと同じ高さ、スクロールしない）
+  rightPanel: { width: "240px", flexShrink: 0, display: "flex", flexDirection: "column", borderLeft: `1px solid ${THEME.border}`, marginLeft: "16px", overflow: "hidden", padding: "16px 0 0 0" },
   rightZone:  { flex: 1, padding: "16px 14px", display: "flex", flexDirection: "column", gap: "10px", overflowY: "auto", minHeight: 0 },
-  // 底部行：ボトムバー(flex:1) + 除外コーナー(固定幅) が横並び
-  bottomRow: { position: "sticky", bottom: 0, display: "flex", zIndex: 10 },
-  bottomBar: { flex: 1, backgroundColor: "rgba(255,255,255,0.95)", backdropFilter: "blur(12px)", padding: "16px 40px", borderTop: `1px solid ${THEME.border}`, display: "flex", gap: "16px", justifyContent: "center", flexWrap: "wrap", alignItems: "center" },
-  excludedCorner: { width: "256px", flexShrink: 0, borderTop: `1px solid ${THEME.border}`, borderLeft: `1px solid ${THEME.border}`, backgroundColor: "#F1F2F4", padding: "12px 14px", marginLeft: "16px" },
+  // 底部行：ボトムバー(flex:1) + 除外コーナー(固定幅) 横並び
+  bottomRow: { flexShrink: 0, display: "flex", zIndex: 10, borderTop: `1px solid ${THEME.border}` },
+  bottomBar: { flex: 1, backgroundColor: "rgba(255,255,255,0.95)", backdropFilter: "blur(12px)", padding: "14px 40px", display: "flex", gap: "16px", justifyContent: "center", flexWrap: "wrap", alignItems: "center" },
+  excludedCorner: { width: "256px", flexShrink: 0, borderLeft: `1px solid ${THEME.border}`, backgroundColor: "#F1F2F4", padding: "12px 14px", marginLeft: "16px" },
   zone:      { minWidth: "220px", height: "72px", borderRadius: "16px", display: "flex", alignItems: "center", justifyContent: "center", gap: "10px", fontWeight: "900", fontSize: "15px", border: "3px dashed transparent", transition: "all 0.2s", cursor: "default", padding: "0 20px" },
   overlay:   { position: "fixed", inset: 0, backgroundColor: "rgba(15,23,42,0.6)", display: "flex", justifyContent: "center", alignItems: "center", zIndex: 2000, backdropFilter: "blur(4px)" },
   modal:     { backgroundColor: "white", borderRadius: 24, padding: "40px", width: 460, boxShadow: "0 24px 48px rgba(0,0,0,0.15)" },
@@ -427,10 +431,10 @@ export default function KanbanBoard({
       <div style={S.main}>
         <div style={S.wrapper}>
 
-          {/* ヘッダー */}
-          <header style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "28px" }}>
+          {/* ヘッダー（固定） */}
+          <header style={S.header}>
             <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
-              <h1 style={{ fontSize: "32px", fontWeight: "900", color: THEME.textMain, margin: 0 }}>案件管理カンバン</h1>
+              <h1 style={{ fontSize: "28px", fontWeight: "900", color: THEME.textMain, margin: 0 }}>案件管理カンバン</h1>
               {syncing && (
                 <div style={{ display: "flex", alignItems: "center", gap: "8px", color: THEME.primary, backgroundColor: "#EEF2FF", padding: "6px 12px", borderRadius: "20px", fontSize: "12px", fontWeight: "800" }}>
                   <Loader2 className="animate-spin" size={14} /> 同期中
@@ -462,8 +466,8 @@ export default function KanbanBoard({
                       onDrop={e => onDrop(e, st.name)}
                       style={{ ...S.col, backgroundColor: isOver ? "#E0E7FF" : "#EDF2F7", borderColor: isOver ? THEME.primary : THEME.border, boxShadow: isOver ? `0 0 0 2px ${THEME.primary}40` : "none" }}
                     >
-                      {/* ── 固定ヘッダー ── */}
-                      <div style={{ ...S.colHeader, backgroundColor: isOver ? "#E0E7FF" : "#EDF2F7", borderRadius: "20px 20px 0 0" }}>
+                      {/* ── 固定ヘッダー（ステータス名表示 - スクロールしない） ── */}
+                      <div style={{ ...S.colHeader, backgroundColor: isOver ? "#E0E7FF" : "#EDF2F7" }}>
                         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                           <div>
                             <h3 style={{ fontSize: "13px", fontWeight: "900", color: THEME.textMain, margin: 0 }}>{st.name}</h3>
