@@ -151,16 +151,25 @@ export default function AnalysisReport({ customers = [], statuses = [], tracking
   );
 
   // ── 棒グラフ・フェーズ別滞在日数の対象：
-  //    通常フロー列 ＋ 右側終点ステータス（won / dormant / lost）を含む。
-  //    右下コーナー固定の excluded のみ除外。
+  //    ・通常フロー列（terminalType なし）→ 常に含める
+  //    ・終点ステータスは placement === "right" かつ excluded 以外のみ含める
+  //    ・excluded は右下コーナー固定なので常に除く
+  //    ・失注など placement === "bottom" の終点ステータスも除く
   const chartStatuses = useMemo(() =>
-    statuses.filter(s => s.terminalType !== "excluded"),
+    statuses.filter(s =>
+      !s.terminalType ||
+      (s.terminalType !== "excluded" && (s.placement || "bottom") === "right")
+    ),
     [statuses]
   );
 
-  // ── 下部サマリカード用：終点ステータス（won / dormant / lost）のみ
+  // ── 下部サマリカード用：右側配置の終点ステータスのみ（excluded 除く）
   const terminalStatuses = useMemo(() =>
-    statuses.filter(s => ["won", "dormant", "lost"].includes(s.terminalType)),
+    statuses.filter(s =>
+      s.terminalType &&
+      s.terminalType !== "excluded" &&
+      (s.placement || "bottom") === "right"
+    ),
     [statuses]
   );
 
