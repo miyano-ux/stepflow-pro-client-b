@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { Activity, Zap, Moon, ArrowRight, ChevronLeft, X } from "lucide-react";
+import { Activity, Timer, X, ChevronLeft } from "lucide-react";
 import { THEME as APP_THEME } from "../lib/constants";
 import { StaffDropdown } from "../components/StaffDropdown";
 
@@ -10,59 +10,112 @@ const S = {
   main:    { minHeight: "100vh", backgroundColor: THEME.bg },
   wrapper: { padding: "40px 64px", maxWidth: "1400px", margin: "0 auto" },
   card:    { backgroundColor: "white", borderRadius: 20, border: `1px solid ${THEME.border}`, padding: "32px", boxShadow: "0 4px 16px rgba(0,0,0,0.04)", marginBottom: 32 },
-  feedScroll: { height: 300, overflowY: "auto", padding: "4px" },
-  feedItem:   { display: "flex", alignItems: "center", gap: 12, padding: "10px 12px", borderRadius: 12, backgroundColor: "#F8FAFC", marginBottom: 8 },
+};
+
+function stayStatus(daysInStatus, avgDays) {
+  if (avgDays == null || daysInStatus == null) return "normal";
+  if (daysInStatus <= avgDays)       return "normal";
+  if (daysInStatus <= avgDays + 7)   return "warning";
+  return "danger";
+}
+
+const STAY_COLORS = {
+  normal:  { bg: "#EEF2FF", border: "#818CF8", text: "#4F46E5", label: "順調" },
+  warning: { bg: "#FFFBEB", border: "#F59E0B", text: "#B45309", label: "停滞" },
+  danger:  { bg: "#FEF2F2", border: "#EF4444", text: "#DC2626", label: "要対応" },
 };
 
 // ── ドリルダウンモーダル ──────────────────────────────
-function DrillModal({ statusName, customers, staffList, onClose }) {
+function DrillModal({ statusName, customers, staffList, avgDays, onClose }) {
+  const now = new Date();
+
+  const rows = customers.map(c => {
+    const changed = c["ステータス変更日"]
+      ? new Date(String(c["ステータス変更日"]).replace(/\//g, "-").replace(" ", "T"))
+      : null;
+    const days = changed && !isNaN(changed) ? Math.floor((now - changed) / 86400000) : null;
+    const status = stayStatus(days, avgDays);
+    const col = STAY_COLORS[status];
+    const staff = staffList.find(s => s.email === c["担当者メール"]);
+    return { c, days, status, col, staff };
+  }).sort((a, b) => (b.days ?? 0) - (a.days ?? 0));
+
   return (
     <div style={{ position: "fixed", inset: 0, backgroundColor: "rgba(15,23,42,0.55)", display: "flex", justifyContent: "center", alignItems: "center", zIndex: 2000, backdropFilter: "blur(4px)" }}>
-      <div style={{ backgroundColor: "white", borderRadius: 20, width: "min(92vw, 680px)", maxHeight: "80vh", display: "flex", flexDirection: "column", boxShadow: "0 24px 48px rgba(0,0,0,0.15)" }}>
-        {/* ヘッダー */}
+      <div style={{ backgroundColor: "white", borderRadius: 20, width: "min(96vw, 760px)", maxHeight: "85vh", display: "flex", flexDirection: "column", boxShadow: "0 24px 48px rgba(0,0,0,0.15)" }}>
+
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "24px 28px", borderBottom: `1px solid ${THEME.border}` }}>
           <div>
             <div style={{ fontSize: 18, fontWeight: 900, color: THEME.textMain }}>{statusName}</div>
-            <div style={{ fontSize: 13, color: THEME.textMuted, marginTop: 2 }}>{customers.length} 件</div>
+            <div style={{ fontSize: 13, color: THEME.textMuted, marginTop: 2 }}>
+              {customers.length} 件
+              {avgDays != null && (
+                <span style={{ marginLeft: 12 }}>
+                  平均滞在: <strong>{avgDays.toFixed(1)} 日</strong>
+                  　🔵 〜平均　🟡 平均+7日　🔴 平均+7日超
+                </span>
+              )}
+            </div>
           </div>
-          <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", padding: 6, color: THEME.textMuted }}>
-            <X size={20} />
-          </button>
+          <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", padding: 6, color: THEME.textMuted }}><X size={20} /></button>
         </div>
-        {/* テーブル */}
+
+        {/* 凡例 */}
+        <div style={{ display: "flex", gap: 20, padding: "10px 28px", borderBottom: `1px solid ${THEME.border}`, backgroundColor: "#FAFAFA" }}>
+          {Object.entries(STAY_COLORS).map(([k, v]) => (
+            <div key={k} style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <div style={{ width: 10, height: 10, borderRadius: "50%", backgroundColor: v.border }} />
+              <span style={{ fontSize: 12, fontWeight: 700, color: v.text }}>{v.label}</span>
+              <span style={{ fontSize: 11, color: THEME.textMuted }}>
+                {k === "normal"  ? `〜${avgDays?.toFixed(0) ?? "-"}日` :
+                 k === "warning" ? "+1〜7日" : "+7日超"}
+              </span>
+            </div>
+          ))}
+        </div>
+
         <div style={{ overflowY: "auto", flex: 1 }}>
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
             <thead>
               <tr style={{ backgroundColor: "#F8FAFC", position: "sticky", top: 0 }}>
-                {["氏名", "電話番号", "担当者", "登録日"].map(h => (
-                  <th key={h} style={{ padding: "10px 16px", fontSize: 12, fontWeight: 800, color: THEME.textMuted, textAlign: "left", borderBottom: `1px solid ${THEME.border}` }}>{h}</th>
+                {["", "氏名", "担当者", "ステータス変更日", "滞在日数", "状況"].map(h => (
+                  <th key={h} style={{ padding: "10px 14px", fontSize: 12, fontWeight: 800, color: THEME.textMuted, textAlign: "left", borderBottom: `1px solid ${THEME.border}` }}>{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
-              {customers.map(c => {
-                const staff = staffList.find(s => s.email === c["担当者メール"]);
-                return (
-                  <tr key={c.id} style={{ borderBottom: `1px solid ${THEME.border}` }}
-                    onMouseEnter={e => e.currentTarget.style.backgroundColor = "#FAFBFF"}
-                    onMouseLeave={e => e.currentTarget.style.backgroundColor = "transparent"}
-                  >
-                    <td style={{ padding: "12px 16px", fontWeight: 700 }}>
-                      <Link to={`/detail/${c.id}`} style={{ color: THEME.primary, textDecoration: "none", fontWeight: 800 }}
-                        onMouseEnter={e => e.currentTarget.style.textDecoration = "underline"}
-                        onMouseLeave={e => e.currentTarget.style.textDecoration = "none"}
-                      >
-                        {c["姓"]} {c["名"]} 様
-                      </Link>
-                    </td>
-                    <td style={{ padding: "12px 16px", fontSize: 13, color: THEME.textMuted }}>{c["電話番号"] || "–"}</td>
-                    <td style={{ padding: "12px 16px", fontSize: 13, color: THEME.textMuted }}>{staff ? `${staff.lastName} ${staff.firstName}` : "未割当"}</td>
-                    <td style={{ padding: "12px 16px", fontSize: 13, color: THEME.textMuted }}>{c["登録日"] ? String(c["登録日"]).slice(0, 10) : "–"}</td>
-                  </tr>
-                );
-              })}
-              {customers.length === 0 && (
-                <tr><td colSpan={4} style={{ padding: 40, textAlign: "center", color: THEME.textMuted }}>該当なし</td></tr>
+              {rows.map(({ c, days, col, staff }) => (
+                <tr key={c.id} style={{ borderBottom: `1px solid ${THEME.border}` }}
+                  onMouseEnter={e => e.currentTarget.style.backgroundColor = col.bg}
+                  onMouseLeave={e => e.currentTarget.style.backgroundColor = "transparent"}
+                >
+                  <td style={{ width: 4, padding: 0, backgroundColor: col.border }} />
+                  <td style={{ padding: "12px 14px", fontWeight: 700 }}>
+                    <Link to={`/detail/${c.id}`} style={{ color: THEME.primary, textDecoration: "none", fontWeight: 800 }}
+                      onMouseEnter={e => e.currentTarget.style.textDecoration = "underline"}
+                      onMouseLeave={e => e.currentTarget.style.textDecoration = "none"}
+                    >
+                      {c["姓"]} {c["名"]} 様
+                    </Link>
+                  </td>
+                  <td style={{ padding: "12px 14px", fontSize: 13, color: THEME.textMuted }}>
+                    {staff ? `${staff.lastName} ${staff.firstName}` : "未割当"}
+                  </td>
+                  <td style={{ padding: "12px 14px", fontSize: 13, color: THEME.textMuted }}>
+                    {c["ステータス変更日"] ? String(c["ステータス変更日"]).slice(0, 10) : "–"}
+                  </td>
+                  <td style={{ padding: "12px 14px", fontSize: 15, fontWeight: 900, color: col.text }}>
+                    {days != null ? `${days} 日` : "–"}
+                  </td>
+                  <td style={{ padding: "12px 14px" }}>
+                    <span style={{ fontSize: 11, fontWeight: 800, color: col.text, backgroundColor: col.bg, border: `1px solid ${col.border}`, padding: "3px 10px", borderRadius: 99 }}>
+                      {col.label}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+              {rows.length === 0 && (
+                <tr><td colSpan={6} style={{ padding: 40, textAlign: "center", color: THEME.textMuted }}>該当なし</td></tr>
               )}
             </tbody>
           </table>
@@ -73,9 +126,9 @@ function DrillModal({ statusName, customers, staffList, onClose }) {
 }
 
 // ── メイン ───────────────────────────────────────────
-export default function AnalysisReport({ customers = [], statuses = [], trackingLogs = [], staffList = [] }) {
+export default function AnalysisReport({ customers = [], statuses = [], trackingLogs = [], staffList = [], statusHistory = [] }) {
   const [filterStaff, setFilterStaff] = useState("");
-  const [drillStatus, setDrillStatus] = useState(null); // ドリルダウン対象ステータス名
+  const [drillStatus, setDrillStatus] = useState(null);
   const navigate = useNavigate();
 
   const dormantStatus = statuses.find(s => s.terminalType === "dormant") || statuses[statuses.length - 2];
@@ -88,46 +141,71 @@ export default function AnalysisReport({ customers = [], statuses = [], tracking
     [customers, filterStaff]
   );
 
-  // 成功パス（休眠・失注以外すべて）
-  const successPathData = useMemo(() => {
-    const targets = statuses.filter(s => s.name !== dormantLabel && s.name !== lostLabel);
-    const firstName = targets[0]?.name || "";
-    return targets.map((st, i) => {
-      const list = filtered.filter(c => {
-        const cur = (c["対応ステータス"] || "").trim() || firstName;
-        return cur === st.name;
-      });
+  const successPathStatuses = useMemo(() =>
+    statuses.filter(s => s.name !== dormantLabel && s.name !== lostLabel),
+    [statuses, dormantLabel, lostLabel]
+  );
+
+  const successPathData = useMemo(() =>
+    successPathStatuses.map((st, i) => {
+      const list = filtered.filter(c => (c["対応ステータス"] || "").trim() === st.name);
       return { name: st.name, count: list.length, customers: list, color: THEME.colors[i % THEME.colors.length] };
-    });
-  }, [filtered, statuses, dormantLabel, lostLabel]);
+    }),
+    [filtered, successPathStatuses]
+  );
 
   const maxCount = Math.max(...successPathData.map(d => d.count), 1);
 
-  // 終点サマリ（休眠・失注のみ）
-  const summaryCards = [
-    { label: dormantLabel, emoji: "🌙", color: "#D97706", bg: "#FEF3C7", border: "#FDE68A", type: "dormant" },
-    { label: lostLabel,    emoji: "🗑",  color: "#DC2626", bg: "#FEE2E2", border: "#FECACA", type: "lost"    },
-  ];
+  // ── フェーズ別平均滞在日数 ──
+  const avgDaysMap = useMemo(() => {
+    const byCustomer = {};
+    (statusHistory || []).forEach(h => {
+      const cid = h["顧客ID"];
+      if (!byCustomer[cid]) byCustomer[cid] = [];
+      byCustomer[cid].push({
+        status: h["ステータス"],
+        ts: new Date(String(h["変更日時"]).replace(/\//g, "-").replace(" ", "T")),
+      });
+    });
 
+    const daysPerStatus = {};
+    Object.values(byCustomer).forEach(events => {
+      events.sort((a, b) => a.ts - b.ts);
+      for (let i = 0; i < events.length - 1; i++) {
+        const st   = events[i].status;
+        const days = (events[i + 1].ts - events[i].ts) / 86400000;
+        if (days >= 0 && days < 365) {
+          if (!daysPerStatus[st]) daysPerStatus[st] = [];
+          daysPerStatus[st].push(days);
+        }
+      }
+    });
+
+    const result = {};
+    Object.entries(daysPerStatus).forEach(([st, arr]) => {
+      result[st] = arr.reduce((a, b) => a + b, 0) / arr.length;
+    });
+    return result;
+  }, [statusHistory]);
+
+  const phaseTransitions = useMemo(() =>
+    successPathStatuses.map(st => ({
+      name: st.name,
+      avgDays: avgDaysMap[st.name] ?? null,
+    })),
+    [successPathStatuses, avgDaysMap]
+  );
+
+  const drillData     = drillStatus ? successPathData.find(d => d.name === drillStatus) : null;
+  const drillAvgDays  = drillStatus ? (avgDaysMap[drillStatus] ?? null) : null;
   const countByStatus = label => filtered.filter(c => (c["対応ステータス"] || "").trim() === label.trim()).length;
-
-  const getActivityFeed = isDormant =>
-    trackingLogs.filter(log => {
-      const c = customers.find(c => c.id === log.customerId);
-      if (!c) return false;
-      const st = c["対応ステータス"];
-      return isDormant ? st === dormantLabel : (st !== dormantLabel && st !== lostLabel);
-    }).slice(0, 20);
-
-  // ドリルダウンモーダル用顧客リスト
-  const drillCustomers = drillStatus
-    ? successPathData.find(d => d.name === drillStatus)?.customers || []
-    : [];
+  const maxAvgDays    = Math.max(...phaseTransitions.map(p => p.avgDays ?? 0), 1);
 
   return (
     <>
       <div style={S.main}>
         <div style={S.wrapper}>
+
           {/* ヘッダー */}
           <header style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 40 }}>
             <div>
@@ -147,7 +225,7 @@ export default function AnalysisReport({ customers = [], statuses = [], tracking
           <div style={S.card}>
             <h3 style={{ fontSize: 17, fontWeight: 900, marginBottom: 28, display: "flex", alignItems: "center", gap: 8 }}>
               <Activity size={18} color={THEME.primary} /> 成功パスの案件分布
-              <span style={{ fontSize: 12, fontWeight: 700, color: THEME.textMuted, marginLeft: 8 }}>— バーをクリックで顧客リスト表示</span>
+              <span style={{ fontSize: 12, fontWeight: 700, color: THEME.textMuted, marginLeft: 8 }}>— バーをクリックで顧客リスト（停滞色分け）表示</span>
             </h3>
             <div style={{ height: 280, display: "flex", alignItems: "flex-end", gap: 12, paddingBottom: 16, borderBottom: `2px solid ${THEME.border}` }}>
               {successPathData.map(d => (
@@ -174,9 +252,70 @@ export default function AnalysisReport({ customers = [], statuses = [], tracking
             </div>
           </div>
 
+          {/* フェーズ別平均滞在日数 */}
+          <div style={S.card}>
+            <h3 style={{ fontSize: 17, fontWeight: 900, marginBottom: 24, display: "flex", alignItems: "center", gap: 8 }}>
+              <Timer size={18} color={THEME.primary} /> フェーズ別平均滞在日数
+              <span style={{ fontSize: 12, fontWeight: 700, color: THEME.textMuted, marginLeft: 8 }}>— 顧客が次のステータスへ進むまでの平均日数</span>
+            </h3>
+
+            <div style={{ display: "flex", alignItems: "stretch", overflowX: "auto", paddingBottom: 8, gap: 0 }}>
+              {phaseTransitions.map((pt, i) => {
+                const days = pt.avgDays;
+                const barPct = days != null ? Math.min((days / maxAvgDays) * 100, 100) : 0;
+                return (
+                  <React.Fragment key={pt.name}>
+                    <div style={{ minWidth: 130, flexShrink: 0 }}>
+                      <div style={{ backgroundColor: "#F5F3FF", borderRadius: 14, padding: "18px 12px", textAlign: "center", border: `1.5px solid ${THEME.border}`, height: "100%", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 6 }}>
+                        <div style={{ fontSize: 10, fontWeight: 800, color: THEME.textMuted, lineHeight: 1.4 }}>{pt.name}</div>
+                        {days != null ? (
+                          <>
+                            <div style={{ fontSize: 28, fontWeight: 900, color: THEME.primary, lineHeight: 1 }}>
+                              {days < 1 ? `${(days * 24).toFixed(1)}` : days.toFixed(1)}
+                            </div>
+                            <div style={{ fontSize: 11, color: THEME.textMuted }}>{days < 1 ? "時間" : "日"}</div>
+                            <div style={{ width: "80%", height: 6, backgroundColor: "#E0E7FF", borderRadius: 99 }}>
+                              <div style={{ height: "100%", width: `${barPct}%`, backgroundColor: THEME.primary, borderRadius: 99 }} />
+                            </div>
+                          </>
+                        ) : (
+                          <div style={{ fontSize: 20, color: THEME.textMuted }}>–</div>
+                        )}
+                      </div>
+                    </div>
+                    {i < phaseTransitions.length - 1 && (
+                      <div style={{ display: "flex", alignItems: "center", padding: "0 4px", flexShrink: 0 }}>
+                        <div style={{ width: 20, height: 2, backgroundColor: "#C7D2FE" }} />
+                        <div style={{ width: 0, height: 0, borderTop: "5px solid transparent", borderBottom: "5px solid transparent", borderLeft: "7px solid #C7D2FE" }} />
+                      </div>
+                    )}
+                  </React.Fragment>
+                );
+              })}
+            </div>
+
+            {/* 停滞色分け凡例 */}
+            <div style={{ marginTop: 20, padding: "14px 18px", backgroundColor: "#F8FAFC", borderRadius: 12, display: "flex", gap: 28, flexWrap: "wrap", alignItems: "center" }}>
+              <div style={{ fontSize: 12, fontWeight: 800, color: THEME.textMuted }}>顧客リストの色分け：</div>
+              {Object.entries(STAY_COLORS).map(([k, v]) => (
+                <div key={k} style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <div style={{ width: 12, height: 12, borderRadius: "50%", backgroundColor: v.border }} />
+                  <span style={{ fontSize: 12, fontWeight: 800, color: v.text }}>{v.label}</span>
+                  <span style={{ fontSize: 11, color: THEME.textMuted }}>
+                    {k === "normal"  ? "平均滞在以内" :
+                     k === "warning" ? "平均 +1〜7日" : "平均 +7日超"}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+
           {/* 休眠・失注サマリ */}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24, marginBottom: 32 }}>
-            {summaryCards.map(({ label, emoji, color, bg, border, type }) => (
+            {[
+              { label: dormantLabel, emoji: "🌙", color: "#D97706", bg: "#FEF3C7", border: "#FDE68A", type: "dormant" },
+              { label: lostLabel,    emoji: "🗑",  color: "#DC2626", bg: "#FEE2E2", border: "#FECACA", type: "lost"    },
+            ].map(({ label, emoji, color, bg, border, type }) => (
               <Link key={type} to={`/status-list/${type}`} style={{ textDecoration: "none" }}>
                 <div style={{ backgroundColor: "white", borderRadius: 20, border: `1px solid ${border}`, padding: "24px 28px", boxShadow: "0 2px 8px rgba(0,0,0,0.04)", transition: "all 0.18s" }}
                   onMouseEnter={e => { e.currentTarget.style.transform = "translateY(-2px)"; e.currentTarget.style.boxShadow = `0 10px 28px ${color}22`; }}
@@ -188,8 +327,8 @@ export default function AnalysisReport({ customers = [], statuses = [], tracking
                       <div style={{ fontSize: 13, fontWeight: 800, color: THEME.textMuted, marginBottom: 2 }}>{label}</div>
                       <div style={{ fontSize: 32, fontWeight: 900, color }}>{countByStatus(label)} <span style={{ fontSize: 14, fontWeight: 700 }}>名</span></div>
                     </div>
-                    <div style={{ backgroundColor: bg, border: `1px solid ${border}`, borderRadius: 10, padding: "6px 14px", fontSize: 12, fontWeight: 800, color, display: "flex", alignItems: "center", gap: 4 }}>
-                      一覧 <ArrowRight size={12} />
+                    <div style={{ backgroundColor: bg, border: `1px solid ${border}`, borderRadius: 10, padding: "6px 14px", fontSize: 12, fontWeight: 800, color }}>
+                      一覧 →
                     </div>
                   </div>
                 </div>
@@ -197,44 +336,15 @@ export default function AnalysisReport({ customers = [], statuses = [], tracking
             ))}
           </div>
 
-          {/* フィード */}
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 28 }}>
-            {[{ isDormant: false, title: "⚡ 進行中のアクティビティ", color: THEME.primary, bg: "#EEF2FF" },
-              { isDormant: true,  title: "🌙 休眠顧客の再浮上",       color: "#D97706",     bg: "#FFFBEB" }
-            ].map(({ isDormant, title, color, bg }) => (
-              <div key={title} style={S.card}>
-                <h3 style={{ fontSize: 16, fontWeight: 900, marginBottom: 18, color }}>{title}</h3>
-                <div style={S.feedScroll}>
-                  {getActivityFeed(isDormant).length === 0
-                    ? <div style={{ textAlign: "center", color: THEME.textMuted, padding: 36 }}>データがありません</div>
-                    : getActivityFeed(isDormant).map((log, i) => {
-                        const c = customers.find(c => c.id === log.customerId);
-                        return (
-                          <div key={i} style={S.feedItem}>
-                            <div style={{ padding: 8, backgroundColor: bg, borderRadius: 8, color, flexShrink: 0 }}>
-                              {isDormant ? <Moon size={14} /> : <Zap size={14} />}
-                            </div>
-                            <div style={{ flex: 1 }}>
-                              <div style={{ fontWeight: 800, fontSize: 13 }}>{c?.姓} 様</div>
-                              <div style={{ fontSize: 11, color: THEME.textMuted }}>{log.pageTitle || "ページ閲覧"} · {log.time}</div>
-                            </div>
-                          </div>
-                        );
-                      })
-                  }
-                </div>
-              </div>
-            ))}
-          </div>
         </div>
       </div>
 
-      {/* ドリルダウンモーダル */}
-      {drillStatus && (
+      {drillStatus && drillData && (
         <DrillModal
           statusName={drillStatus}
-          customers={drillCustomers}
+          customers={drillData.customers}
           staffList={staffList}
+          avgDays={drillAvgDays}
           onClose={() => setDrillStatus(null)}
         />
       )}
