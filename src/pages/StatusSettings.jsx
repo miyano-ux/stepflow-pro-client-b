@@ -63,15 +63,10 @@ function StatusRow({ s, idx, scenarios, onChange, onDelete, onDragStart, onDragO
           </select>
         </div>
         <div>
-          <div style={{ fontSize: 11, fontWeight: 700, color: THEME.textMuted, marginBottom: 6 }}>集計対象</div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-            <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", fontSize: 12, fontWeight: 700 }}>
-              <input type="checkbox" checked={!!s.reportCount} onChange={e => onChange(idx, "reportCount", e.target.checked)} style={{ width: 14, height: 14, accentColor: THEME.primary }} /> 件数
-            </label>
-            <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", fontSize: 12, fontWeight: 700 }}>
-              <input type="checkbox" checked={!!s.reportArrival} onChange={e => onChange(idx, "reportArrival", e.target.checked)} style={{ width: 14, height: 14, accentColor: THEME.primary }} /> 到達率
-            </label>
-          </div>
+          <div style={{ fontSize: 11, fontWeight: 700, color: THEME.textMuted, marginBottom: 6 }}>レポート集計</div>
+          <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", fontSize: 12, fontWeight: 700 }}>
+            <input type="checkbox" checked={!!s.reportCount} onChange={e => { onChange(idx, "reportCount", e.target.checked); onChange(idx, "reportArrival", e.target.checked); }} style={{ width: 14, height: 14, accentColor: THEME.primary }} /> 集計する
+          </label>
         </div>
         <div style={{ gridColumn: "1 / -1" }}>
           <div style={{ fontSize: 11, fontWeight: 700, color: THEME.textMuted, marginBottom: 4 }}>移動時の追加入力項目</div>
@@ -155,15 +150,10 @@ function TerminalRow({ row, idx, scenarios, usedScenarios, onChange, onDelete })
 
         {/* 集計 */}
         <div>
-          <div style={{ fontSize: 11, fontWeight: 700, color, marginBottom: 6 }}>集計</div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-            <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", fontSize: 12, fontWeight: 700 }}>
-              <input type="checkbox" checked={!!row.reportCount} onChange={e => onChange(idx, "reportCount", e.target.checked)} style={{ width: 14, height: 14, accentColor: color }} /> 件数
-            </label>
-            <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", fontSize: 12, fontWeight: 700 }}>
-              <input type="checkbox" checked={!!row.reportArrival} onChange={e => onChange(idx, "reportArrival", e.target.checked)} style={{ width: 14, height: 14, accentColor: color }} /> 到達率
-            </label>
-          </div>
+          <div style={{ fontSize: 11, fontWeight: 700, color, marginBottom: 6 }}>レポート集計</div>
+          <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", fontSize: 12, fontWeight: 700 }}>
+            <input type="checkbox" checked={!!row.reportCount} onChange={e => { onChange(idx, "reportCount", e.target.checked); onChange(idx, "reportArrival", e.target.checked); }} style={{ width: 14, height: 14, accentColor: color }} /> 集計する
+          </label>
         </div>
       </div>
 
