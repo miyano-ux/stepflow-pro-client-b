@@ -34,7 +34,7 @@ function HBar({ value, maxVal, color, suffix = "" }) {
         <span style={{ fontSize: 22, fontWeight: 900, color: THEME.textMain, lineHeight: 1 }}>{value}</span>
         <span style={{ fontSize: 12, fontWeight: 700, color: THEME.textMuted }}>{suffix}</span>
       </div>
-      <div style={{ backgroundColor: "#EEF2FF", borderRadius: 6, overflow: "hidden", height: 8 }}>
+      <div style={{ backgroundColor: "#EEF2FF", borderRadius: 6, overflow: "hidden", height: 16 }}>
         <div style={{ width: `${pct}%`, height: "100%", backgroundColor: color,
           borderRadius: 6, transition: "width 0.6s ease" }} />
       </div>
@@ -96,9 +96,8 @@ export default function SourceReport({ customers = [], statuses = [], sources = 
 
   // カラムヘッダースタイル
   const colHd = (align = "left") => ({
-    fontSize: 10, fontWeight: 800, color: THEME.textMuted,
-    textTransform: "uppercase", letterSpacing: "0.05em",
-    paddingBottom: 6, borderBottom: `2px solid ${THEME.border}`,
+    fontSize: 13, fontWeight: 800, color: THEME.textMain,
+    paddingBottom: 8, borderBottom: `2px solid ${THEME.border}`,
     textAlign: align,
   });
 
