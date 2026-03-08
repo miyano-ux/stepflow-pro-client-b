@@ -29,13 +29,14 @@ function SectionTitle({ children, color }) {
 function HBar({ value, maxVal, color, suffix = "" }) {
   const pct = maxVal > 0 ? Math.max((value / maxVal) * 100, value > 0 ? 3 : 0) : 0;
   return (
-    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-      <div style={{ flex: 1, backgroundColor: "#EEF2FF", borderRadius: 6, overflow: "hidden", height: 14 }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <span style={{ fontSize: 22, fontWeight: 900, color: THEME.textMain, lineHeight: 1 }}>{value}</span>
+        <span style={{ fontSize: 12, fontWeight: 700, color: THEME.textMuted }}>{suffix}</span>
+      </div>
+      <div style={{ backgroundColor: "#EEF2FF", borderRadius: 6, overflow: "hidden", height: 8 }}>
         <div style={{ width: `${pct}%`, height: "100%", backgroundColor: color,
           borderRadius: 6, transition: "width 0.6s ease" }} />
-      </div>
-      <div style={{ minWidth: 52, textAlign: "right", fontSize: 13, fontWeight: 900, color: THEME.textMain }}>
-        {value}{suffix}
       </div>
     </div>
   );
@@ -227,7 +228,7 @@ export default function SourceReport({ customers = [], statuses = [], sources = 
                 const maxPct = 100; // 最大値が100%
                 const isEven = ri % 2 === 0;
                 const rowBg = isEven ? "#F8FAFC" : "white";
-                const cellStyle = { backgroundColor: rowBg, padding: "10px 12px", display: "flex", alignItems: "center" };
+                const cellStyle = { backgroundColor: rowBg, padding: "12px 12px", display: "flex", alignItems: "center" };
 
                 return (
                   <div key={d.src} style={{
@@ -264,7 +265,7 @@ export default function SourceReport({ customers = [], statuses = [], sources = 
                           <span style={{ fontSize: 22, fontWeight: 900, color: sg.color, lineHeight: 1 }}>
                             {d.avgDays.toFixed(1)}
                           </span>
-                          <span style={{ fontSize: 11, fontWeight: 700, color: THEME.textMuted, marginLeft: 3 }}>日</span>
+                          <span style={{ fontSize: 12, fontWeight: 700, color: THEME.textMuted, marginLeft: 4 }}>日</span>
                         </div>
                       ) : (
                         <span style={{ fontSize: 18, color: THEME.textMuted }}>–</span>
