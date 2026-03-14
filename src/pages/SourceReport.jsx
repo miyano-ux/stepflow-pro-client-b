@@ -97,24 +97,35 @@ export default function SourceReport({ customers = [], statuses = [], sources = 
   // カラムヘッダースタイル
   // ── 費用対効果データ ──
   const costData = useMemo(() => {
-    // wonステータスの顧客を「成約」としてカウント
+    // 終点ステータス（excluded除く）の名前一覧
+    const terminalStatusNames = statuses
+      .filter(s => s.terminalType && s.terminalType !== "excluded")
+      .map(s => s.name);
+    // won ステータスの名前一覧（1成約あたりコスト用）
     const wonStatusNames = statuses
       .filter(s => s.terminalType === "won")
       .map(s => s.name);
 
     return sourceNames.map(src => {
       const list = bySource[src] || [];
-      const cost = (sources.find(s => s.name === src) || {}).cost || 0;
+      const unitCost = (sources.find(s => s.name === src) || {}).cost || 0;
+      // 終点ステータス到達数（excluded除く）
+      const terminalCount = list.filter(c =>
+        terminalStatusNames.includes((c["対応ステータス"] || "").trim())
+      ).length;
+      // 総獲得コスト = 終点到達数 × 単価
+      const totalCost = terminalCount * unitCost;
+      // 成約数
       const wonCount = list.filter(c =>
         wonStatusNames.includes((c["対応ステータス"] || "").trim())
       ).length;
-      const totalCount = list.length;
-      const costPerWon = wonCount > 0 ? Math.round(cost / wonCount) : null;
-      return { src, cost, totalCount, wonCount, costPerWon };
-    }).filter(d => d.cost > 0); // コスト未設定は除外
+      // 1成約あたりコスト
+      const costPerWon = wonCount > 0 ? Math.round(totalCost / wonCount) : null;
+      return { src, unitCost, terminalCount, totalCost, wonCount, costPerWon };
+    }).filter(d => d.unitCost > 0); // 単価未設定は除外
   }, [sourceNames, bySource, sources, statuses]);
 
-  const maxCost       = Math.max(...costData.map(d => d.cost), 1);
+  const maxTotalCost  = Math.max(...costData.map(d => d.totalCost), 1);
   const maxCostPerWon = Math.max(...costData.map(d => d.costPerWon ?? 0), 1);
 
   const colHd = (align = "left") => ({
@@ -246,13 +257,12 @@ export default function SourceReport({ customers = [], statuses = [], sources = 
                   {/* 総獲得コスト */}
                   <div style={{ ...cellStyle, flexDirection: "column", alignItems: "flex-start", gap: 6, paddingLeft: 16 }}>
                     <div style={{ display: "flex", alignItems: "baseline", gap: 4 }}>
-                      <span style={{ fontSize: 22, fontWeight: 900, color: "#059669", lineHeight: 1 }}>
-                        {d.cost.toLocaleString()}
-                      </span>
+                      <span style={{ fontSize: 22, fontWeight: 900, color: "#059669", lineHeight: 1 }}>{d.totalCost.toLocaleString()}</span>
                       <span style={{ fontSize: 12, fontWeight: 700, color: THEME.textMuted }}>円</span>
+                      <span style={{ fontSize: 11, color: THEME.textMuted, marginLeft: 4 }}>（{d.terminalCount}件 × {d.unitCost.toLocaleString()}円）</span>
                     </div>
                     <div style={{ width: "100%", backgroundColor: "#D1FAE5", borderRadius: 6, overflow: "hidden", height: 16 }}>
-                      <div style={{ width: `${Math.max((d.cost / maxCost) * 100, d.cost > 0 ? 3 : 0)}%`, height: "100%", backgroundColor: "#059669", borderRadius: 6, transition: "width 0.6s ease" }} />
+                      <div style={{ width: `${Math.max((d.totalCost / maxTotalCost) * 100, d.totalCost > 0 ? 3 : 0)}%`, height: "100%", backgroundColor: "#059669", borderRadius: 6, transition: "width 0.6s ease" }} />
                     </div>
                   </div>
                   {/* 1成約あたりのコスト */}
