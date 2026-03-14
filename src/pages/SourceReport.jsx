@@ -95,6 +95,28 @@ export default function SourceReport({ customers = [], statuses = [], sources = 
   );
 
   // カラムヘッダースタイル
+  // ── 費用対効果データ ──
+  const costData = useMemo(() => {
+    // wonステータスの顧客を「成約」としてカウント
+    const wonStatusNames = statuses
+      .filter(s => s.terminalType === "won")
+      .map(s => s.name);
+
+    return sourceNames.map(src => {
+      const list = bySource[src] || [];
+      const cost = (sources.find(s => s.name === src) || {}).cost || 0;
+      const wonCount = list.filter(c =>
+        wonStatusNames.includes((c["対応ステータス"] || "").trim())
+      ).length;
+      const totalCount = list.length;
+      const costPerWon = wonCount > 0 ? Math.round(cost / wonCount) : null;
+      return { src, cost, totalCount, wonCount, costPerWon };
+    }).filter(d => d.cost > 0); // コスト未設定は除外
+  }, [sourceNames, bySource, sources, statuses]);
+
+  const maxCost       = Math.max(...costData.map(d => d.cost), 1);
+  const maxCostPerWon = Math.max(...costData.map(d => d.costPerWon ?? 0), 1);
+
   const colHd = (align = "left") => ({
     fontSize: 13, fontWeight: 800, color: THEME.textMain,
     paddingBottom: 8, borderBottom: `2px solid ${THEME.border}`,
@@ -195,7 +217,70 @@ export default function SourceReport({ customers = [], statuses = [], sources = 
           </div>
         )}
 
-        {/* ── ② ステータス別グラフ ── */}
+        {/* ── ② 費用対効果 ── */}
+        {costData.length > 0 && (
+          <div style={{ backgroundColor: "white", borderRadius: 16, border: `1px solid ${THEME.border}`, padding: "28px 32px", marginBottom: 24, boxShadow: "0 2px 8px rgba(0,0,0,0.04)" }}>
+            <SectionTitle color="#059669">
+              <span style={{ fontSize: 18 }}>💰</span> 費用対効果
+              <span style={{ fontSize: 12, fontWeight: 700, color: THEME.textMuted, marginLeft: 8 }}>— コスト設定済みの流入元のみ表示</span>
+            </SectionTitle>
+
+            {/* カラムヘッダー */}
+            <div style={{ display: "grid", gridTemplateColumns: "140px 1fr 1fr", columnGap: 24, marginBottom: 8 }}>
+              <div />
+              <div style={colHd()}>総獲得コスト</div>
+              <div style={colHd()}>1成約あたりのコスト</div>
+            </div>
+
+            {/* データ行 */}
+            {costData.map((d, ri) => {
+              const isEven = ri % 2 === 0;
+              const rowBg = isEven ? "#F0FDF4" : "white";
+              const cellStyle = { backgroundColor: rowBg, padding: "12px 12px", display: "flex", alignItems: "center" };
+              return (
+                <div key={d.src} style={{ display: "grid", gridTemplateColumns: "140px 1fr 1fr", columnGap: 0, marginBottom: 2, borderRadius: 8, overflow: "hidden", border: isEven ? "1px solid #D1FAE5" : "1px solid transparent" }}>
+                  {/* 流入元 */}
+                  <div style={{ ...cellStyle, justifyContent: "flex-end", borderRadius: "8px 0 0 8px" }}>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: THEME.textMain, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 120 }}>{d.src}</span>
+                  </div>
+                  {/* 総獲得コスト */}
+                  <div style={{ ...cellStyle, flexDirection: "column", alignItems: "flex-start", gap: 6, paddingLeft: 16 }}>
+                    <div style={{ display: "flex", alignItems: "baseline", gap: 4 }}>
+                      <span style={{ fontSize: 22, fontWeight: 900, color: "#059669", lineHeight: 1 }}>
+                        {d.cost.toLocaleString()}
+                      </span>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: THEME.textMuted }}>円</span>
+                    </div>
+                    <div style={{ width: "100%", backgroundColor: "#D1FAE5", borderRadius: 6, overflow: "hidden", height: 16 }}>
+                      <div style={{ width: `${Math.max((d.cost / maxCost) * 100, d.cost > 0 ? 3 : 0)}%`, height: "100%", backgroundColor: "#059669", borderRadius: 6, transition: "width 0.6s ease" }} />
+                    </div>
+                  </div>
+                  {/* 1成約あたりのコスト */}
+                  <div style={{ ...cellStyle, flexDirection: "column", alignItems: "flex-start", gap: 6, paddingLeft: 16, borderRadius: "0 8px 8px 0" }}>
+                    {d.costPerWon != null ? (
+                      <>
+                        <div style={{ display: "flex", alignItems: "baseline", gap: 4 }}>
+                          <span style={{ fontSize: 22, fontWeight: 900, color: "#0891B2", lineHeight: 1 }}>
+                            {d.costPerWon.toLocaleString()}
+                          </span>
+                          <span style={{ fontSize: 12, fontWeight: 700, color: THEME.textMuted }}>円</span>
+                          <span style={{ fontSize: 11, color: THEME.textMuted, marginLeft: 4 }}>（成約 {d.wonCount}件）</span>
+                        </div>
+                        <div style={{ width: "100%", backgroundColor: "#E0F2FE", borderRadius: 6, overflow: "hidden", height: 16 }}>
+                          <div style={{ width: `${Math.max((d.costPerWon / maxCostPerWon) * 100, 3)}%`, height: "100%", backgroundColor: "#0891B2", borderRadius: 6, transition: "width 0.6s ease" }} />
+                        </div>
+                      </>
+                    ) : (
+                      <span style={{ fontSize: 14, color: THEME.textMuted }}>成約なし</span>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* ── ③ ステータス別グラフ ── */}
         {reportStatuses.length === 0 ? (
           <div style={{ backgroundColor: "white", borderRadius: 16, border: `1px solid ${THEME.border}`, padding: 40, textAlign: "center", color: THEME.textMuted }}>
             ステータス設定で「レポート集計」を有効にしたステータスがありません

@@ -24,10 +24,12 @@ const PRESET_SOURCES = [
 ];
 
 export default function SourceManager({ sources = [], onRefresh, gasUrl = GAS_URL }) {
-  const [input, setInput]   = useState("");
-  const [saving, setSaving] = useState(false);
-  const [saved, setSaved]   = useState(false);
+  const [input, setInput]       = useState("");
+  const [saving, setSaving]     = useState(false);
+  const [saved, setSaved]       = useState(false);
   const [deleting, setDeleting] = useState(null);
+  const [costEdits, setCostEdits]   = useState({});  // { name: 金額文字列 }
+  const [costSaving, setCostSaving] = useState(null); // 保存中の流入元名
 
   // ── 追加 ──────────────────────────────────
   const handleAdd = async (label) => {
@@ -50,6 +52,22 @@ export default function SourceManager({ sources = [], onRefresh, gasUrl = GAS_UR
       onRefresh();
     } catch { alert("追加に失敗しました"); }
     finally { setSaving(false); }
+  };
+
+  // ── コスト更新 ────────────────────────────
+  const handleCostSave = async (name) => {
+    const cost = Number(costEdits[name] ?? "");
+    if (isNaN(cost) || cost < 0) { alert("正しい金額を入力してください"); return; }
+    setCostSaving(name);
+    try {
+      await axios.post(
+        gasUrl,
+        JSON.stringify({ action: "updateSourceCost", name, cost }),
+        { headers: { "Content-Type": "text/plain;charset=utf-8" } }
+      );
+      onRefresh();
+    } catch { alert("コストの保存に失敗しました"); }
+    finally { setCostSaving(null); }
   };
 
   // ── 削除 ──────────────────────────────────
@@ -121,9 +139,30 @@ export default function SourceManager({ sources = [], onRefresh, gasUrl = GAS_UR
                     fontSize: 11, color: THEME.textMuted,
                     background: "#F1F5F9", borderRadius: 6,
                     padding: "2px 8px",
+                    flexShrink: 0,
                   }}>
                     顧客 {s.count ?? 0} 件
                   </span>
+                  {/* コスト入力 */}
+                  <div style={{ display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }}>
+                    <span style={{ fontSize: 11, color: THEME.textMuted }}>コスト</span>
+                    <input
+                      type="number"
+                      min="0"
+                      placeholder="0"
+                      value={costEdits[s.name] ?? s.cost ?? ""}
+                      onChange={e => setCostEdits(prev => ({ ...prev, [s.name]: e.target.value }))}
+                      style={{ width: 90, padding: "4px 8px", borderRadius: 6, border: `1px solid ${THEME.border}`, fontSize: 12, fontWeight: 700, textAlign: "right" }}
+                    />
+                    <span style={{ fontSize: 11, color: THEME.textMuted }}>円</span>
+                    <button
+                      onClick={() => handleCostSave(s.name)}
+                      disabled={costSaving === s.name}
+                      style={{ padding: "4px 10px", borderRadius: 6, border: "none", backgroundColor: THEME.primary, color: "white", fontSize: 11, fontWeight: 800, cursor: "pointer", opacity: costSaving === s.name ? 0.5 : 1 }}
+                    >
+                      {costSaving === s.name ? "保存中" : "保存"}
+                    </button>
+                  </div>
                   <button
                     onClick={() => handleDelete(s.name)}
                     disabled={deleting === s.name}
