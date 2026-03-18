@@ -45,15 +45,17 @@ function InlineDropdown({ value, options, onChange, colorMap }) {
   const selected = options.find((o) => o.value === value) || options[0];
   const chipColor = colorMap?.[selected?.value];
   return (
-    <div ref={ref} style={{ position: "relative", display: "inline-block" }}>
+    <div ref={ref} style={{ position: "relative", width: "100%" }}>
       <button
         onClick={() => setOpen((o) => !o)}
         style={{
-          display: "flex", alignItems: "center", gap: 6,
-          border: "none", borderRadius: 8, padding: "5px 10px 5px 12px",
-          backgroundColor: chipColor?.bg || "#F1F5F9",
+          display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6,
+          width: "100%", border: `1px solid ${THEME.border}`, borderRadius: 8,
+          padding: "8px 10px 8px 12px",
+          backgroundColor: chipColor?.bg || "white",
           color: chipColor?.text || THEME.textMain,
-          fontWeight: 800, fontSize: 13, cursor: "pointer", whiteSpace: "nowrap",
+          fontWeight: 700, fontSize: 13, cursor: "pointer", whiteSpace: "nowrap",
+          boxSizing: "border-box",
         }}
       >
         {selected?.label}
@@ -94,6 +96,24 @@ function InlineDropdown({ value, options, onChange, colorMap }) {
   );
 }
 
+
+const SEL_WRAP = (theme, extra={}) => ({
+  position: "relative", borderRadius: "12px",
+  border: `1px solid ${theme.border}`, backgroundColor: "white",
+  overflow: "hidden", display: "block", ...extra,
+});
+const SEL_INNER = (color) => ({
+  width: "100%", padding: "12px 36px 12px 16px",
+  border: "none", outline: "none", fontSize: "14px",
+  backgroundColor: "transparent", appearance: "none",
+  cursor: "pointer", boxSizing: "border-box",
+  color: color || "inherit",
+});
+const SEL_ARROW = {
+  position: "absolute", right: 10, top: "50%",
+  transform: "translateY(-50%)", pointerEvents: "none",
+};
+
 const localStyles = {
   main:    { minHeight: "100vh", backgroundColor: THEME.bg },
   wrapper: { padding: "40px 64px", maxWidth: "1600px", margin: "0 auto" },
@@ -101,6 +121,7 @@ const localStyles = {
   tableTh: { padding: "16px 24px", color: THEME.textMuted, fontSize: "12px", fontWeight: "800", backgroundColor: "#F8FAFC", borderBottom: `1px solid ${THEME.border}`, textAlign: "left" },
   tableTd: { padding: "18px 24px", fontSize: "14px", color: THEME.textMain, borderBottom: `1px solid ${THEME.border}`, verticalAlign: "middle" },
   input:   { border: `1px solid ${THEME.border}`, borderRadius: "12px", padding: "10px 16px", outline: "none", fontSize: "14px", transition: "0.2s", backgroundColor: "white" },
+  select:  { border: `1px solid ${THEME.border}`, borderRadius: "12px", padding: "10px 36px 10px 16px", outline: "none", fontSize: "14px", transition: "0.2s", backgroundColor: "white", appearance: "none", backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236B6A8E' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E")`, backgroundRepeat: "no-repeat", backgroundPosition: "right 12px center", cursor: "pointer" },
 };
 
 export default function CustomerList({
@@ -279,57 +300,33 @@ export default function CustomerList({
 
     // 対応ステータス → status-settings の選択肢
     if (col === "対応ステータス") {
+      const opts = [{ value: "", label: "すべて" }, ...statuses.map(st => ({ value: st.name, label: st.name }))];
       return (
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
           <label style={{ fontSize: "11px", fontWeight: "800", color: THEME.textMuted }}>対応ステータス</label>
-          <select
-            style={{ ...localStyles.input, width: "100%", color: search[col] ? THEME.textMain : THEME.textMuted }}
-            value={search[col] || ""}
-            onChange={(e) => setSearch({ ...search, [col]: e.target.value })}
-          >
-            <option value="">すべて</option>
-            {statuses.map((st) => (
-              <option key={st.name} value={st.name}>{st.name}</option>
-            ))}
-          </select>
+          <InlineDropdown value={search[col] || ""} options={opts} onChange={(v) => setSearch({ ...search, [col]: v })} />
         </div>
       );
     }
 
     // 担当者メール → users の担当者名一覧
     if (col === "担当者メール") {
+      const opts = [{ value: "", label: "すべて" }, ...staffList.map(s => ({ value: s.email, label: `${s.lastName} ${s.firstName}` }))];
       return (
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
           <label style={{ fontSize: "11px", fontWeight: "800", color: THEME.textMuted }}>担当者</label>
-          <select
-            style={{ ...localStyles.input, width: "100%", color: search[col] ? THEME.textMain : THEME.textMuted }}
-            value={search[col] || ""}
-            onChange={(e) => setSearch({ ...search, [col]: e.target.value })}
-          >
-            <option value="">すべて</option>
-            {staffList.map((s) => (
-              <option key={s.email} value={s.email}>{s.lastName} {s.firstName}</option>
-            ))}
-          </select>
+          <InlineDropdown value={search[col] || ""} options={opts} onChange={(v) => setSearch({ ...search, [col]: v })} />
         </div>
       );
     }
 
     // 流入元 → sourcesの選択肢
     if (col === "流入元") {
+      const opts = [{ value: "", label: "すべて" }, ...sources.map(s => ({ value: s.name, label: s.name }))];
       return (
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
           <label style={{ fontSize: "11px", fontWeight: "800", color: THEME.textMuted }}>流入元</label>
-          <select
-            style={{ ...localStyles.input, width: "100%", color: search[col] ? THEME.textMain : THEME.textMuted }}
-            value={search[col] || ""}
-            onChange={(e) => setSearch({ ...search, [col]: e.target.value })}
-          >
-            <option value="">すべて</option>
-            {sources.map((s) => (
-              <option key={s.name} value={s.name}>{s.name}</option>
-            ))}
-          </select>
+          <InlineDropdown value={search[col] || ""} options={opts} onChange={(v) => setSearch({ ...search, [col]: v })} />
         </div>
       );
     }
@@ -337,19 +334,11 @@ export default function CustomerList({
     // シナリオID → プルダウン選択（「適用シナリオ」表示）
     if (col === "シナリオID") {
       const scenarioIds = [...new Set((scenarios || []).map(s => s["シナリオID"]).filter(Boolean))];
+      const opts = [{ value: "", label: "すべて" }, ...scenarioIds.map(sid => ({ value: sid, label: sid }))];
       return (
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
           <label style={{ fontSize: "11px", fontWeight: "800", color: THEME.textMuted }}>適用シナリオ</label>
-          <select
-            style={{ ...localStyles.input, width: "100%", color: search[col] ? THEME.textMain : THEME.textMuted }}
-            value={search[col] || ""}
-            onChange={(e) => setSearch({ ...search, [col]: e.target.value })}
-          >
-            <option value="">すべて</option>
-            {scenarioIds.map((sid) => (
-              <option key={sid} value={sid}>{sid}</option>
-            ))}
-          </select>
+          <InlineDropdown value={search[col] || ""} options={opts} onChange={(v) => setSearch({ ...search, [col]: v })} />
         </div>
       );
     }
@@ -367,17 +356,11 @@ export default function CustomerList({
     if (type === "dropdown") {
       const f = formSettings.find((s) => s.name === col);
       const opts = f?.options ? f.options.split(",").map((o) => o.trim()).filter(Boolean) : [];
+      const ddOpts = [{ value: "", label: "すべて" }, ...opts.map(o => ({ value: o, label: o }))];
       return (
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
           <label style={{ fontSize: "11px", fontWeight: "800", color: THEME.textMuted }}>{col}</label>
-          <select
-            style={{ ...localStyles.input, width: "100%", color: search[col] ? THEME.textMain : THEME.textMuted }}
-            value={search[col] || ""}
-            onChange={(e) => setSearch({ ...search, [col]: e.target.value })}
-          >
-            <option value="">すべて</option>
-            {opts.map((opt) => <option key={opt} value={opt}>{opt}</option>)}
-          </select>
+          <InlineDropdown value={search[col] || ""} options={ddOpts} onChange={(v) => setSearch({ ...search, [col]: v })} />
         </div>
       );
     }

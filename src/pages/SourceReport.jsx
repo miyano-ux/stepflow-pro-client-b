@@ -186,8 +186,6 @@ export default function SourceReport({ customers = [], statuses = [], sources = 
                   {/* 100%積み上げバー */}
                   <div style={{
                     height: 36, display: "flex", borderRadius: 6, overflow: "hidden",
-                    backgroundColor: "#F1F5F9",
-                    margin: "0",
                     backgroundColor: ri % 2 === 0 ? "#F8FAFC" : "transparent",
                     padding: "4px 0",
                   }}>

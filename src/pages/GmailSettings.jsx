@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { Plus, Edit3, Trash2, X, AlertCircle, ChevronDown } from "lucide-react";
 import { THEME, GAS_URL } from "../lib/constants";
 import { styles } from "../lib/styles";
+import CustomSelect from "../components/CustomSelect";
 import { apiCall } from "../lib/utils";
 import Page from "../components/Page";
 import StaffGroupSelect from "../components/StaffGroupSelect";
@@ -265,49 +266,49 @@ function GmailSettings({
                   {/* 対応ステータス */}
                   <FieldBox>
                     <LabelText>対応ステータス</LabelText>
-                    <div style={{ position: "relative" }}>
-                      <select style={{ ...styles.input, appearance: "none", paddingRight: 32 }} value={modal.data.status} onChange={e => setData({ status: e.target.value })}>
-                        <option value="">未設定（デフォルト）</option>
-                        {statuses.map(st => <option key={st.name} value={st.name}>{st.name}</option>)}
-                      </select>
-                      <ChevronDown size={14} style={{ position: "absolute", right: 10, top: 14, pointerEvents: "none", color: THEME.textMuted }} />
-                    </div>
+                    <CustomSelect
+                      value={modal.data.status}
+                      onChange={v => setData({ status: v })}
+                      placeholder="未設定（デフォルト）"
+                      options={[{ value: "", label: "未設定（デフォルト）" }, ...statuses.map(st => ({ value: st.name, label: st.name }))]}
+                    />
                   </FieldBox>
 
                   {/* 流入元 */}
                   <FieldBox>
                     <LabelText>流入元</LabelText>
-                    <div style={{ position: "relative" }}>
-                      <select style={{ ...styles.input, appearance: "none", paddingRight: 32 }} value={modal.data.source} onChange={e => setData({ source: e.target.value })}>
-                        <option value="">未設定</option>
-                        {sources.map(s => <option key={s.name} value={s.name}>{s.name}</option>)}
-                      </select>
-                      <ChevronDown size={14} style={{ position: "absolute", right: 10, top: 14, pointerEvents: "none", color: THEME.textMuted }} />
-                    </div>
+                    <CustomSelect
+                      value={modal.data.source}
+                      onChange={v => setData({ source: v })}
+                      placeholder="未設定"
+                      options={[{ value: "", label: "未設定" }, ...sources.map(s => ({ value: s.name, label: s.name }))]}
+                    />
                   </FieldBox>
 
                   {/* 担当者 */}
                   <FieldBox>
                     <LabelText>担当者</LabelText>
-                    <StaffGroupSelect
+                    <CustomSelect
                       value={modal.data.staffEmail}
-                      onChange={(val) => setData({ staffEmail: val })}
-                      staffList={staffList}
-                      groups={groups}
-                      deferred={true}
+                      onChange={v => setData({ staffEmail: v })}
+                      placeholder="未割当"
+                      options={[
+                        { value: "", label: "未割当" },
+                        ...staffList.map(s => ({ value: s.email, label: `${s.lastName} ${s.firstName}` })),
+                        ...groups.map(g => ({ value: `group:${g["グループID"]}`, label: `👥 ${g["グループ名"]}（登録時に自動選出）` })),
+                      ]}
                     />
                   </FieldBox>
 
                   {/* 適用シナリオ */}
                   <FieldBox>
                     <LabelText>適用シナリオ</LabelText>
-                    <div style={{ position: "relative" }}>
-                      <select style={{ ...styles.input, appearance: "none", paddingRight: 32 }} value={modal.data.scenarioID} onChange={e => setData({ scenarioID: e.target.value })}>
-                        <option value="">未設定</option>
-                        {scenarioIds.map(sid => <option key={sid} value={sid}>{sid}</option>)}
-                      </select>
-                      <ChevronDown size={14} style={{ position: "absolute", right: 10, top: 14, pointerEvents: "none", color: THEME.textMuted }} />
-                    </div>
+                    <CustomSelect
+                      value={modal.data.scenarioID}
+                      onChange={v => setData({ scenarioID: v })}
+                      placeholder="未設定"
+                      options={[{ value: "", label: "未設定" }, ...scenarioIds.map(sid => ({ value: sid, label: sid }))]}
+                    />
                   </FieldBox>
                 </div>
               </div>

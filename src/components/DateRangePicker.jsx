@@ -1,6 +1,5 @@
 import React from "react";
 import { THEME } from "../lib/constants";
-import { styles } from "../lib/styles";
 
 // ==========================================
 // 📅 DateRangePicker - 日付範囲選択コンポーネント
@@ -28,20 +27,24 @@ function DateRangePicker({ label, value = {}, onChange }) {
       </label>
 
       {/* 日付入力 */}
-      <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-        <input
-          type="date"
-          style={{ ...styles.input, width: "135px", padding: "8px" }}
-          value={value.start || ""}
-          onChange={(e) => onChange({ ...value, start: e.target.value })}
-        />
-        <span style={{ color: THEME.textMuted }}>〜</span>
-        <input
-          type="date"
-          style={{ ...styles.input, width: "135px", padding: "8px" }}
-          value={value.end || ""}
-          onChange={(e) => onChange({ ...value, end: e.target.value })}
-        />
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <div style={{ flex: 1, borderRadius: "12px", border: `1px solid ${THEME.border}`, overflow: "hidden", backgroundColor: "white" }}>
+            <input
+              type="date"
+              style={{ width: "100%", padding: "8px 12px", border: "none", outline: "none", fontSize: "13px", cursor: "pointer", boxSizing: "border-box", backgroundColor: "transparent", fontFamily: "inherit" }}
+              value={value.start || ""}
+              onChange={(e) => onChange({ ...value, start: e.target.value })}
+            />
+          </div>
+          <span style={{ color: THEME.textMuted, fontSize: 13, flexShrink: 0 }}>〜</span>
+          <div style={{ flex: 1, borderRadius: "12px", border: `1px solid ${THEME.border}`, overflow: "hidden", backgroundColor: "white" }}>
+            <input
+              type="date"
+              style={{ width: "100%", padding: "8px 12px", border: "none", outline: "none", fontSize: "13px", cursor: "pointer", boxSizing: "border-box", backgroundColor: "transparent", fontFamily: "inherit" }}
+              value={value.end || ""}
+              onChange={(e) => onChange({ ...value, end: e.target.value })}
+            />
+          </div>
       </div>
 
     </div>

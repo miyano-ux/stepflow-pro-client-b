@@ -1,18 +1,12 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { GripVertical, Plus, Trash2, ChevronLeft, Save, Flag, Trash } from "lucide-react";
+import CustomSelect from "../components/CustomSelect";
 import { THEME, GAS_URL } from "../lib/constants";
 import { styles } from "../lib/styles";
 import { apiCall } from "../lib/utils";
 
-const selectStyle = {
-  width: "100%", padding: "11px 16px", borderRadius: "10px",
-  border: `1px solid ${THEME.border}`, fontSize: "14px", fontWeight: 700,
-  outline: "none", boxSizing: "border-box", backgroundColor: "white", color: "#1E293B",
-  appearance: "none",
-  backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2364748B' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E")`,
-  backgroundRepeat: "no-repeat", backgroundPosition: "right 12px center", cursor: "pointer",
-};
+
 
 const PROMPT_FIELD_OPTIONS = [
   { key: "契約種別",    label: "📋 契約種別" },
@@ -54,13 +48,17 @@ function StatusRow({ s, idx, scenarios, onChange, onDelete, onDragStart, onDragO
         </div>
         <div>
           <div style={{ fontSize: 11, fontWeight: 700, color: THEME.textMuted, marginBottom: 4 }}>自動シナリオ（任意）</div>
-          <select style={selectStyle} value={s.scenarioId || ""} onChange={e => onChange(idx, "scenarioId", e.target.value)}>
-            <option value="">設定しない</option>
-            {[...new Set(scenarios.map(sc => sc["シナリオID"]))].filter(Boolean).map(sid => {
-              const isUsed = usedScenarios.has(sid) && sid !== s.scenarioId;
-              return <option key={sid} value={sid} disabled={isUsed} style={{ color: isUsed ? "#aaa" : undefined }}>{sid}{isUsed ? "（他で使用中）" : ""}</option>;
-            })}
-          </select>
+          <CustomSelect
+            value={s.scenarioId || ""}
+            onChange={v => onChange(idx, "scenarioId", v)}
+            options={[
+              { value: "", label: "設定しない" },
+              ...[...new Set(scenarios.map(sc => sc["シナリオID"]))].filter(Boolean).map(sid => {
+                const isUsed = usedScenarios.has(sid) && sid !== s.scenarioId;
+                return { value: sid, label: sid + (isUsed ? "（他で使用中）" : ""), disabled: isUsed };
+              })
+            ]}
+          />
         </div>
         <div>
           <div style={{ fontSize: 11, fontWeight: 700, color: THEME.textMuted, marginBottom: 6 }}>レポート集計</div>
@@ -118,13 +116,18 @@ function TerminalRow({ row, idx, scenarios, usedScenarios, onChange, onDelete })
         {/* 自動シナリオ */}
         <div>
           <div style={{ fontSize: 11, fontWeight: 700, color, marginBottom: 4 }}>自動シナリオ（任意）</div>
-          <select style={{ ...selectStyle, borderColor: `${color}50` }} value={row.scenarioId || ""} onChange={e => onChange(idx, "scenarioId", e.target.value)}>
-            <option value="">設定しない</option>
-            {[...new Set(scenarios.map(sc => sc["シナリオID"]))].filter(Boolean).map(sid => {
-              const isUsed = usedScenarios.has(sid) && sid !== row.scenarioId;
-              return <option key={sid} value={sid} disabled={isUsed} style={{ color: isUsed ? "#aaa" : undefined }}>{sid}{isUsed ? "（他で使用中）" : ""}</option>;
-            })}
-          </select>
+          <CustomSelect
+            value={row.scenarioId || ""}
+            onChange={v => onChange(idx, "scenarioId", v)}
+            color={color}
+            options={[
+              { value: "", label: "設定しない" },
+              ...[...new Set(scenarios.map(sc => sc["シナリオID"]))].filter(Boolean).map(sid => {
+                const isUsed = usedScenarios.has(sid) && sid !== row.scenarioId;
+                return { value: sid, label: sid + (isUsed ? "（他で使用中）" : ""), disabled: isUsed };
+              })
+            ]}
+          />
         </div>
 
         {/* 配置 */}

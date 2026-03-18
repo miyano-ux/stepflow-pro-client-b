@@ -1,6 +1,7 @@
 import React from "react";
 import { styles } from "../lib/styles";
 import DatePicker from "./DatePicker";
+import CustomSelect from "./CustomSelect";
 
 // ==========================================
 // 🔧 DynamicField - フォーム項目動的レンダリングコンポーネント
@@ -15,22 +16,11 @@ import DatePicker from "./DatePicker";
 function DynamicField({ f, value, onChange, fieldId }) {
   // ドロップダウン（選択肢型）
   if (f.type === "dropdown") {
-    return (
-      <select
-        id={fieldId}
-        style={styles.input}
-        required={f.required}
-        value={value || ""}
-        onChange={(e) => onChange(e.target.value)}
-      >
-        <option value="">選択してください</option>
-        {f?.options?.split(",").map((opt) => (
-          <option key={opt.trim()} value={opt.trim()}>
-            {opt.trim()}
-          </option>
-        ))}
-      </select>
-    );
+    const opts = [
+      { value: "", label: "選択してください" },
+      ...(f?.options?.split(",").map(opt => ({ value: opt.trim(), label: opt.trim() })) || []),
+    ];
+    return <CustomSelect value={value || ""} onChange={onChange} options={opts} />;
   }
 
   // 日付型 → カスタムDatePickerを使用

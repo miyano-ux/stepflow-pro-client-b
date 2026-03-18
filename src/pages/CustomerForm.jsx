@@ -4,6 +4,9 @@ import { FileSpreadsheet, SlidersHorizontal, Upload } from "lucide-react";
 import axios from "axios";
 import { THEME, GAS_URL } from "../lib/constants";
 import { styles } from "../lib/styles";
+import CustomSelect from "../components/CustomSelect";
+
+
 import { apiCall, smartNormalizePhone, downloadCSV } from "../lib/utils";
 import Page from "../components/Page";
 import StaffGroupSelect from "../components/StaffGroupSelect";
@@ -308,13 +311,15 @@ function CustomerForm({ formSettings = [], scenarios = [], statuses = [], staffL
               <label htmlFor="form-staff" style={{ fontWeight: 700, fontSize: 12, color: THEME.primary, userSelect: "none" }}>
                 担当者
               </label>
-              <StaffGroupSelect
-                inputId="form-staff"
+              <CustomSelect
                 value={fd["担当者メール"]}
-                onChange={(val) => setFd({ ...fd, "担当者メール": val })}
-                staffList={staffList}
-                groups={groups}
-                deferred={true}
+                onChange={v => setFd({ ...fd, "担当者メール": v })}
+                placeholder="未割当"
+                options={[
+                  { value: "", label: "未割当" },
+                  ...staffList.map(s => ({ value: s.email, label: `${s.lastName} ${s.firstName}` })),
+                  ...groups.map(g => ({ value: `group:${g["グループID"]}`, label: `👥 ${g["グループ名"]}（登録時に自動選出）` })),
+                ]}
               />
             </div>
 
@@ -323,16 +328,11 @@ function CustomerForm({ formSettings = [], scenarios = [], statuses = [], staffL
               <label htmlFor="form-status" style={{ fontWeight: 700, fontSize: 12, color: THEME.primary, userSelect: "none" }}>
                 対応ステータス
               </label>
-              <select
-                id="form-status"
-                style={styles.input}
+              <CustomSelect
                 value={fd["対応ステータス"]}
-                onChange={(e) => setFd({ ...fd, "対応ステータス": e.target.value })}
-              >
-                {statuses.map((st) => (
-                  <option key={st.name} value={st.name}>{st.name}</option>
-                ))}
-              </select>
+                onChange={v => setFd({ ...fd, "対応ステータス": v })}
+                options={statuses.map(st => ({ value: st.name, label: st.name }))}
+              />
             </div>
 
             {/* 流入元 */}
@@ -341,17 +341,12 @@ function CustomerForm({ formSettings = [], scenarios = [], statuses = [], staffL
                 <label htmlFor="form-source" style={{ fontWeight: 700, fontSize: 12, color: THEME.primary, userSelect: "none" }}>
                   流入元
                 </label>
-                <select
-                  id="form-source"
-                  style={styles.input}
+                <CustomSelect
                   value={fd["流入元"] || ""}
-                  onChange={(e) => setFd({ ...fd, "流入元": e.target.value })}
-                >
-                  <option value="">未選択</option>
-                  {sources.map((s) => (
-                    <option key={s.name} value={s.name}>{s.name}</option>
-                  ))}
-                </select>
+                  onChange={v => setFd({ ...fd, "流入元": v })}
+                  placeholder="未選択"
+                  options={[{ value: "", label: "未選択" }, ...sources.map(s => ({ value: s.name, label: s.name }))]}
+                />
               </div>
             ) : <div />}
 
@@ -361,17 +356,12 @@ function CustomerForm({ formSettings = [], scenarios = [], statuses = [], staffL
                 <label htmlFor="form-contract" style={{ fontWeight: 700, fontSize: 12, color: THEME.primary, userSelect: "none" }}>
                   契約種別
                 </label>
-                <select
-                  id="form-contract"
-                  style={styles.input}
+                <CustomSelect
                   value={fd["契約種別"] || ""}
-                  onChange={(e) => setFd({ ...fd, "契約種別": e.target.value })}
-                >
-                  <option value="">未選択</option>
-                  {contractTypes.map((t) => (
-                    <option key={t} value={t}>{t}</option>
-                  ))}
-                </select>
+                  onChange={v => setFd({ ...fd, "契約種別": v })}
+                  placeholder="未選択"
+                  options={[{ value: "", label: "未選択" }, ...contractTypes.map(t => ({ value: t, label: t }))]}
+                />
               </div>
             ) : <div />}
 
@@ -380,16 +370,11 @@ function CustomerForm({ formSettings = [], scenarios = [], statuses = [], staffL
               <label htmlFor="form-scenario" style={{ fontWeight: 700, fontSize: 12, color: THEME.primary, userSelect: "none" }}>
                 適用シナリオ
               </label>
-              <select
-                id="form-scenario"
-                style={styles.input}
+              <CustomSelect
                 value={sc}
-                onChange={(e) => setSc(e.target.value)}
-              >
-                {[...new Set(scenarios?.map((x) => x["シナリオID"]))].map((sid) => (
-                  <option key={sid} value={sid}>{sid}</option>
-                ))}
-              </select>
+                onChange={v => setSc(v)}
+                options={[...new Set(scenarios?.map(x => x["シナリオID"]))].map(sid => ({ value: sid, label: sid }))}
+              />
             </div>
           </div>
 
