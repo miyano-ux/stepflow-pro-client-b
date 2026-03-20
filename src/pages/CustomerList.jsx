@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import axios from "axios";
 import {
@@ -7,7 +7,7 @@ import {
   UserRound, Check, ExternalLink,
 } from "lucide-react";
 import { THEME } from "../lib/constants";
-import { parseLocalDate } from "../lib/utils";
+import { parseLocalDate, downloadCSV, customerStore } from "../lib/utils";
 import DateRangePicker from "../components/DateRangePicker";
 
 // ==========================================
@@ -126,7 +126,7 @@ const localStyles = {
 
 export default function CustomerList({
   customers = [], displaySettings = [], formSettings = [],
-  scenarios = [], statuses = [], staffList = [], scenarioSettings = {}, sources = [], gasUrl, onRefresh,
+  scenarios = [], statuses = [], staffList = [], scenarioSettings = {}, sources = [], gasUrl, onRefresh, onLightRefresh,
 }) {
   const navigate = useNavigate();
   const location = useLocation();
@@ -137,11 +137,21 @@ export default function CustomerList({
 
   const [confirmModal, setConfirmModal] = useState({ open: false, customer: null, field: "", newValue: "", oldValue: "" });
   const [localCustomers, setLocalCustomers] = useState(customers);
-  const [syncingCount, setSyncingCount] = useState(0);
+  const [syncing, setSyncing] = useState(false);
+  // KanbanBoard と同じ pendingMap パターン：更新中のIDとその値を記憶
+  const pendingMap = useRef(new Map()); // Map<id, { field, value }>
 
   useEffect(() => {
-    if (syncingCount === 0) setLocalCustomers(customers);
-  }, [customers, syncingCount]);
+    setLocalCustomers(prev => {
+      // 親がローディング中で空を渡してきた場合はスキップ
+      if (customers.length === 0 && prev.length > 0) return prev;
+      return customers.map(c => {
+        const pending = pendingMap.current.get(String(c.id));
+        if (pending) return { ...c, [pending.field]: pending.value };
+        return c;
+      });
+    });
+  }, [customers]);
 
   // 新規登録直後: navigation state から楽観的データを受け取り即時先頭に追加
   // onRefresh()が完了してcustomersが更新されたら自動的に正式データに差し替わる
@@ -253,6 +263,47 @@ export default function CustomerList({
     return res;
   }, [localCustomers, search, dateRange, sort]);
 
+  const handleExportCSV = () => {
+    // ヘッダー行：仮想列「氏名」は「姓」「名」に展開
+    const csvCols = vCols.flatMap((col) => col === "氏名" ? ["姓", "名"] : [col]);
+    const header = csvCols.map((col) => {
+      if (col === "担当者メール") return "担当者";
+      if (col === "シナリオID") return "適用シナリオ";
+      return col;
+    });
+
+    // 電話番号列を特定（固定の「電話番号」＋ formSettings で type=phone またはフィールド名に「電話」を含むもの）
+    const phoneColNames = new Set(
+      csvCols.filter((col) => {
+        if (col === "電話番号") return true;
+        const f = formSettings.find((s) => s.name === col);
+        return f?.type === "phone" || col.includes("電話");
+      })
+    );
+
+    const rows = filtered.map((c) =>
+      csvCols.map((col) => {
+        if (col === "担当者メール") {
+          const staff = staffList.find((s) => s.email === c[col]);
+          return staff ? `${staff.lastName} ${staff.firstName}` : c[col] || "";
+        }
+        const type = getFieldType(col, formSettings);
+        if (type === "date" || KNOWN_DATE_FIELDS.includes(col)) {
+          return formatDateJP(c[col]);
+        }
+        const val = c[col] != null ? String(c[col]) : "";
+        // 電話番号はExcelのゼロ落ち防止のため ="090..." 形式で出力
+        if (phoneColNames.has(col) && val) return `="${val}"`;
+        return val;
+      })
+    );
+
+    const now = new Date();
+    const pad = (n) => String(n).padStart(2, "0");
+    const filename = `顧客リスト_${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}.csv`;
+    downloadCSV([header, ...rows], filename);
+  };
+
   const handleDelete = async (c) => {
     if (!window.confirm(`${c["姓"]} ${c["名"]}様を削除しますか？\nこの操作は取り消せません。`)) return;
     try {
@@ -263,16 +314,32 @@ export default function CustomerList({
 
   const handleExecuteChange = async () => {
     const { customer, field, newValue } = confirmModal;
+    const cid = String(customer.id);
     setConfirmModal({ open: false, customer: null, field: "", newValue: "", oldValue: "" });
-    setLocalCustomers((prev) => prev.map((c) => c.id === customer.id ? { ...c, [field]: newValue } : c));
-    setSyncingCount((p) => p + 1);
+
+    // ① ストアとローカル状態を同時に即時更新
+    //    → KanbanBoard がマウント済みなら subscribe 経由で即反映
+    //    → KanbanBoard が未マウントでもストアにパッチが残るため
+    //      次回マウント時に applyTo() で正しい状態で表示される
+    customerStore.patch(cid, { [field]: newValue });
+    pendingMap.current.set(cid, { field, value: newValue });
+    setSyncing(true);
+    setLocalCustomers((prev) => prev.map((c) => String(c.id) === cid ? { ...c, [field]: newValue } : c));
+
     try {
       await axios.post(gasUrl, JSON.stringify({ action: "update", id: customer.id, data: { ...customer, [field]: newValue } }), { headers: { "Content-Type": "text/plain;charset=utf-8" } });
-      setTimeout(() => { onRefresh(); setSyncingCount((p) => Math.max(0, p - 1)); }, 1500);
+      // サーバー確定後にパッチをクリア（以降はサーバーデータを使用）
+      customerStore.clear(cid);
+      if (onLightRefresh) onLightRefresh(); else onRefresh();
     } catch {
+      // ロールバック
+      customerStore.patch(cid, { [field]: customer[field] });
+      pendingMap.current.delete(cid);
+      setLocalCustomers((prev) => prev.map((c) => String(c.id) === cid ? { ...c, [field]: customer[field] } : c));
       alert("更新に失敗しました");
-      setSyncingCount((p) => Math.max(0, p - 1));
-      onRefresh();
+    } finally {
+      pendingMap.current.delete(cid);
+      setSyncing(false);
     }
   };
 
@@ -460,7 +527,7 @@ export default function CustomerList({
             <h1 style={{ fontSize: "32px", fontWeight: "900", color: THEME.textMain, margin: 0 }}>顧客ダッシュボード</h1>
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8 }}>
               <p style={{ color: THEME.textMuted, fontSize: "14px", margin: 0 }}>全 {filtered.length} 名をリスト表示中</p>
-              {syncingCount > 0 && (
+              {syncing && (
                 <span style={{ color: THEME.primary, fontSize: "12px", fontWeight: "800", display: "flex", alignItems: "center", gap: 4 }}>
                   <Loader2 size={12} className="animate-spin" /> 同期中...
                 </span>
@@ -471,7 +538,7 @@ export default function CustomerList({
             <button onClick={() => navigate("/column-settings")} style={{ ...localStyles.input, display: "flex", alignItems: "center", gap: 8, fontWeight: "800", cursor: "pointer" }}>
               <SlidersHorizontal size={16} /> 表示設定
             </button>
-            <button style={{ ...localStyles.input, backgroundColor: THEME.primary, color: "white", border: "none", fontWeight: "800", cursor: "pointer", display: "flex", alignItems: "center", gap: 8 }}>
+            <button onClick={handleExportCSV} style={{ ...localStyles.input, backgroundColor: THEME.primary, color: "white", border: "none", fontWeight: "800", cursor: "pointer", display: "flex", alignItems: "center", gap: 8 }}>
               <Download size={16} /> CSV出力
             </button>
           </div>

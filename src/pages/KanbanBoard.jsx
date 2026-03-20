@@ -7,7 +7,7 @@ import {
 } from "lucide-react";
 import { THEME } from "../lib/constants";
 import { StaffDropdown } from "../components/StaffDropdown";
-import { apiCall } from "../lib/utils";
+import { apiCall, customerStore } from "../lib/utils";
 import PromptFieldsModal from "../components/PromptFieldsModal";
 
 // ─────────────────────────────────────────────────────────
@@ -35,9 +35,9 @@ const S = {
   rightZone:  { flex: 1, padding: "16px 14px", display: "flex", flexDirection: "column", gap: "10px", overflowY: "auto", minHeight: 0 },
   // 底部行：ボトムバー(flex:1) + 除外コーナー(固定幅) 横並び
   bottomRow: { flexShrink: 0, display: "flex", zIndex: 10, borderTop: `1px solid ${THEME.border}` },
-  bottomBar: { flex: 1, backgroundColor: "rgba(255,255,255,0.95)", backdropFilter: "blur(12px)", padding: "14px 40px", display: "flex", gap: "16px", justifyContent: "center", flexWrap: "wrap", alignItems: "center" },
-  excludedCorner: { width: "256px", flexShrink: 0, borderLeft: `1px solid ${THEME.border}`, backgroundColor: "#F1F2F4", padding: "12px 14px", marginLeft: "16px" },
-  zone:      { minWidth: "220px", height: "72px", borderRadius: "16px", display: "flex", alignItems: "center", justifyContent: "center", gap: "10px", fontWeight: "900", fontSize: "15px", border: "3px dashed transparent", transition: "all 0.2s", cursor: "default", padding: "0 20px" },
+  bottomBar: { flex: 1, backgroundColor: "rgba(255,255,255,0.95)", backdropFilter: "blur(12px)", padding: "16px 40px", display: "flex", gap: "20px", justifyContent: "center", flexWrap: "wrap", alignItems: "stretch", minHeight: "120px" },
+  excludedCorner: { width: "256px", flexShrink: 0, borderLeft: `1px solid ${THEME.border}`, backgroundColor: "#F1F2F4", padding: "0", marginLeft: "16px" },
+  zone:      { minWidth: "260px", height: "96px", borderRadius: "16px", display: "flex", alignItems: "center", justifyContent: "center", gap: "10px", fontWeight: "900", fontSize: "15px", border: "3px dashed transparent", transition: "all 0.2s", cursor: "default", padding: "0 24px" },
   overlay:   { position: "fixed", inset: 0, backgroundColor: "rgba(15,23,42,0.6)", display: "flex", justifyContent: "center", alignItems: "center", zIndex: 2000, backdropFilter: "blur(4px)" },
   modal:     { backgroundColor: "white", borderRadius: 24, padding: "40px", width: 460, boxShadow: "0 24px 48px rgba(0,0,0,0.15)" },
 };
@@ -216,13 +216,17 @@ function DropZone({ status, count, isDragging, isOver, visual, onDragOver, onDra
         borderRadius: 16,
         border: `2.5px dashed ${isOver ? color : isDragging ? `${color}70` : THEME.border}`,
         backgroundColor: isOver ? bg : isDragging ? `${bg}99` : "white",
-        padding: compact ? "16px 14px" : "14px 20px",
-        display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8,
+        padding: compact ? "16px 14px" : "16px 32px",
+        display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 10,
         transition: "all 0.2s",
         transform: isOver ? "scale(1.03)" : "scale(1)",
         boxShadow: isOver ? `0 0 0 3px ${color}25` : "none",
-        minHeight: compact ? 80 : 72,
+        // compact（右パネル）は固定高、bottomBar は親の高さに合わせて伸びる
+        minHeight: compact ? 80 : undefined,
         flex: compact ? 1 : undefined,
+        alignSelf: compact ? undefined : "stretch",
+        minWidth: compact ? undefined : "200px",
+        flex: compact ? 1 : "1 1 200px",
       }}
     >
       <div style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 900, fontSize: compact ? 14 : 15, color }}>
@@ -283,11 +287,13 @@ function ExcludedZone({ statuses, customers, isDragging, overColumn, onDragOver,
 // ─────────────────────────────────────────────────────────
 export default function KanbanBoard({
   customers = [], statuses = [], scenarios = [], scenarioSettings = {},
-  onRefresh, staffList = [], gasUrl, sources = [], contractTypes = [],
+  onRefresh, onLightRefresh, staffList = [], gasUrl, sources = [], contractTypes = [],
 }) {
   const navigate = useNavigate();
   const [filterStaff, setFilterStaff]       = useState("");
-  const [localCustomers, setLocalCustomers] = useState(customers);
+  // 初期値をストアのパッチ適用済みデータで初期化
+  // → CustomerListで更新後にKanbanBoardへ遷移した瞬間から正しい状態で表示
+  const [localCustomers, setLocalCustomers] = useState(() => customerStore.applyTo(customers));
   const [draggingId, setDraggingId]         = useState(null);
   const [overColumn, setOverColumn]         = useState(null);
   const [syncing, setSyncing]               = useState(false);
@@ -297,16 +303,46 @@ export default function KanbanBoard({
   const [dormantModal,  setDormantModal]  = useState(null);
   const [lostModal,     setLostModal]     = useState(null);
 
-  const pendingIds = useRef(new Set());
+  // pending管理: Map<id, newStatus> でステータスまで記憶する
+  const pendingUpdates = useRef(new Map());
+  // 並行更新カウンター（全処理完了で syncing=false）
+  const syncCount = useRef(0);
+
+  // customerStore の購読 → CustomerList がマウント中に更新した場合も即時反映
+  useEffect(() => {
+    return customerStore.subscribe(() => {
+      setLocalCustomers(prev => customerStore.applyTo(prev));
+    });
+  }, []);
 
   useEffect(() => {
-    setLocalCustomers(prev =>
-      customers.map(c =>
-        pendingIds.current.has(String(c.id))
-          ? (prev.find(p => String(p.id) === String(c.id)) || c)
-          : c
-      )
-    );
+    setLocalCustomers(prev => {
+      // 親がローディング中で一時的に空を渡してきた場合はスキップ
+      if (customers.length === 0 && prev.length > 0) return prev;
+
+      const serverMap = new Map(customers.map(c => [String(c.id), c]));
+      const prevIds   = new Set(prev.map(c => String(c.id)));
+
+      // ① 既存カードはローカルの並び順を保持しつつサーバーデータで更新
+      //    pendingUpdates（カンバン操作）はステータスを強制上書き
+      //    customerStore（顧客リスト操作）はその他フィールドを上書き
+      const merged = prev.map(c => {
+        const cid     = String(c.id);
+        const serverC = serverMap.get(cid) || c;
+        const base    = customerStore.applyTo([serverC])[0];
+        if (pendingUpdates.current.has(cid)) {
+          return { ...base, "対応ステータス": pendingUpdates.current.get(cid) };
+        }
+        return base;
+      });
+
+      // ② サーバーに存在する新規カードは末尾に追加（パッチ適用済み）
+      customers.forEach(c => {
+        if (!prevIds.has(String(c.id))) merged.push(customerStore.applyTo([c])[0]);
+      });
+
+      return merged;
+    });
   }, [customers]);
 
   // ── ステータス分類 ──────────────────────────────────
@@ -375,24 +411,47 @@ export default function KanbanBoard({
   }, [localCustomers, statuses]);
 
   const execUpdate = useCallback(async (cid, newStatus, prevStatus, scenarioId) => {
-    setLocalCustomers(prev => prev.map(c => String(c.id) === cid ? { ...c, "対応ステータス": newStatus } : c));
-    pendingIds.current.add(cid);
+    // ── 楽観的更新：ストアとpendingの両方に登録 ──
+    // ストアへの書き込みにより CustomerList 側も即時反映される
+    customerStore.patch(cid, { "対応ステータス": newStatus });
+    pendingUpdates.current.set(cid, newStatus);
+    syncCount.current += 1;
     setSyncing(true);
+
+    // ドロップ先カラムの先頭に挿入（移動を視覚的に明確にする）
+    setLocalCustomers(prev => {
+      const card    = prev.find(c => String(c.id) === cid);
+      if (!card) return prev;
+      const without = prev.filter(c => String(c.id) !== cid);
+      const updated = { ...card, "対応ステータス": newStatus };
+      const firstIdx = without.findIndex(c => (c["対応ステータス"] || "").trim() === newStatus.trim());
+      if (firstIdx === -1) return [...without, updated];
+      return [...without.slice(0, firstIdx), updated, ...without.slice(firstIdx)];
+    });
+
+    let needsPrompt = false;
     try {
       await axios.post(gasUrl, JSON.stringify({ action: "updateStatus", id: cid, status: newStatus, applyScenario: scenarioId || "" }), { headers: { "Content-Type": "text/plain;charset=utf-8" } });
+      customerStore.clear(cid);
       const pf = statuses.find(s => s.name === newStatus)?.promptFields || [];
       if (pf.length > 0) {
+        needsPrompt = true;
         setPromptModal({ customerId: cid, promptFields: pf });
-      } else {
-        onRefresh();
       }
     } catch {
+      // ロールバック
+      customerStore.patch(cid, { "対応ステータス": prevStatus });
       setLocalCustomers(prev => prev.map(c => String(c.id) === cid ? { ...c, "対応ステータス": prevStatus } : c));
       alert("更新に失敗しました");
     } finally {
-      setTimeout(() => { pendingIds.current.delete(cid); setSyncing(false); }, 2000);
+      pendingUpdates.current.delete(cid);
+      syncCount.current -= 1;
+      if (syncCount.current === 0) {
+        setSyncing(false);
+        if (!needsPrompt) (onLightRefresh ?? onRefresh)();
+      }
     }
-  }, [gasUrl, onRefresh, statuses]);
+  }, [gasUrl, onRefresh, onLightRefresh, statuses]);
 
   const handlePromptConfirm = useCallback(async (values) => {
     if (!promptModal) return;
@@ -434,7 +493,7 @@ export default function KanbanBoard({
           {/* ヘッダー（固定） */}
           <header style={S.header}>
             <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
-              <h1 style={{ fontSize: "28px", fontWeight: "900", color: THEME.textMain, margin: 0 }}>案件管理カンバン</h1>
+              <h1 style={{ fontSize: "28px", fontWeight: "900", color: THEME.textMain, margin: 0 }}>案件進捗管理</h1>
               {syncing && (
                 <div style={{ display: "flex", alignItems: "center", gap: "8px", color: THEME.primary, backgroundColor: "#EEF2FF", padding: "6px 12px", borderRadius: "20px", fontSize: "12px", fontWeight: "800" }}>
                   <Loader2 className="animate-spin" size={14} /> 同期中
@@ -579,38 +638,37 @@ export default function KanbanBoard({
               )}
             </div>
 
-            {/* 右下コーナー：除外ゾーン */}
-            {excludedStatuses.length > 0 && (
-              <div style={S.excludedCorner}>
-                <div style={{ display: "flex", alignItems: "center", gap: 5, marginBottom: 8 }}>
-                  <span style={{ fontSize: 13 }}>🚫</span>
-                  <span style={{ fontSize: 12, fontWeight: 900, color: "#6B7280" }}>除外</span>
+            {/* 右下コーナー：除外ゾーン（エリア全体がドロップ対象） */}
+            {excludedStatuses.length > 0 && (() => {
+              // 除外ステータスが複数あっても先頭1つをドロップ先として使う
+              const primaryExcluded = excludedStatuses[0];
+              const totalCount = excludedStatuses.reduce((sum, st) =>
+                sum + localCustomers.filter(c => (c["対応ステータス"] || "").trim() === st.name.trim()).length, 0);
+              const isOver = excludedStatuses.some(st => overColumn === st.name);
+              return (
+                <div
+                  onDragOver={e => onDragOver(e, primaryExcluded.name)}
+                  onDragLeave={onDragLeave}
+                  onDrop={e => onDrop(e, primaryExcluded.name)}
+                  style={{
+                    ...S.excludedCorner,
+                    display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+                    gap: 8, cursor: "default", transition: "all 0.2s",
+                    backgroundColor: isOver ? "#E5E7EB" : "#F1F2F4",
+                    border: isOver ? "2px dashed #9CA3AF" : "2px dashed transparent",
+                    boxShadow: isOver ? "inset 0 0 0 2px #9CA3AF22" : "none",
+                  }}
+                >
+                  <span style={{ fontSize: 28 }}>🚫</span>
+                  <span style={{ fontSize: 13, fontWeight: 900, color: "#6B7280" }}>除外</span>
+                  <span style={{
+                    fontSize: 11, fontWeight: 900, color: "white",
+                    backgroundColor: totalCount > 0 ? "#9CA3AF" : "#D1D5DB",
+                    padding: "2px 10px", borderRadius: 20,
+                  }}>{totalCount}</span>
                 </div>
-                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                  {excludedStatuses.map(st => {
-                    const count = localCustomers.filter(c => (c["対応ステータス"] || "").trim() === st.name.trim()).length;
-                    const isOver = overColumn === st.name;
-                    return (
-                      <div
-                        key={st.name}
-                        onDragOver={e => onDragOver(e, st.name)}
-                        onDragLeave={onDragLeave}
-                        onDrop={e => onDrop(e, st.name)}
-                        style={{
-                          borderRadius: 10, border: `2px dashed ${isOver ? "#9CA3AF" : "#D1D5DB"}`,
-                          backgroundColor: isOver ? "#E5E7EB" : "#F9FAFB",
-                          padding: "8px 12px", display: "flex", alignItems: "center", justifyContent: "space-between",
-                          transition: "all 0.2s", cursor: "default",
-                        }}
-                      >
-                        <span style={{ fontSize: 12, fontWeight: 800, color: "#6B7280" }}>🚫 {st.name}</span>
-                        <span style={{ fontSize: 11, fontWeight: 900, color: "white", backgroundColor: count > 0 ? "#9CA3AF" : "#D1D5DB", padding: "1px 7px", borderRadius: 20 }}>{count}</span>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
+              );
+            })()}
           </div>
         )}
       </div>

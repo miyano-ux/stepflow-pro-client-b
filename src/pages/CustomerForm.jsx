@@ -30,15 +30,11 @@ function CustomerForm({ formSettings = [], scenarios = [], statuses = [], staffL
   const [ln, setLn] = useState("");
   const [fn, setFn] = useState("");
   const [ph, setPh] = useState("");
-  const [fd, setFd] = useState({ "対応ステータス": "未対応", "担当者メール": "" });
+  const [em, setEm] = useState("");
+  const [fd, setFd] = useState({ "対応ステータス": "", "担当者メール": "" });
   const [successModal, setSuccessModal] = useState(null); // 登録完了ポップアップ
   const [submitting, setSubmitting] = useState(false); // 二重送信防止
   const [sc, setSc] = useState("");
-
-  // 初期化：シナリオの先頭をデフォルト選択
-  useEffect(() => {
-    if (scenarios?.length > 0) setSc(scenarios[0]["シナリオID"]);
-  }, [scenarios]);
 
   // CSVインポート処理
   const handleUpload = (e) => {
@@ -138,6 +134,7 @@ function CustomerForm({ formSettings = [], scenarios = [], statuses = [], staffL
         lastName: ln,
         firstName: fn,
         phone: ph,
+        email: em,
         data: resolvedData,
         scenarioID: sc,
       });
@@ -153,7 +150,7 @@ function CustomerForm({ formSettings = [], scenarios = [], statuses = [], staffL
         scenarioID: sc || null,
         optimisticCustomer: {
           id: `optimistic_${Date.now()}`,
-          姓: ln, 名: fn, 電話番号: ph,
+          姓: ln, 名: fn, 電話番号: ph, メールアドレス: em,
           シナリオID: sc,
           登録日: new Date().toISOString(),
           対応ステータス: resolvedData["対応ステータス"] || "未対応",
@@ -293,6 +290,16 @@ function CustomerForm({ formSettings = [], scenarios = [], statuses = [], staffL
             placeholder="09012345678"
           />
 
+          {/* メールアドレス */}
+          <label style={{ fontWeight: "700" }}>メールアドレス</label>
+          <input
+            type="email"
+            style={{ ...styles.input, marginBottom: "20px" }}
+            value={em}
+            onChange={(e) => setEm(e.target.value)}
+            placeholder="example@email.com"
+          />
+
           {/* 営業管理セクション（担当者・ステータス・流入元・シナリオ） */}
           <div
             style={{
@@ -331,7 +338,8 @@ function CustomerForm({ formSettings = [], scenarios = [], statuses = [], staffL
               <CustomSelect
                 value={fd["対応ステータス"]}
                 onChange={v => setFd({ ...fd, "対応ステータス": v })}
-                options={statuses.map(st => ({ value: st.name, label: st.name }))}
+                placeholder="未選択"
+                options={[{ value: "", label: "未選択" }, ...statuses.map(st => ({ value: st.name, label: st.name }))]}
               />
             </div>
 
@@ -370,11 +378,22 @@ function CustomerForm({ formSettings = [], scenarios = [], statuses = [], staffL
               <label htmlFor="form-scenario" style={{ fontWeight: 700, fontSize: 12, color: THEME.primary, userSelect: "none" }}>
                 適用シナリオ
               </label>
-              <CustomSelect
-                value={sc}
-                onChange={v => setSc(v)}
-                options={[...new Set(scenarios?.map(x => x["シナリオID"]))].map(sid => ({ value: sid, label: sid }))}
-              />
+              {(() => {
+                const linkedScenarioIds = new Set(statuses.map(s => s.scenarioId).filter(Boolean));
+                const availableScenarios = [...new Set(scenarios?.map(x => x["シナリオID"]))]
+                  .filter(sid => !linkedScenarioIds.has(sid));
+                return (
+                  <CustomSelect
+                    value={sc}
+                    onChange={v => setSc(v)}
+                    placeholder="未選択"
+                    options={[
+                      { value: "", label: "未選択" },
+                      ...availableScenarios.map(sid => ({ value: sid, label: sid })),
+                    ]}
+                  />
+                );
+              })()}
             </div>
           </div>
 

@@ -19,7 +19,7 @@ const BORDER = "#F0EFF9";
 // ── メインナビ（常時表示・初心者向けの主要4機能） ──
 const MAIN_ITEMS = [
   { name: "顧客リスト",    path: "/",          icon: <LayoutDashboard size={18} /> },
-  { name: "カンバン",      path: "/kanban",     icon: <Columns size={18} /> },
+  { name: "案件進捗管理",      path: "/kanban",     icon: <Columns size={18} /> },
   { name: "分析レポート",  path: "/analysis",   icon: <BarChart3 size={18} /> },
   { name: "新規登録",      path: "/add",        icon: <UserPlus size={18} /> },
 ];

@@ -2,6 +2,51 @@ import axios from "axios";
 import { GAS_URL } from "./constants";
 
 // ==========================================
+// 🗄️ customerStore - モジュールレベル共有ストア
+// ==========================================
+// Reactのルート遷移をまたいで生き続けるJSモジュール変数
+// CustomerList ↔ KanbanBoard のゼロ遅延同期に使用
+//
+// 動作原理:
+//   CustomerList が更新 → patch() でストアに書き込み
+//   KanbanBoard がマウント → applyTo() でストアのパッチを即適用
+//   KanbanBoard がマウント中 → subscribe() でリアルタイム受信
+//   サーバー確定後 → clear() でパッチ解除（以降はサーバーデータを使用）
+
+const _patches  = new Map();   // Map<id, partialCustomer>
+const _listeners = new Set();  // Set<() => void>
+
+export const customerStore = {
+  /** フィールド単位のパッチを適用（楽観的更新） */
+  patch(id, updates) {
+    const prev = _patches.get(String(id)) || {};
+    _patches.set(String(id), { ...prev, ...updates });
+    _listeners.forEach(fn => fn());
+  },
+
+  /** customers 配列にストアのパッチを上書き適用して返す */
+  applyTo(customers) {
+    if (_patches.size === 0) return customers;
+    return customers.map(c => {
+      const p = _patches.get(String(c.id));
+      return p ? { ...c, ...p } : c;
+    });
+  },
+
+  /** サーバー確定後にパッチをクリア */
+  clear(id) {
+    _patches.delete(String(id));
+    _listeners.forEach(fn => fn());
+  },
+
+  /** マウント中のコンポーネントがリアルタイム更新を受け取るための購読 */
+  subscribe(fn) {
+    _listeners.add(fn);
+    return () => _listeners.delete(fn);
+  },
+};
+
+// ==========================================
 // 🛠️ ヘルパー関数
 // ==========================================
 

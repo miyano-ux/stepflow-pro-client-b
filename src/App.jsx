@@ -126,6 +126,22 @@ function App() {
     }
   }, [user, getDisplaySettings, refreshStaff]);
 
+  // 顧客データのみを高速再取得（カンバン↔顧客リスト間の即時同期用）
+  // doGet の全シート読み込み（2〜5秒）と違い、顧客シートだけ読むため高速
+  const lightRefresh = useCallback(async () => {
+    if (!GAS_URL) return;
+    try {
+      const res = await axios.post(GAS_URL, JSON.stringify({ action: "getCustomers" }), {
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
+      });
+      const customers = res?.data?.customers;
+      if (customers) setD(prev => ({ ...prev, customers }));
+    } catch (e) {
+      console.warn("[lightRefresh] 失敗 → フルリフレッシュにフォールバック", e);
+      refresh();
+    }
+  }, [refresh]);
+
   useEffect(() => {
     refresh();
   }, [refresh]);
@@ -229,8 +245,8 @@ function App() {
           >
             <Routes>
               {/* 顧客管理 */}
-              <Route path="/" element={<CustomerList customers={d?.customers} displaySettings={displaySettings} formSettings={d?.formSettings} scenarios={d?.scenarios} statuses={d?.statuses} staffList={staffList} scenarioSettings={d?.scenarioSettings} sources={d?.sources} gasUrl={GAS_URL} onRefresh={refresh} />} />
-              <Route path="/customers" element={<CustomerList customers={d?.customers} displaySettings={displaySettings} formSettings={d?.formSettings} scenarios={d?.scenarios} statuses={d?.statuses} staffList={staffList} scenarioSettings={d?.scenarioSettings} sources={d?.sources} gasUrl={GAS_URL} onRefresh={refresh} />} />
+              <Route path="/" element={<CustomerList customers={d?.customers} displaySettings={displaySettings} formSettings={d?.formSettings} scenarios={d?.scenarios} statuses={d?.statuses} staffList={staffList} scenarioSettings={d?.scenarioSettings} sources={d?.sources} gasUrl={GAS_URL} onRefresh={refresh} onLightRefresh={lightRefresh} />} />
+              <Route path="/customers" element={<CustomerList customers={d?.customers} displaySettings={displaySettings} formSettings={d?.formSettings} scenarios={d?.scenarios} statuses={d?.statuses} staffList={staffList} scenarioSettings={d?.scenarioSettings} sources={d?.sources} gasUrl={GAS_URL} onRefresh={refresh} onLightRefresh={lightRefresh} />} />
               <Route path="/add" element={<CustomerForm scenarios={d?.scenarios} formSettings={d?.formSettings} statuses={d?.statuses} staffList={staffList} sources={d?.sources} groups={d?.groups} contractTypes={d?.contractTypes} onRefresh={refresh} />} />
               <Route path="/schedule/:id" element={<CustomerSchedule customers={d?.customers} deliveryLogs={d?.deliveryLogs} onRefresh={refresh} />} />
               <Route path="/detail/:id" element={<CustomerDetail customers={d?.customers} formSettings={d?.formSettings} statuses={d?.statuses} sources={d?.sources} contractTypes={d?.contractTypes} trackingLogs={d?.trackingLogs} staffList={staffList} groups={d?.groups} statusHistory={d?.statusHistory} gasUrl={GAS_URL} onRefresh={refresh} />} />
@@ -271,7 +287,7 @@ function App() {
               <Route path="/status-list/:type" element={<CustomerStatusList customers={d?.customers} statuses={d?.statuses} staffList={staffList} />} />
 
               {/* カンバン */}
-              <Route path="/kanban" element={<KanbanBoard customers={d?.customers} statuses={d?.statuses} scenarios={d?.scenarios} scenarioSettings={d?.scenarioSettings} staffList={staffList} onRefresh={refresh} gasUrl={GAS_URL} sources={d?.sources} contractTypes={d?.contractTypes} />} />
+              <Route path="/kanban" element={<KanbanBoard customers={d?.customers} statuses={d?.statuses} scenarios={d?.scenarios} scenarioSettings={d?.scenarioSettings} staffList={staffList} onRefresh={refresh} onLightRefresh={lightRefresh} gasUrl={GAS_URL} sources={d?.sources} contractTypes={d?.contractTypes} />} />
             </Routes>
           </main>
 
