@@ -41,6 +41,7 @@ import UserForm              from "./pages/UserForm";
 import SourceManager         from "./pages/SourceManager";
 import ContractTypeManager   from "./pages/ContractTypeManager";
 import MasterSettings        from "./pages/MasterSettings";
+import SourceIntegrationSettings from "./pages/SourceIntegrationSettings";
 
 // ==========================================
 // 🚀 App - 認証 & ルーティング
@@ -63,6 +64,9 @@ function App() {
     statusHistory: [],
     contractTypes: [],
     properties: [],
+    sourceIntegrations: [],
+    sourceCredsStatus:  {},
+    clientInfo:         {},
   });
 
   // displaySettings: ユーザー個別に localStorage で管理
@@ -297,6 +301,9 @@ function App() {
 
               {/* ステータス別リスト */}
               <Route path="/status-list/:type" element={<CustomerStatusList customers={d?.customers} statuses={d?.statuses} staffList={staffList} />} />
+
+              {/* 媒体連携 */}
+              <Route path="/source-integrations" element={<SourceIntegrationSettings sourceIntegrations={d?.sourceIntegrations} sourceCredsStatus={d?.sourceCredsStatus} clientInfo={d?.clientInfo} scenarios={d?.scenarios} statuses={d?.statuses} sources={d?.sources} staffList={staffList} groups={d?.groups} onRefresh={refresh} />} />
 
               {/* カンバン */}
               <Route path="/kanban" element={<KanbanBoard customers={d?.customers} statuses={d?.statuses} scenarios={d?.scenarios} scenarioSettings={d?.scenarioSettings} staffList={staffList} properties={d?.properties} onRefresh={refresh} onLightRefresh={lightRefresh} gasUrl={GAS_URL} sources={d?.sources} contractTypes={d?.contractTypes} />} />

@@ -30,13 +30,14 @@ const SETTINGS_ITEMS = [
   { name: "テンプレート",  path: "/templates",         icon: <Copy size={16} /> },
   { name: "反響取り込み",  path: "/response-import",  icon: <Mail size={16} /> },
   { name: "ユーザー管理",  path: "/users",             icon: <Users size={16} /> },
+  { name: "媒体連携設定",  path: "/source-integrations", icon: <Globe size={16} /> },
 ];
 
 // 設定グループに含まれるパスかどうか
 const isSettingsPath = (pathname) =>
   SETTINGS_ITEMS.some((item) =>
     pathname === item.path || (item.path !== "/" && pathname.startsWith(item.path))
-  ) || ["/status-settings", "/sources", "/contract-types", "/scenarios"].some(p => pathname.startsWith(p));
+  ) || ["/status-settings", "/sources", "/contract-types", "/scenarios", "/source-integrations"].some(p => pathname.startsWith(p));
 
 const Sidebar = ({ onLogout }) => {
   const location = useLocation();
