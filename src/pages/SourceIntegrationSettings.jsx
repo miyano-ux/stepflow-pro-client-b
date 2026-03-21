@@ -113,7 +113,7 @@ function ForwardingBanner({ clientInfo }) {
   );
 }
 
-function SourceCard({ source, isConnected, integration, scenarios, statuses, sources, staffList, groups, onRefresh }) {
+function SourceCard({ source, isConnected, integration, savedLoginId, scenarios, statuses, sources, staffList, groups, onRefresh }) {
   const isAvailable = source.status === "available";
   const [expanded, setExpanded] = useState(false);
   const [loginId,  setLoginId]  = useState("");
@@ -260,7 +260,11 @@ function SourceCard({ source, isConnected, integration, scenarios, statuses, sou
               </div>
               {isConnected && (
                 <div style={{ fontSize:12, color:"#166534", display:"flex", alignItems:"center", gap:6, padding:"10px 14px", backgroundColor:"#DCFCE7", borderRadius:8 }}>
-                  <CheckCircle2 size={13} color={THEME.success}/> 認証情報が保存されています。変更する場合は新しい情報を入力して保存してください。
+                  <CheckCircle2 size={13} color={THEME.success}/>
+                  <span>
+                    保存済みログインID: <strong style={{ fontFamily:"monospace" }}>{savedLoginId || "（取得中）"}</strong>
+                    　変更する場合は新しい情報を入力して保存してください。
+                  </span>
                 </div>
               )}
             </div>
@@ -337,7 +341,7 @@ function SourceCard({ source, isConnected, integration, scenarios, statuses, sou
 }
 
 function SourceIntegrationSettings({
-  sourceIntegrations=[], sourceCredsStatus={}, clientInfo={},
+  sourceIntegrations=[], sourceCredsStatus={}, sourceLoginIds={}, clientInfo={},
   scenarios=[], statuses=[], sources=[], staffList=[], groups=[], onRefresh,
 }) {
   const connectedCount = SUPPORTED_SOURCES.filter(s=>s.status==="available"&&sourceCredsStatus[s.key]).length;

@@ -66,6 +66,7 @@ function App() {
     properties: [],
     sourceIntegrations: [],
     sourceCredsStatus:  {},
+    sourceLoginIds:     {},
     clientInfo:         {},
   });
 
@@ -303,7 +304,7 @@ function App() {
               <Route path="/status-list/:type" element={<CustomerStatusList customers={d?.customers} statuses={d?.statuses} staffList={staffList} />} />
 
               {/* 媒体連携 */}
-              <Route path="/source-integrations" element={<SourceIntegrationSettings sourceIntegrations={d?.sourceIntegrations} sourceCredsStatus={d?.sourceCredsStatus} clientInfo={d?.clientInfo} scenarios={d?.scenarios} statuses={d?.statuses} sources={d?.sources} staffList={staffList} groups={d?.groups} onRefresh={refresh} />} />
+              <Route path="/source-integrations" element={<SourceIntegrationSettings sourceIntegrations={d?.sourceIntegrations} sourceCredsStatus={d?.sourceCredsStatus} sourceLoginIds={d?.sourceLoginIds} clientInfo={d?.clientInfo} scenarios={d?.scenarios} statuses={d?.statuses} sources={d?.sources} staffList={staffList} groups={d?.groups} onRefresh={refresh} />} />
 
               {/* カンバン */}
               <Route path="/kanban" element={<KanbanBoard customers={d?.customers} statuses={d?.statuses} scenarios={d?.scenarios} scenarioSettings={d?.scenarioSettings} staffList={staffList} properties={d?.properties} onRefresh={refresh} onLightRefresh={lightRefresh} gasUrl={GAS_URL} sources={d?.sources} contractTypes={d?.contractTypes} />} />
