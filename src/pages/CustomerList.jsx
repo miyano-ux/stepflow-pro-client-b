@@ -118,7 +118,7 @@ const localStyles = {
   main:    { minHeight: "100vh", backgroundColor: THEME.bg },
   wrapper: { padding: "40px 64px", maxWidth: "1600px", margin: "0 auto" },
   card:    { backgroundColor: THEME.card, borderRadius: "20px", padding: "32px", boxShadow: "0 10px 25px -5px rgba(0,0,0,0.03)", marginBottom: "32px", border: `1px solid ${THEME.border}` },
-  tableTh: { padding: "16px 24px", color: THEME.textMuted, fontSize: "12px", fontWeight: "800", backgroundColor: "#F8FAFC", borderBottom: `1px solid ${THEME.border}`, textAlign: "left" },
+  tableTh: { padding: "16px 24px", color: THEME.textMuted, fontSize: "12px", fontWeight: "800", backgroundColor: "#F8FAFC", borderBottom: `1px solid ${THEME.border}`, textAlign: "left", whiteSpace: "nowrap" },
   tableTd: { padding: "18px 24px", fontSize: "14px", color: THEME.textMain, borderBottom: `1px solid ${THEME.border}`, verticalAlign: "middle" },
   input:   { border: `1px solid ${THEME.border}`, borderRadius: "12px", padding: "10px 16px", outline: "none", fontSize: "14px", transition: "0.2s", backgroundColor: "white" },
   select:  { border: `1px solid ${THEME.border}`, borderRadius: "12px", padding: "10px 36px 10px 16px", outline: "none", fontSize: "14px", transition: "0.2s", backgroundColor: "white", appearance: "none", backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236B6A8E' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E")`, backgroundRepeat: "no-repeat", backgroundPosition: "right 12px center", cursor: "pointer" },
@@ -126,7 +126,8 @@ const localStyles = {
 
 export default function CustomerList({
   customers = [], displaySettings = [], formSettings = [],
-  scenarios = [], statuses = [], staffList = [], scenarioSettings = {}, sources = [], gasUrl, onRefresh, onLightRefresh,
+  scenarios = [], statuses = [], staffList = [], scenarioSettings = {}, sources = [],
+  properties = [], gasUrl, onRefresh, onLightRefresh,
 }) {
   const navigate = useNavigate();
   const location = useLocation();
@@ -138,6 +139,7 @@ export default function CustomerList({
   const [confirmModal, setConfirmModal] = useState({ open: false, customer: null, field: "", newValue: "", oldValue: "" });
   const [localCustomers, setLocalCustomers] = useState(customers);
   const [syncing, setSyncing] = useState(false);
+  const [expandedRows, setExpandedRows] = useState(new Set()); // 物件展開中の顧客IDセット
   // KanbanBoard と同じ pendingMap パターン：更新中のIDとその値を記憶
   const pendingMap = useRef(new Map()); // Map<id, { field, value }>
 
@@ -170,61 +172,67 @@ export default function CustomerList({
 
 
   const vCols = useMemo(() => {
-    // displaySettings の visible な項目名セット
-    const visibleSet = displaySettings?.length > 0
-      ? new Set(displaySettings.filter((i) => i.visible).map((i) => i.name))
-      : new Set(["姓", "名", "電話番号", "登録日", "対応ステータス", "担当者メール", "シナリオID"]);
+    // settingsMap: キーが存在しない = 未設定 = デフォルト表示（visible: true）
+    // キーが存在して visible: false の場合のみ非表示
+    const settingsMap = new Map((displaySettings || []).map(d => [d.name, d]));
+    const isVisible = (key) => {
+      const entry = settingsMap.get(key);
+      if (!entry) return true;             // 未登録キーはデフォルト表示
+      return entry.visible !== false;
+    };
 
-    // カスタム項目キー（営業管理・デフォルト以外）
-    const SALES_KEYS    = ["対応ステータス", "流入元", "担当者メール", "シナリオID"];
-    const DEFAULT_KEYS  = ["姓", "名", "電話番号", "登録日", "メールアドレス"];
-    const allFixed      = new Set([...SALES_KEYS, ...DEFAULT_KEYS]);
-    const customKeys    = (formSettings || []).map(f => f.name).filter(k => !allFixed.has(k));
-
-    // ① デフォルト列（姓・名 → 「氏名」仮想列に統合）
-    const defaultCols = [];
-    if (visibleSet.has("姓") || visibleSet.has("名")) defaultCols.push("氏名"); // 仮想列
-    ["電話番号", "登録日", "メールアドレス"].forEach(k => {
-      if (visibleSet.has(k)) defaultCols.push(k);
-    });
-
-    // ② 営業管理列（流入元は sources 登録時のみ）
-    const salesCols = [];
-    ["対応ステータス", "担当者メール", "シナリオID"].forEach(k => {
-      if (visibleSet.has(k)) salesCols.push(k);
-    });
-    if (sources.length > 0 && visibleSet.has("流入元")) salesCols.push("流入元");
-
-    // ③ カスタム列
-    const customCols = customKeys.filter(k => visibleSet.has(k));
-
-    return [...defaultCols, ...salesCols, ...customCols];
-  }, [displaySettings, formSettings, sources]);
-
-  const sCols = useMemo(() => {
     const SALES_KEYS   = ["対応ステータス", "流入元", "担当者メール", "シナリオID"];
     const DEFAULT_KEYS = ["姓", "名", "電話番号", "登録日", "メールアドレス"];
     const allFixed     = new Set([...SALES_KEYS, ...DEFAULT_KEYS]);
     const customKeys   = (formSettings || []).map(f => f.name).filter(k => !allFixed.has(k));
 
-    const searchableSet = displaySettings?.length > 0
-      ? new Set(displaySettings.filter((i) => i.searchable).map((i) => i.name))
-      : new Set(["姓", "名", "対応ステータス", "担当者メール", "シナリオID", "登録日"]);
+    // displaySettings が空（初回ロード前）の場合のフォールバック
+    const hasSaved = (displaySettings || []).length > 0;
+    const fallback  = new Set(["姓", "名", "電話番号", "登録日", "対応ステータス", "担当者メール", "シナリオID"]);
+    const vis = (key) => hasSaved ? isVisible(key) : fallback.has(key);
 
-    // デフォルト列：姓または名が検索可なら「氏名」に統合
+    // ① デフォルト列（姓・名 → 「氏名」仮想列に統合）
+    const defaultCols = [];
+    if (vis("姓") || vis("名")) defaultCols.push("氏名");
+    ["電話番号", "登録日", "メールアドレス"].forEach(k => { if (vis(k)) defaultCols.push(k); });
+
+    // ② 営業管理列
+    const salesCols = [];
+    ["対応ステータス", "担当者メール", "シナリオID", "流入元"].forEach(k => {
+      if (vis(k)) salesCols.push(k);
+    });
+
+    // ③ カスタム列
+    const customCols = customKeys.filter(k => vis(k));
+
+    return [...defaultCols, ...salesCols, ...customCols];
+  }, [displaySettings, formSettings]);
+
+  const sCols = useMemo(() => {
+    const settingsMap  = new Map((displaySettings || []).map(d => [d.name, d]));
+    const isSearchable = (key) => {
+      const entry = settingsMap.get(key);
+      if (!entry) return true;             // 未登録キーはデフォルト検索可
+      return entry.searchable !== false;
+    };
+
+    const SALES_KEYS   = ["対応ステータス", "流入元", "担当者メール", "シナリオID"];
+    const DEFAULT_KEYS = ["姓", "名", "電話番号", "登録日", "メールアドレス"];
+    const allFixed     = new Set([...SALES_KEYS, ...DEFAULT_KEYS]);
+    const customKeys   = (formSettings || []).map(f => f.name).filter(k => !allFixed.has(k));
+
+    const hasSaved  = (displaySettings || []).length > 0;
+    const fallback   = new Set(["姓", "名", "対応ステータス", "担当者メール", "シナリオID", "登録日"]);
+    const srch = (key) => hasSaved ? isSearchable(key) : fallback.has(key);
+
     const cols = [];
-    if (searchableSet.has("姓") || searchableSet.has("名")) cols.push("氏名");
-    ["電話番号", "登録日", "メールアドレス"].forEach(k => { if (searchableSet.has(k)) cols.push(k); });
-
-    // 営業管理列
-    ["対応ステータス", "担当者メール", "シナリオID"].forEach(k => { if (searchableSet.has(k)) cols.push(k); });
-    if (sources.length > 0 && searchableSet.has("流入元")) cols.push("流入元");
-
-    // カスタム列
-    customKeys.forEach(k => { if (searchableSet.has(k)) cols.push(k); });
+    if (srch("姓") || srch("名")) cols.push("氏名");
+    ["電話番号", "登録日", "メールアドレス"].forEach(k => { if (srch(k)) cols.push(k); });
+    ["対応ステータス", "担当者メール", "シナリオID", "流入元"].forEach(k => { if (srch(k)) cols.push(k); });
+    customKeys.forEach(k => { if (srch(k)) cols.push(k); });
 
     return cols;
-  }, [displaySettings, formSettings, sources]);
+  }, [displaySettings, formSettings]);
 
   const filtered = useMemo(() => {
     let res = [...(localCustomers || [])].filter((c) => {
@@ -458,7 +466,7 @@ export default function CustomerList({
           to={`/detail/${c.id}`}
           style={{
             color: THEME.primary, fontWeight: 800, fontSize: 14,
-            textDecoration: "none",
+            textDecoration: "none", whiteSpace: "nowrap",
           }}
           onMouseEnter={(e) => e.currentTarget.style.textDecoration = "underline"}
           onMouseLeave={(e) => e.currentTarget.style.textDecoration = "none"}
@@ -505,6 +513,20 @@ export default function CustomerList({
           padding: "3px 10px", borderRadius: 20,
           backgroundColor: "#EEF2FF", color: THEME.primary,
           fontSize: 12, fontWeight: 700,
+        }}>
+          {val}
+        </span>
+      );
+    }
+    // シナリオID → 最大2行でクランプ
+    if (col === "シナリオID") {
+      const val = c[col];
+      if (!val) return <span style={{ color: THEME.textMuted, fontSize: 13 }}>－</span>;
+      return (
+        <span style={{
+          fontSize: 13, color: THEME.textMain,
+          display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical",
+          overflow: "hidden", maxWidth: 180, lineHeight: 1.4,
         }}>
           {val}
         </span>
@@ -583,51 +605,126 @@ export default function CustomerList({
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((c) => (
-                  <tr
-                    key={c.id}
-                    onMouseEnter={(e) => { if (!c._optimistic) e.currentTarget.style.backgroundColor = "#F8FAFC"; }}
-                    onMouseLeave={(e) => { if (!c._optimistic) e.currentTarget.style.backgroundColor = c._optimistic ? "#F0FDF4" : "white"; }}
-                    style={{
-                      transition: "0.4s",
-                      backgroundColor: c._optimistic ? "#F0FDF4" : "white",
-                      outline: c._optimistic ? "2px solid #86EFAC" : "none",
-                      outlineOffset: "-2px",
-                    }}
-                  >
-                    {vCols.map((col) => (
-                      <td key={col} style={localStyles.tableTd}>{renderCell(c, col)}</td>
-                    ))}
-                    <td style={{ ...localStyles.tableTd, position: "sticky", right: 0, backgroundColor: "white", borderLeft: `1px solid ${THEME.border}`, textAlign: "center", minWidth: 148 }}>
-                      <div style={{ display: "flex", gap: 6, justifyContent: "center", alignItems: "center" }}>
-                        {/* 詳細 */}
-                        <Link
-                          to={`/detail/${c.id}`}
-                          title="顧客詳細"
-                          style={{ display: "flex", alignItems: "center", gap: 5, padding: "6px 10px", backgroundColor: "#EEF2FF", color: THEME.primary, borderRadius: 8, fontWeight: 800, fontSize: 12, textDecoration: "none", whiteSpace: "nowrap" }}
-                        >
-                          <ExternalLink size={14} /> 詳細
-                        </Link>
-                        {/* SMS */}
-                        <Link
-                          to={`/direct-sms/${c.id}`}
-                          title="SMS配信"
-                          style={{ display: "flex", alignItems: "center", gap: 5, padding: "6px 10px", backgroundColor: "#F0FDF4", color: "#16A34A", borderRadius: 8, fontWeight: 800, fontSize: 12, textDecoration: "none", whiteSpace: "nowrap" }}
-                        >
-                          <Send size={14} /> SMS
-                        </Link>
-                        {/* 削除 */}
-                        <button
-                          title="削除"
-                          onClick={() => handleDelete(c)}
-                          style={{ display: "flex", alignItems: "center", padding: "6px 8px", backgroundColor: "#FEF2F2", color: THEME.danger, border: "none", borderRadius: 8, cursor: "pointer" }}
-                        >
-                          <Trash2 size={14} />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                {filtered.map((c) => {
+                  const cProps = (properties || []).filter(p => String(p.customerId) === String(c.id));
+                  const hasProps = cProps.length > 0;
+                  const isExpanded = expandedRows.has(String(c.id));
+                  const toggleExpand = () => setExpandedRows(prev => {
+                    const next = new Set(prev);
+                    if (next.has(String(c.id))) next.delete(String(c.id)); else next.add(String(c.id));
+                    return next;
+                  });
+                  // 金額は万円単位で入力・保存（4500 → ¥4,500万）
+                  const STATUS_STYLE = {
+                    "成約":   { bg: "#DCFCE7", color: "#166534", dot: "#1D9E75" },
+                    "検討中": { bg: "#EEF2FF", color: "#3730A3", dot: "#378ADD" },
+                    "見送り": { bg: "#F3F4F6", color: "#6B7280", dot: "#9CA3AF" },
+                  };
+                  const formatPriceMan = (v) => {
+                    const n = Number(String(v || "").replace(/[^0-9.]/g, ""));
+                    if (!n) return "－";
+                    if (n >= 10000) return `¥${(n / 10000).toFixed(1).replace(/\.0$/, "")}億`;
+                    return `¥${n.toLocaleString()}万`;
+                  };
+                  return (
+                    <React.Fragment key={c.id}>
+                      <tr
+                        onMouseEnter={(e) => { if (!c._optimistic) e.currentTarget.style.backgroundColor = "#F8FAFC"; }}
+                        onMouseLeave={(e) => { if (!c._optimistic) e.currentTarget.style.backgroundColor = c._optimistic ? "#F0FDF4" : hasProps && isExpanded ? "#FAFBFF" : "white"; }}
+                        style={{
+                          transition: "0.4s",
+                          backgroundColor: c._optimistic ? "#F0FDF4" : hasProps && isExpanded ? "#FAFBFF" : "white",
+                          outline: c._optimistic ? "2px solid #86EFAC" : "none",
+                          outlineOffset: "-2px",
+                        }}
+                      >
+                        {vCols.map((col) => (
+                          <td key={col} style={localStyles.tableTd}>
+                            {col === "氏名" && hasProps ? (
+                              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                                <button
+                                  onClick={toggleExpand}
+                                  style={{ background: "none", border: "none", cursor: "pointer", padding: "2px 4px", color: THEME.textMuted, display: "flex", alignItems: "center", fontSize: 11, lineHeight: 1 }}
+                                  title={isExpanded ? "物件を折りたたむ" : "物件を展開"}
+                                >
+                                  <span style={{ display: "inline-block", transition: "transform 0.15s", transform: isExpanded ? "rotate(90deg)" : "rotate(0deg)" }}>▶</span>
+                                </button>
+                                {renderCell(c, col)}
+                              </div>
+                            ) : renderCell(c, col)}
+                          </td>
+                        ))}
+                        <td style={{ ...localStyles.tableTd, position: "sticky", right: 0, backgroundColor: "white", borderLeft: `1px solid ${THEME.border}`, textAlign: "center", minWidth: 148 }}>
+                          <div style={{ display: "flex", gap: 6, justifyContent: "center", alignItems: "center" }}>
+                            <Link to={`/detail/${c.id}`} title="顧客詳細" style={{ display: "flex", alignItems: "center", gap: 5, padding: "6px 10px", backgroundColor: "#EEF2FF", color: THEME.primary, borderRadius: 8, fontWeight: 800, fontSize: 12, textDecoration: "none", whiteSpace: "nowrap" }}>
+                              <ExternalLink size={14} /> 詳細
+                            </Link>
+                            <Link to={`/direct-sms/${c.id}`} title="SMS配信" style={{ display: "flex", alignItems: "center", gap: 5, padding: "6px 10px", backgroundColor: "#F0FDF4", color: "#16A34A", borderRadius: 8, fontWeight: 800, fontSize: 12, textDecoration: "none", whiteSpace: "nowrap" }}>
+                              <Send size={14} /> SMS
+                            </Link>
+                            <button title="削除" onClick={() => handleDelete(c)} style={{ display: "flex", alignItems: "center", padding: "6px 8px", backgroundColor: "#FEF2F2", color: THEME.danger, border: "none", borderRadius: 8, cursor: "pointer" }}>
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                      {/* 物件展開行 — colspanで全幅、物件専用レイアウト */}
+                      {hasProps && isExpanded && cProps.map((prop, pi) => {
+                        const ss = STATUS_STYLE[prop.status] || STATUS_STYLE["見送り"];
+                        const isLast = pi === cProps.length - 1;
+                        return (
+                          <tr key={`prop-${prop.id}`} style={{ backgroundColor: "#F8FAFF" }}>
+                            <td
+                              colSpan={vCols.length + 1}
+                              style={{
+                                padding: "0",
+                                borderBottom: isLast ? `2px solid ${THEME.border}` : `1px solid #EEF0F8`,
+                                borderLeft: `4px solid ${ss.dot}`,
+                              }}
+                            >
+                              <div style={{ display: "flex", alignItems: "center", gap: 0, paddingLeft: 32 }}>
+                                {/* 物件名 */}
+                                <div style={{ flex: "0 0 260px", padding: "11px 16px 11px 0", borderRight: `1px solid #EEF0F8` }}>
+                                  <span style={{ fontWeight: 700, fontSize: 13, color: THEME.textMain, whiteSpace: "nowrap" }}>
+                                    {prop.name || "（物件名未設定）"}
+                                  </span>
+                                </div>
+                                {/* 種別 */}
+                                <div style={{ flex: "0 0 100px", padding: "11px 16px", borderRight: `1px solid #EEF0F8`, fontSize: 12, color: THEME.textMuted, whiteSpace: "nowrap" }}>
+                                  {prop.propertyType || "－"}
+                                </div>
+                                {/* 面積 */}
+                                <div style={{ flex: "0 0 90px", padding: "11px 16px", borderRight: `1px solid #EEF0F8`, fontSize: 12, color: THEME.textMuted, whiteSpace: "nowrap" }}>
+                                  {prop.area ? `${prop.area}㎡` : "－"}
+                                </div>
+                                {/* ステータス */}
+                                <div style={{ flex: "0 0 110px", padding: "11px 16px", borderRight: `1px solid #EEF0F8` }}>
+                                  <span style={{ fontSize: 11, fontWeight: 700, backgroundColor: ss.bg, color: ss.color, padding: "2px 8px", borderRadius: 99, whiteSpace: "nowrap" }}>
+                                    {prop.status}
+                                  </span>
+                                </div>
+                                {/* 金額（万円単位） */}
+                                <div style={{ flex: "0 0 130px", padding: "11px 16px", borderRight: `1px solid #EEF0F8`, fontWeight: 800, fontSize: 14, color: prop.status === "成約" ? "#166534" : THEME.textMain, whiteSpace: "nowrap" }}>
+                                  {formatPriceMan(prop.price)}
+                                </div>
+                                {/* 登録日 */}
+                                <div style={{ flex: "0 0 120px", padding: "11px 16px", fontSize: 12, color: THEME.textMuted, whiteSpace: "nowrap" }}>
+                                  {prop.createdAt ? new Date(prop.createdAt).toLocaleDateString("ja-JP") : "－"}
+                                </div>
+                                {/* 備考 */}
+                                {prop.note && (
+                                  <div style={{ flex: 1, padding: "11px 16px", fontSize: 12, color: THEME.textMuted, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                    {prop.note}
+                                  </div>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </React.Fragment>
+                  );
+                })}
                 {filtered.length === 0 && (
                   <tr>
                     <td colSpan={vCols.length + 1} style={{ ...localStyles.tableTd, textAlign: "center", padding: 48, color: THEME.textMuted }}>

@@ -62,6 +62,7 @@ function App() {
     groups: [],
     statusHistory: [],
     contractTypes: [],
+    properties: [],
   });
 
   // displaySettings: ユーザー個別に localStorage で管理
@@ -76,10 +77,21 @@ function App() {
 
   const [displaySettings, setDisplaySettings] = useState(() => getDisplaySettings() || []);
 
-  const saveDisplaySettings = useCallback((settings) => {
+  const saveDisplaySettings = useCallback(async (settings) => {
+    // ① React state とlocalStorageを即時更新（画面の即時反映）
     const email = JSON.parse(localStorage.getItem("sf_user") || "{}")?.email || "default";
     localStorage.setItem(`sf_display_${email}`, JSON.stringify(settings));
     setDisplaySettings(settings);
+    // ② GAS（スプレッドシート）にも保存してlocalStorageと常に一致させる
+    try {
+      await axios.post(
+        GAS_URL,
+        JSON.stringify({ action: "saveDisplaySettings", settings }),
+        { headers: { "Content-Type": "text/plain;charset=utf-8" } }
+      );
+    } catch (e) {
+      console.warn("[saveDisplaySettings] GAS sync failed (localStorage は保存済み):", e);
+    }
   }, []);
   const [load, setLoad] = useState(true);
   const [user, setUser] = useState(() => {
@@ -245,11 +257,11 @@ function App() {
           >
             <Routes>
               {/* 顧客管理 */}
-              <Route path="/" element={<CustomerList customers={d?.customers} displaySettings={displaySettings} formSettings={d?.formSettings} scenarios={d?.scenarios} statuses={d?.statuses} staffList={staffList} scenarioSettings={d?.scenarioSettings} sources={d?.sources} gasUrl={GAS_URL} onRefresh={refresh} onLightRefresh={lightRefresh} />} />
-              <Route path="/customers" element={<CustomerList customers={d?.customers} displaySettings={displaySettings} formSettings={d?.formSettings} scenarios={d?.scenarios} statuses={d?.statuses} staffList={staffList} scenarioSettings={d?.scenarioSettings} sources={d?.sources} gasUrl={GAS_URL} onRefresh={refresh} onLightRefresh={lightRefresh} />} />
+              <Route path="/" element={<CustomerList customers={d?.customers} displaySettings={displaySettings} formSettings={d?.formSettings} scenarios={d?.scenarios} statuses={d?.statuses} staffList={staffList} scenarioSettings={d?.scenarioSettings} sources={d?.sources} properties={d?.properties} gasUrl={GAS_URL} onRefresh={refresh} onLightRefresh={lightRefresh} />} />
+              <Route path="/customers" element={<CustomerList customers={d?.customers} displaySettings={displaySettings} formSettings={d?.formSettings} scenarios={d?.scenarios} statuses={d?.statuses} staffList={staffList} scenarioSettings={d?.scenarioSettings} sources={d?.sources} properties={d?.properties} gasUrl={GAS_URL} onRefresh={refresh} onLightRefresh={lightRefresh} />} />
               <Route path="/add" element={<CustomerForm scenarios={d?.scenarios} formSettings={d?.formSettings} statuses={d?.statuses} staffList={staffList} sources={d?.sources} groups={d?.groups} contractTypes={d?.contractTypes} onRefresh={refresh} />} />
               <Route path="/schedule/:id" element={<CustomerSchedule customers={d?.customers} deliveryLogs={d?.deliveryLogs} onRefresh={refresh} />} />
-              <Route path="/detail/:id" element={<CustomerDetail customers={d?.customers} formSettings={d?.formSettings} statuses={d?.statuses} sources={d?.sources} contractTypes={d?.contractTypes} trackingLogs={d?.trackingLogs} staffList={staffList} groups={d?.groups} statusHistory={d?.statusHistory} gasUrl={GAS_URL} onRefresh={refresh} />} />
+              <Route path="/detail/:id" element={<CustomerDetail customers={d?.customers} formSettings={d?.formSettings} statuses={d?.statuses} sources={d?.sources} contractTypes={d?.contractTypes} trackingLogs={d?.trackingLogs} staffList={staffList} groups={d?.groups} statusHistory={d?.statusHistory} properties={d?.properties} gasUrl={GAS_URL} onRefresh={refresh} />} />
               <Route path="/direct-sms/:id" element={<DirectSms customers={d?.customers} templates={d?.templates} onRefresh={refresh} masterUrl={MASTER_WHITELIST_API} currentUserEmail={user?.email} />} />
 
               {/* 設定 */}
@@ -287,7 +299,7 @@ function App() {
               <Route path="/status-list/:type" element={<CustomerStatusList customers={d?.customers} statuses={d?.statuses} staffList={staffList} />} />
 
               {/* カンバン */}
-              <Route path="/kanban" element={<KanbanBoard customers={d?.customers} statuses={d?.statuses} scenarios={d?.scenarios} scenarioSettings={d?.scenarioSettings} staffList={staffList} onRefresh={refresh} onLightRefresh={lightRefresh} gasUrl={GAS_URL} sources={d?.sources} contractTypes={d?.contractTypes} />} />
+              <Route path="/kanban" element={<KanbanBoard customers={d?.customers} statuses={d?.statuses} scenarios={d?.scenarios} scenarioSettings={d?.scenarioSettings} staffList={staffList} properties={d?.properties} onRefresh={refresh} onLightRefresh={lightRefresh} gasUrl={GAS_URL} sources={d?.sources} contractTypes={d?.contractTypes} />} />
             </Routes>
           </main>
 

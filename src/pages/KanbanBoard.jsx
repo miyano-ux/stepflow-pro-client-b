@@ -287,7 +287,7 @@ function ExcludedZone({ statuses, customers, isDragging, overColumn, onDragOver,
 // ─────────────────────────────────────────────────────────
 export default function KanbanBoard({
   customers = [], statuses = [], scenarios = [], scenarioSettings = {},
-  onRefresh, onLightRefresh, staffList = [], gasUrl, sources = [], contractTypes = [],
+  onRefresh, onLightRefresh, staffList = [], properties = [], gasUrl, sources = [], contractTypes = [],
 }) {
   const navigate = useNavigate();
   const [filterStaff, setFilterStaff]       = useState("");
@@ -539,10 +539,24 @@ export default function KanbanBoard({
                       {/* ── スクロールするカード領域 ── */}
                       <div style={S.colCards}>
                         {cards.map(c => {
-                          const dragging = draggingId === String(c.id);
-                          const staff    = staffList.find(s => s.email === c["担当者メール"]);
-                          const days     = calcDaysInStatus(c);
-                          const color    = daysColor(days);
+                          const dragging  = draggingId === String(c.id);
+                          const staff     = staffList.find(s => s.email === c["担当者メール"]);
+                          const days      = calcDaysInStatus(c);
+                          const color     = daysColor(days);
+                          // 物件サマリー
+                          const cProps    = properties.filter(p => String(p.customerId) === String(c.id));
+                          const wonProps  = cProps.filter(p => p.status === "成約");
+                          const activeProps = cProps.filter(p => p.status === "検討中");
+                          const formatPrice = (p) => {
+                            const n = Number(String(p).replace(/[^0-9.]/g, ""));
+                            if (!n) return null;
+                            if (n >= 10000) return `${(n / 10000).toFixed(1).replace(/\.0$/, "")}億`;
+                            return `${n.toLocaleString()}万`;
+                          };
+                          const maxActive = activeProps.length > 0
+                            ? Math.max(...activeProps.map(p => Number(String(p.price).replace(/[^0-9.]/g, "")) || 0))
+                            : 0;
+                          const wonTotal  = wonProps.reduce((s, p) => s + (Number(String(p.price).replace(/[^0-9.]/g, "")) || 0), 0);
                           return (
                             <div
                               key={c.id}
@@ -565,6 +579,28 @@ export default function KanbanBoard({
                                 <div style={{ marginTop: 8 }}>
                                   <span style={{ fontSize: 11, fontWeight: 800, backgroundColor: color.bg, color: color.text, padding: "3px 10px", borderRadius: 99 }}>
                                     {days === 0 ? "本日" : `${days}日滞留中`}
+                                  </span>
+                                </div>
+                              )}
+                              {/* 物件サマリーバッジ */}
+                              {cProps.length > 0 && (
+                                <div style={{ marginTop: 8, paddingTop: 8, borderTop: "1px solid #F1F5F9", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                                  <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                                    {wonProps.length > 0 && (
+                                      <span style={{ fontSize: 10, fontWeight: 800, backgroundColor: "#DCFCE7", color: "#166534", padding: "2px 7px", borderRadius: 99 }}>
+                                        成約{wonProps.length}件
+                                      </span>
+                                    )}
+                                    {activeProps.length > 0 && (
+                                      <span style={{ fontSize: 10, fontWeight: 800, backgroundColor: "#EEF2FF", color: THEME.primary, padding: "2px 7px", borderRadius: 99 }}>
+                                        検討{activeProps.length}件
+                                      </span>
+                                    )}
+                                  </div>
+                                  <span style={{ fontSize: 11, fontWeight: 800, color: wonTotal > 0 ? "#166534" : THEME.textMain }}>
+                                    {wonTotal > 0
+                                      ? `¥${formatPrice(wonTotal)}`
+                                      : maxActive > 0 ? `〜¥${formatPrice(maxActive)}` : ""}
                                   </span>
                                 </div>
                               )}

@@ -4,7 +4,7 @@ import axios from "axios";
 import {
   ArrowLeft, Save, MessageSquare, History, Loader2,
   Edit3, X, Clock, LayoutGrid, ChevronDown, ExternalLink,
-  Phone, User,
+  Phone, User, Building2, Plus, Trash2, Check,
 } from "lucide-react";
 import { THEME, GAS_URL } from "../lib/constants";
 import { styles } from "../lib/styles";
@@ -114,7 +114,8 @@ const CustomField = ({ field, isEditing, value, onChange }) => {
 
 export default function CustomerDetail({
   customers = [], formSettings = [], statuses = [], sources = [],
-  contractTypes = [], trackingLogs = [], staffList = [], groups = [], statusHistory = [], gasUrl, onRefresh,
+  contractTypes = [], trackingLogs = [], staffList = [], groups = [],
+  statusHistory = [], properties: allProperties = [], gasUrl, onRefresh,
 }) {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -125,6 +126,31 @@ export default function CustomerDetail({
   const [promptModal, setPromptModal]         = useState(null); // { promptFields }
   const [syncingCount, setSyncingCount] = useState(0);
   const [formData, setFormData] = useState(null);
+
+  // 物件管理ステート
+  const [properties, setProperties] = useState([]);
+  const [propSaving, setPropSaving]  = useState(false);
+  const [newProp, setNewProp]        = useState(null); // null or {} でフォーム表示切替
+  const [editingPropId, setEditingPropId] = useState(null);
+  const [editingPropData, setEditingPropData] = useState({});
+  const PROP_STATUSES   = ["検討中", "成約", "見送り"];
+  const PROP_TYPES      = ["マンション", "戸建", "土地", "事務所", "その他"];
+  const STATUS_STYLE    = {
+    "成約":   { bg: "#DCFCE7", color: "#166534", border: "#1D9E75" },
+    "検討中": { bg: "#EEF2FF", color: "#3730A3", border: "#378ADD" },
+    "見送り": { bg: "#F3F4F6", color: "#6B7280", border: "#9CA3AF" },
+  };
+  const formatPrice = (v) => {
+    const n = Number(String(v || "").replace(/[^0-9.]/g, ""));
+    if (!n) return "－";
+    if (n >= 10000) return `¥${(n / 10000).toFixed(1).replace(/\.0$/, "")}億`;
+    return `¥${n.toLocaleString()}万`;
+  };
+
+  // allProperties から自分の分だけ抽出（外部変更で同期）
+  useEffect(() => {
+    setProperties((allProperties || []).filter(p => String(p.customerId) === String(id)));
+  }, [allProperties, id]);
 
   const customer = useMemo(
     () => customers.find((c) => String(c.id) === String(id)),
@@ -232,6 +258,50 @@ export default function CustomerDetail({
       }
     }
     setPromptModal(null);
+  };
+
+  // ── 物件 CRUD ────────────────────────────────────────
+  const handleAddProperty = async () => {
+    if (!newProp?.name) { alert("物件名を入力してください"); return; }
+    setPropSaving(true);
+    try {
+      const res = await axios.post(gasUrl,
+        JSON.stringify({ action: "addProperty", customerId: id, ...newProp }),
+        { headers: { "Content-Type": "text/plain;charset=utf-8" } }
+      );
+      if (res.data?.id) {
+        setProperties(prev => [...prev, { id: res.data.id, customerId: id, status: "検討中", ...newProp, createdAt: new Date().toISOString() }]);
+      }
+      setNewProp(null);
+      onRefresh();
+    } catch { alert("物件の登録に失敗しました"); }
+    finally { setPropSaving(false); }
+  };
+
+  const handleUpdateProperty = async (propId) => {
+    setPropSaving(true);
+    try {
+      await axios.post(gasUrl,
+        JSON.stringify({ action: "updateProperty", id: propId, ...editingPropData }),
+        { headers: { "Content-Type": "text/plain;charset=utf-8" } }
+      );
+      setProperties(prev => prev.map(p => p.id === propId ? { ...p, ...editingPropData } : p));
+      setEditingPropId(null);
+      onRefresh();
+    } catch { alert("物件の更新に失敗しました"); }
+    finally { setPropSaving(false); }
+  };
+
+  const handleDeleteProperty = async (propId) => {
+    if (!window.confirm("この物件を削除しますか？")) return;
+    try {
+      await axios.post(gasUrl,
+        JSON.stringify({ action: "deleteProperty", id: propId }),
+        { headers: { "Content-Type": "text/plain;charset=utf-8" } }
+      );
+      setProperties(prev => prev.filter(p => p.id !== propId));
+      onRefresh();
+    } catch { alert("物件の削除に失敗しました"); }
   };
 
   if (!formData) {
@@ -438,6 +508,176 @@ export default function CustomerDetail({
               </div>
             </div>
           )}
+
+          {/* ── 検討物件セクション ── */}
+          <div style={styles.card}>
+            {/* ヘッダー */}
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+              <h3 style={{ fontSize: 14, fontWeight: 800, color: THEME.textMuted, margin: 0, display: "flex", alignItems: "center", gap: 8 }}>
+                <Building2 size={15} /> 検討物件
+                {properties.length > 0 && (
+                  <span style={{ background: "#EEF2FF", color: THEME.primary, fontSize: 11, fontWeight: 700, padding: "1px 8px", borderRadius: 99 }}>
+                    {properties.length}件
+                  </span>
+                )}
+              </h3>
+              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                {/* 合計サマリー */}
+                {properties.length > 0 && (() => {
+                  const wonTotal = properties.filter(p => p.status === "成約")
+                    .reduce((s, p) => s + (Number(String(p.price || "").replace(/[^0-9.]/g, "")) || 0), 0);
+                  const maxActive = Math.max(0, ...properties.filter(p => p.status === "検討中")
+                    .map(p => Number(String(p.price || "").replace(/[^0-9.]/g, "")) || 0));
+                  return (
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12 }}>
+                      {wonTotal > 0 && <span style={{ color: "#166534", fontWeight: 700 }}>成約 {formatPrice(wonTotal)}</span>}
+                      {wonTotal > 0 && maxActive > 0 && <span style={{ color: THEME.textMuted }}>／</span>}
+                      {maxActive > 0 && <span style={{ color: THEME.textMuted }}>検討中 〜{formatPrice(maxActive)}</span>}
+                    </div>
+                  );
+                })()}
+                <button
+                  onClick={() => setNewProp(newProp ? null : { name: "", address: "", price: "", propertyType: "マンション", area: "", status: "検討中", note: "" })}
+                  style={{ display: "flex", alignItems: "center", gap: 5, padding: "6px 12px", border: `1px solid ${THEME.border}`, borderRadius: 8, background: "white", cursor: "pointer", fontSize: 12, fontWeight: 700, color: THEME.textMain }}
+                >
+                  <Plus size={13} /> 物件を追加
+                </button>
+              </div>
+            </div>
+
+            {/* 物件カード一覧 */}
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {properties.length === 0 && !newProp && (
+                <div style={{ textAlign: "center", padding: "28px 0", color: THEME.textMuted, fontSize: 13 }}>
+                  検討物件がまだ登録されていません
+                </div>
+              )}
+
+              {properties.map((prop) => {
+                const ss    = STATUS_STYLE[prop.status] || STATUS_STYLE["見送り"];
+                const isEdit = editingPropId === prop.id;
+                return (
+                  <div key={prop.id} style={{ border: `1px solid ${THEME.border}`, borderRadius: 10, padding: "12px 14px", borderLeft: `3px solid ${ss.border}`, opacity: prop.status === "見送り" ? 0.65 : 1 }}>
+                    {!isEdit ? (
+                      /* 表示モード */
+                      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8 }}>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4, flexWrap: "wrap" }}>
+                            <span style={{ fontWeight: 700, fontSize: 14, color: THEME.textMain }}>{prop.name || "（物件名未設定）"}</span>
+                            <span style={{ fontSize: 10, fontWeight: 700, backgroundColor: ss.bg, color: ss.color, padding: "1px 8px", borderRadius: 99 }}>{prop.status}</span>
+                          </div>
+                          <div style={{ display: "flex", gap: 12, fontSize: 12, color: THEME.textMuted, flexWrap: "wrap" }}>
+                            {prop.propertyType && <span>{prop.propertyType}</span>}
+                            {prop.area         && <span>{prop.area}㎡</span>}
+                            {prop.address      && <span>{prop.address}</span>}
+                            {prop.note         && <span style={{ fontStyle: "italic" }}>{prop.note}</span>}
+                          </div>
+                        </div>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+                          <span style={{ fontSize: 16, fontWeight: 900, color: prop.status === "成約" ? "#166534" : THEME.textMain }}>{formatPrice(prop.price)}</span>
+                          <button onClick={() => { setEditingPropId(prop.id); setEditingPropData({ name: prop.name, address: prop.address, price: prop.price, propertyType: prop.propertyType, area: prop.area, status: prop.status, note: prop.note }); }}
+                            style={{ padding: "4px 8px", border: `1px solid ${THEME.border}`, borderRadius: 6, background: "white", cursor: "pointer", color: THEME.textMuted, fontSize: 11 }}>編集</button>
+                          <button onClick={() => handleDeleteProperty(prop.id)}
+                            style={{ padding: "4px 6px", border: "none", borderRadius: 6, background: "#FEF2F2", cursor: "pointer", color: THEME.danger, display: "flex" }}>
+                            <Trash2 size={13} />
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      /* 編集モード */
+                      <div>
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
+                          <div>
+                            <label style={{ ...styles.label }}>物件名</label>
+                            <input style={styles.input} value={editingPropData.name || ""} onChange={e => setEditingPropData(p => ({ ...p, name: e.target.value }))} />
+                          </div>
+                          <div>
+                            <label style={{ ...styles.label }}>金額（万円）</label>
+                            <input style={styles.input} placeholder="例: 8500 → 8,500万円" value={editingPropData.price || ""} onChange={e => setEditingPropData(p => ({ ...p, price: e.target.value }))} />
+                          </div>
+                          <div>
+                            <label style={{ ...styles.label }}>物件種別</label>
+                            <select style={{ ...styles.input, appearance: "none" }} value={editingPropData.propertyType || ""} onChange={e => setEditingPropData(p => ({ ...p, propertyType: e.target.value }))}>
+                              {PROP_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                            </select>
+                          </div>
+                          <div>
+                            <label style={{ ...styles.label }}>面積（㎡）</label>
+                            <input style={styles.input} value={editingPropData.area || ""} onChange={e => setEditingPropData(p => ({ ...p, area: e.target.value }))} />
+                          </div>
+                          <div>
+                            <label style={{ ...styles.label }}>住所</label>
+                            <input style={styles.input} value={editingPropData.address || ""} onChange={e => setEditingPropData(p => ({ ...p, address: e.target.value }))} />
+                          </div>
+                          <div>
+                            <label style={{ ...styles.label }}>ステータス</label>
+                            <select style={{ ...styles.input, appearance: "none" }} value={editingPropData.status || "検討中"} onChange={e => setEditingPropData(p => ({ ...p, status: e.target.value }))}>
+                              {PROP_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+                            </select>
+                          </div>
+                        </div>
+                        <div style={{ marginBottom: 10 }}>
+                          <label style={{ ...styles.label }}>備考</label>
+                          <input style={styles.input} value={editingPropData.note || ""} onChange={e => setEditingPropData(p => ({ ...p, note: e.target.value }))} />
+                        </div>
+                        <div style={{ display: "flex", gap: 8 }}>
+                          <button onClick={() => handleUpdateProperty(prop.id)} disabled={propSaving}
+                            style={{ display: "flex", alignItems: "center", gap: 5, padding: "7px 14px", borderRadius: 8, border: "none", background: THEME.primary, color: "white", fontWeight: 700, fontSize: 13, cursor: "pointer", opacity: propSaving ? 0.6 : 1 }}>
+                            <Check size={13} /> 保存
+                          </button>
+                          <button onClick={() => setEditingPropId(null)}
+                            style={{ padding: "7px 14px", borderRadius: 8, border: `1px solid ${THEME.border}`, background: "white", color: THEME.textMuted, fontWeight: 700, fontSize: 13, cursor: "pointer" }}>
+                            キャンセル
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+
+              {/* 新規追加フォーム */}
+              {newProp && (
+                <div style={{ border: `1.5px dashed ${THEME.primary}50`, borderRadius: 10, padding: "14px", background: "#FAFBFF" }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: THEME.primary, marginBottom: 10 }}>新しい物件</div>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
+                    <div>
+                      <label style={{ ...styles.label }}>物件名 *</label>
+                      <input style={styles.input} placeholder="例: 渋谷区代々木 Bマンション" value={newProp.name || ""} onChange={e => setNewProp(p => ({ ...p, name: e.target.value }))} autoFocus />
+                    </div>
+                    <div>
+                      <label style={{ ...styles.label }}>金額（万円）</label>
+                      <input style={styles.input} placeholder="例: 8500 → 8,500万円" value={newProp.price || ""} onChange={e => setNewProp(p => ({ ...p, price: e.target.value }))} />
+                    </div>
+                    <div>
+                      <label style={{ ...styles.label }}>物件種別</label>
+                      <select style={{ ...styles.input, appearance: "none" }} value={newProp.propertyType || "マンション"} onChange={e => setNewProp(p => ({ ...p, propertyType: e.target.value }))}>
+                        {PROP_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label style={{ ...styles.label }}>面積（㎡）</label>
+                      <input style={styles.input} placeholder="例: 72.4" value={newProp.area || ""} onChange={e => setNewProp(p => ({ ...p, area: e.target.value }))} />
+                    </div>
+                    <div style={{ gridColumn: "1 / -1" }}>
+                      <label style={{ ...styles.label }}>住所</label>
+                      <input style={styles.input} placeholder="例: 東京都渋谷区代々木2丁目" value={newProp.address || ""} onChange={e => setNewProp(p => ({ ...p, address: e.target.value }))} />
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <button onClick={handleAddProperty} disabled={propSaving}
+                      style={{ display: "flex", alignItems: "center", gap: 5, padding: "7px 14px", borderRadius: 8, border: "none", background: THEME.primary, color: "white", fontWeight: 700, fontSize: 13, cursor: "pointer", opacity: propSaving ? 0.6 : 1 }}>
+                      {propSaving ? <Loader2 size={13} className="animate-spin" /> : <Plus size={13} />} 登録する
+                    </button>
+                    <button onClick={() => setNewProp(null)}
+                      style={{ padding: "7px 14px", borderRadius: 8, border: `1px solid ${THEME.border}`, background: "white", color: THEME.textMuted, fontWeight: 700, fontSize: 13, cursor: "pointer" }}>
+                      キャンセル
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
         </div>
 
         {/* ステータス遷移タイムライン */}
