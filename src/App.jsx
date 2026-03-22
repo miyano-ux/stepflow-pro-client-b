@@ -38,11 +38,11 @@ import ImportErrorList       from "./pages/ImportErrorList";
 import ResponseImportPortal  from "./pages/ResponseImportPortal";
 import CustomerStatusList    from "./pages/CustomerStatusList";
 import UserForm              from "./pages/UserForm";
-import SourceManager               from "./pages/SourceManager";
-import ContractTypeManager         from "./pages/ContractTypeManager";
-import MasterSettings              from "./pages/MasterSettings";
-import SourceIntegrationIndex      from "./pages/SourceIntegrationIndex";
-import SourceIntegrationDetail     from "./pages/SourceIntegrationDetail";
+import SourceManager         from "./pages/SourceManager";
+import ContractTypeManager   from "./pages/ContractTypeManager";
+import MasterSettings        from "./pages/MasterSettings";
+import SourceIntegrationIndex  from "./pages/SourceIntegrationIndex";
+import SourceIntegrationDetail from "./pages/SourceIntegrationDetail";
 
 // ==========================================
 // 🚀 App - 認証 & ルーティング
@@ -68,6 +68,8 @@ function App() {
     sourceIntegrations: [],
     sourceCredsStatus:  {},
     sourceLoginIds:     {},
+    clientInfo:         {},
+    fieldMappings:      {},
   });
 
   // displaySettings: ユーザー個別に localStorage で管理
@@ -287,8 +289,31 @@ function App() {
               <Route path="/response-import" element={<ResponseImportPortal />} />
               <Route path="/gmail-settings" element={<GmailSettings gmailSettings={d?.gmailSettings} scenarios={d?.scenarios} formSettings={d?.formSettings} statuses={d?.statuses} sources={d?.sources} staffList={staffList} groups={d?.groups} onRefresh={refresh} />} />
               <Route path="/import-errors" element={<ImportErrorList errors={d?.importErrors} onRefresh={refresh} />} />
-              <Route path="/source-integrations" element={<SourceIntegrationIndex sourceCredsStatus={d?.sourceCredsStatus} clientInfo={d?.clientInfo} />} />
-              <Route path="/source-integrations/:sourceKey" element={<SourceIntegrationDetail sourceIntegrations={d?.sourceIntegrations} sourceCredsStatus={d?.sourceCredsStatus} sourceLoginIds={d?.sourceLoginIds} clientInfo={d?.clientInfo} scenarios={d?.scenarios} statuses={d?.statuses} sources={d?.sources} staffList={staffList} groups={d?.groups} onRefresh={refresh} />} />
+
+              {/* 媒体連携 */}
+              <Route path="/source-integrations" element={
+                <SourceIntegrationIndex
+                  sourceCredsStatus={d?.sourceCredsStatus}
+                  clientInfo={d?.clientInfo}
+                />
+              } />
+              <Route path="/source-integrations/:sourceKey" element={
+                <SourceIntegrationDetail
+                  sourceIntegrations={d?.sourceIntegrations}
+                  sourceCredsStatus={d?.sourceCredsStatus}
+                  sourceLoginIds={d?.sourceLoginIds}
+                  clientInfo={d?.clientInfo}
+                  scenarios={d?.scenarios}
+                  statuses={d?.statuses}
+                  sources={d?.sources}
+                  staffList={staffList}
+                  groups={d?.groups}
+                  formSettings={d?.formSettings}
+                  fieldMappings={d?.fieldMappings}
+                  gasUrl={GAS_URL}
+                  onRefresh={refresh}
+                />
+              } />
 
               {/* ユーザー管理 */}
               <Route path="/users" element={<UserManager staffList={staffList} groups={d?.groups} statuses={d?.statuses} onRefreshStaff={refreshStaff} onRefresh={refresh} masterUrl={MASTER_WHITELIST_API} companyName={CLIENT_COMPANY_NAME} gasUrl={GAS_URL} />} />

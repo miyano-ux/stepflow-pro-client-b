@@ -124,6 +124,8 @@ export default function SourceIntegrationDetail({
   sources            = [],
   staffList          = [],
   groups             = [],
+  formSettings       = [],
+  fieldMappings      = {},
   gasUrl             = GAS_URL,
   onRefresh,
 }) {
@@ -164,6 +166,17 @@ export default function SourceIntegrationDetail({
   });
   const [ruleSaving, setRuleSaving] = useState(false);
   const [ruleSaved,  setRuleSaved]  = useState(false);
+
+  // ── フィールドマッピング状態 ──────────────────────────────────
+  // { fieldKey: "保存先カラム名", ... }  e.g. { assessmentId: "問い合わせ番号" }
+  const [fieldMapping,  setFieldMapping]  = useState(() => {
+    const saved = fieldMappings[sourceKey] || [];
+    const m = {};
+    saved.forEach(({ fromField, toColumn }) => { if (fromField) m[fromField] = toColumn || ""; });
+    return m;
+  });
+  const [mappingSaving, setMappingSaving] = useState(false);
+  const [mappingSaved,  setMappingSaved]  = useState(false);
 
   const scenarioIds = [...new Set((scenarios || []).map(s => s["シナリオID"]).filter(Boolean))];
 
@@ -226,6 +239,52 @@ export default function SourceIntegrationDetail({
       setRuleSaving(false);
     }
   };
+
+  // ── フィールドマッピングの保存 ────────────────────────────────
+  const handleSaveMapping = async () => {
+    setMappingSaving(true);
+    try {
+      const mapping = Object.entries(fieldMapping).map(([fromField, toColumn]) => ({
+        fromField,
+        toColumn: toColumn || "",
+      }));
+      await api({ action: "saveFieldMapping", sourceKey, mapping });
+      setMappingSaved(true);
+      setTimeout(() => setMappingSaved(false), 2000);
+      onRefresh?.();
+    } catch (e) {
+      alert("保存に失敗しました: " + (e?.message || e));
+    } finally {
+      setMappingSaving(false);
+    }
+  };
+
+  // ── マッピング先カラム選択肢 ─────────────────────────────────
+  // 「顧客情報」グループ：processCustomerRegistration で直接処理される特殊カラム
+  const PERSONAL_DEST_COLS = ["姓", "名", "姓（カナ）", "名（カナ）", "電話番号", "メールアドレス"];
+  // 「物件・査定情報」グループ：data{} に格納される汎用カラム
+  const PROPERTY_DEST_COLS = [
+    "問い合わせ番号", "物件種別", "物件名", "物件住所", "所在地",
+    "土地面積", "建物面積", "専有面積", "間取り", "築年", "完成年",
+    "現況", "名義", "残債", "事業所名", "部屋番号",
+    "売却希望時期", "売却理由", "ご要望", "希望連絡時間",
+    "受付日時", "受信日時", "住所", "郵便番号",
+  ];
+  const ALL_FIXED = new Set([...PERSONAL_DEST_COLS, ...PROPERTY_DEST_COLS]);
+  const customDestCols = (formSettings || [])
+    .map(f => f.name)
+    .filter(n => !ALL_FIXED.has(n));
+  const destinationOptions = [
+    { value: "", label: "— 保存しない —" },
+    { value: "__group_personal__", label: "── 顧客情報 ──", disabled: true },
+    ...PERSONAL_DEST_COLS.map(c => ({ value: c, label: c })),
+    { value: "__group_property__", label: "── 物件・査定情報 ──", disabled: true },
+    ...PROPERTY_DEST_COLS.map(c => ({ value: c, label: c })),
+    ...(customDestCols.length > 0 ? [
+      { value: "__group_custom__", label: "── カスタム項目 ──", disabled: true },
+      ...customDestCols.map(c => ({ value: c, label: c })),
+    ] : []),
+  ];
 
   const isConfigured = src.requiresLogin ? !!sourceCredsStatus?.[sourceKey] : true;
 
@@ -390,6 +449,104 @@ export default function SourceIntegrationDetail({
           </button>
         </div>
       </div>
+
+      {/* ── フィールドマッピングセクション（email_body 媒体のみ） ── */}
+      {src.sourceFields?.length > 0 && (
+        <div style={S.section}>
+          <div style={S.sectionTitle}>
+            フィールドマッピング
+          </div>
+          <p style={{ fontSize: 13, color: THEME.textMuted, margin: "0 0 20px" }}>
+            メールから取得した各項目を、顧客DBのどのカラムに保存するか設定します。「保存しない」にした項目は取り込み時に無視されます。
+          </p>
+
+          {/* テーブルヘッダー */}
+          <div style={{
+            display: "grid", gridTemplateColumns: "1fr 24px 1fr",
+            gap: 8, alignItems: "center",
+            padding: "6px 4px", marginBottom: 6,
+          }}>
+            <span style={{ fontSize: 11, fontWeight: 800, color: THEME.textMuted, letterSpacing: "0.04em" }}>
+              メール内フィールド
+            </span>
+            <span />
+            <span style={{ fontSize: 11, fontWeight: 800, color: THEME.textMuted, letterSpacing: "0.04em" }}>
+              保存先カラム
+            </span>
+          </div>
+
+          {/* マッピング行 */}
+          {src.sourceFields.map(field => {
+            const currentVal = fieldMapping[field.key] || "";
+            const isMapped   = !!currentVal;
+            return (
+              <div
+                key={field.key}
+                style={{
+                  display: "grid", gridTemplateColumns: "1fr 24px 1fr",
+                  gap: 8, alignItems: "center", marginBottom: 6,
+                }}
+              >
+                {/* 左：媒体フィールド名 */}
+                <div style={{
+                  fontSize: 13, fontWeight: 600,
+                  color: isMapped ? THEME.textMain : THEME.textMuted,
+                  padding: "10px 14px",
+                  backgroundColor: isMapped ? "#F0FDF4" : "#F8FAFC",
+                  border: `1px solid ${isMapped ? "#86EFAC" : THEME.border}`,
+                  borderRadius: 8,
+                  display: "flex", alignItems: "center", gap: 6,
+                }}>
+                  {isMapped && (
+                    <span style={{ color: "#16A34A", flexShrink: 0, fontSize: 11 }}>●</span>
+                  )}
+                  {field.label}
+                </div>
+
+                {/* 矢印 */}
+                <div style={{
+                  textAlign: "center", fontSize: 14, color: THEME.textMuted,
+                  opacity: isMapped ? 1 : 0.3,
+                }}>
+                  →
+                </div>
+
+                {/* 右：保存先カラム選択 */}
+                <CustomSelect
+                  value={currentVal}
+                  onChange={v => setFieldMapping(prev => ({ ...prev, [field.key]: v }))}
+                  options={destinationOptions}
+                  placeholder="— 保存しない —"
+                />
+              </div>
+            );
+          })}
+
+          {/* マッピング済み件数インジケーター */}
+          <div style={{
+            fontSize: 12, color: THEME.textMuted,
+            margin: "12px 0 16px", padding: "8px 12px",
+            backgroundColor: "#F8FAFC", borderRadius: 8,
+            border: `1px solid ${THEME.border}`,
+          }}>
+            {(() => {
+              const mapped = src.sourceFields.filter(f => fieldMapping[f.key]).length;
+              return `${src.sourceFields.length} 項目中 ${mapped} 項目をマッピング設定済み`;
+            })()}
+          </div>
+
+          <div style={{ display: "flex", justifyContent: "flex-end" }}>
+            <button style={S.btn("primary")} onClick={handleSaveMapping} disabled={mappingSaving}>
+              {mappingSaving
+                ? <><Loader2 size={14} /> 保存中…</>
+                : mappingSaved
+                  ? <><CheckCircle2 size={14} /> 保存しました</>
+                  : "マッピングを保存"
+              }
+            </button>
+          </div>
+        </div>
+      )}
     </Page>
   );
 }
