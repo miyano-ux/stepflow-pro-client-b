@@ -41,7 +41,8 @@ import UserForm              from "./pages/UserForm";
 import SourceManager               from "./pages/SourceManager";
 import ContractTypeManager         from "./pages/ContractTypeManager";
 import MasterSettings              from "./pages/MasterSettings";
-import SourceIntegrationSettings   from "./pages/SourceIntegrationSettings";
+import SourceIntegrationIndex      from "./pages/SourceIntegrationIndex";
+import SourceIntegrationDetail     from "./pages/SourceIntegrationDetail";
 
 // ==========================================
 // 🚀 App - 認証 & ルーティング
@@ -286,7 +287,8 @@ function App() {
               <Route path="/response-import" element={<ResponseImportPortal />} />
               <Route path="/gmail-settings" element={<GmailSettings gmailSettings={d?.gmailSettings} scenarios={d?.scenarios} formSettings={d?.formSettings} statuses={d?.statuses} sources={d?.sources} staffList={staffList} groups={d?.groups} onRefresh={refresh} />} />
               <Route path="/import-errors" element={<ImportErrorList errors={d?.importErrors} onRefresh={refresh} />} />
-              <Route path="/source-integrations" element={<SourceIntegrationSettings sourceIntegrations={d?.sourceIntegrations} sourceCredsStatus={d?.sourceCredsStatus} sourceLoginIds={d?.sourceLoginIds} scenarios={d?.scenarios} statuses={d?.statuses} sources={d?.sources} staffList={staffList} groups={d?.groups} onRefresh={refresh} />} />
+              <Route path="/source-integrations" element={<SourceIntegrationIndex sourceCredsStatus={d?.sourceCredsStatus} clientInfo={d?.clientInfo} />} />
+              <Route path="/source-integrations/:sourceKey" element={<SourceIntegrationDetail sourceIntegrations={d?.sourceIntegrations} sourceCredsStatus={d?.sourceCredsStatus} sourceLoginIds={d?.sourceLoginIds} clientInfo={d?.clientInfo} scenarios={d?.scenarios} statuses={d?.statuses} sources={d?.sources} staffList={staffList} groups={d?.groups} onRefresh={refresh} />} />
 
               {/* ユーザー管理 */}
               <Route path="/users" element={<UserManager staffList={staffList} groups={d?.groups} statuses={d?.statuses} onRefreshStaff={refreshStaff} onRefresh={refresh} masterUrl={MASTER_WHITELIST_API} companyName={CLIENT_COMPANY_NAME} gasUrl={GAS_URL} />} />
