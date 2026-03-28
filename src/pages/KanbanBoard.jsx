@@ -202,11 +202,589 @@ function LostModal({ info, gasUrl, onDone, onCancel }) {
   );
 }
 
+// 受託越え前進モーダル（2フェーズ：物件選択 → 物件ごとの金額入力）
+function UketsukeModal({ info, gasUrl, contractTypes, staffList, onDone, onCancel }) {
+  const hasProps = info?.customerProperties && info.customerProperties.length > 0;
+
+  // フェーズ: "select"（物件選択＋共通項目）| "price"（物件ごと金額入力）| "new"（新規物件登録）
+  const [phase, setPhase] = useState(hasProps ? "select" : "new");
+
+  // フェーズ1: 選択状態（全デフォルトON）
+  const [checkedIds, setCheckedIds] = useState(
+    () => new Set((info?.customerProperties || []).map(p => p.id))
+  );
+  const [contractType, setContractType] = useState("");
+  const [staffEmail,   setStaffEmail]   = useState(info?.currentStaff || "");
+
+  // フェーズ2: 物件ごとの金額入力
+  const [priceStep,   setPriceStep]   = useState(0);   // 現在入力中の物件インデックス
+  const [priceMap,    setPriceMap]    = useState({});   // { propId: assessmentPrice }
+
+  // フェーズ3（新規物件）
+  const [propName,        setPropName]        = useState("");
+  const [propAddr,        setPropAddr]        = useState("");
+  const [newAssessPrice,  setNewAssessPrice]  = useState("");
+
+  const [saving, setSaving] = useState(false);
+
+  if (!info) return null;
+
+  const selectStyle = {
+    width: "100%", padding: "10px 12px", borderRadius: 10,
+    border: `1px solid ${THEME.border}`, fontSize: 13, fontWeight: 700,
+    backgroundColor: "white", color: THEME.textMain, cursor: "pointer",
+    appearance: "none", boxSizing: "border-box",
+  };
+  const inputStyle = {
+    width: "100%", padding: "10px 12px", borderRadius: 10,
+    border: `1px solid ${THEME.border}`, fontSize: 13, fontWeight: 700,
+    backgroundColor: "white", color: THEME.textMain, boxSizing: "border-box",
+  };
+  const labelStyle = { fontSize: 12, fontWeight: 800, color: THEME.textMuted, marginBottom: 5, display: "block" };
+
+  // 選択された物件リスト（順序保持）
+  const checkedProps = (info.customerProperties || []).filter(p => checkedIds.has(p.id));
+
+  // フェーズ1 → フェーズ2 への進行可否
+  const canProceed = contractType && staffEmail && checkedIds.size > 0;
+
+  // フェーズ2: 現在の物件
+  const currentProp = checkedProps[priceStep];
+  const currentPrice = priceMap[currentProp?.id] || "";
+  const isLastProp = priceStep === checkedProps.length - 1;
+
+  // フェーズ2: OK ボタン（次の物件 or 最終確定）
+  const handlePriceNext = () => {
+    if (!currentPrice) return;
+    setPriceMap(prev => ({ ...prev, [currentProp.id]: currentPrice }));
+    if (!isLastProp) {
+      setPriceStep(s => s + 1);
+    } else {
+      handleFinalSubmit({ ...priceMap, [currentProp.id]: currentPrice });
+    }
+  };
+
+  // 最終確定処理
+  const handleFinalSubmit = async (finalPriceMap) => {
+    setSaving(true);
+    try {
+      await axios.post(gasUrl, JSON.stringify({
+        action: "updateStatus", id: info.customerId,
+        status: info.newStatus, applyScenario: info.scenarioId || "",
+      }), { headers: { "Content-Type": "text/plain;charset=utf-8" } });
+
+      await axios.post(gasUrl, JSON.stringify({
+        action: "updateFields", id: info.customerId,
+        fields: { "契約種別": contractType, "担当者メール": staffEmail },
+      }), { headers: { "Content-Type": "text/plain;charset=utf-8" } });
+
+      if (hasProps) {
+        await Promise.all(
+          Object.entries(finalPriceMap).map(([propId, assessmentPrice]) =>
+            axios.post(gasUrl, JSON.stringify({
+              action: "updateProperty", id: propId, assessmentPrice,
+            }), { headers: { "Content-Type": "text/plain;charset=utf-8" } })
+          )
+        );
+      } else {
+        await axios.post(gasUrl, JSON.stringify({
+          action: "addProperty",
+          customerId: info.customerId,
+          name: propName, address: propAddr, assessmentPrice: newAssessPrice,
+          propertyType: "マンション", status: "検討中",
+        }), { headers: { "Content-Type": "text/plain;charset=utf-8" } });
+      }
+      onDone(info.customerId, info.newStatus, info.prevStatus, staffEmail);
+    } catch {
+      alert("更新に失敗しました");
+      setSaving(false);
+    }
+  };
+
+  // ── レンダリング ──────────────────────────────────────
+  return (
+    <div style={{ position: "fixed", inset: 0, backgroundColor: "rgba(15,23,42,0.6)", display: "flex", justifyContent: "center", alignItems: "center", zIndex: 2000, backdropFilter: "blur(4px)" }}>
+      <div style={{ backgroundColor: "white", borderRadius: 24, padding: "36px 40px", width: 500, boxShadow: "0 24px 48px rgba(0,0,0,0.15)", maxHeight: "90vh", overflowY: "auto" }}>
+
+        {/* ヘッダー */}
+        <div style={{ textAlign: "center", marginBottom: 24 }}>
+          <div style={{ fontSize: 44, marginBottom: 8 }}>🔑</div>
+          <h3 style={{ fontSize: 19, fontWeight: 900, color: THEME.textMain, margin: "0 0 6px" }}>受託に進みます</h3>
+          <p style={{ fontSize: 13, color: THEME.textMuted, margin: 0, lineHeight: 1.6 }}>
+            <strong style={{ color: "#0EA5E9" }}>「{info.newStatus}」</strong> への変更に必要な情報を入力してください。
+          </p>
+        </div>
+
+        {/* ── フェーズ1: 物件選択 + 共通項目 ── */}
+        {phase === "select" && (
+          <>
+            <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+
+              {/* 物件チェックボックス */}
+              <div>
+                <div style={{ fontSize: 12, fontWeight: 800, color: THEME.textMuted, marginBottom: 8 }}>
+                  対象物件を選択 <span style={{ color: "#DC2626" }}>*</span>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: "#0EA5E9", marginLeft: 8 }}>（受託する物件にチェック）</span>
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  {info.customerProperties.map(p => {
+                    const checked = checkedIds.has(p.id);
+                    return (
+                      <div
+                        key={p.id}
+                        onClick={() => setCheckedIds(prev => {
+                          const next = new Set(prev);
+                          next.has(p.id) ? next.delete(p.id) : next.add(p.id);
+                          return next;
+                        })}
+                        style={{
+                          display: "flex", alignItems: "center", gap: 12,
+                          padding: "10px 14px", borderRadius: 10, cursor: "pointer",
+                          border: `1.5px solid ${checked ? "#0EA5E9" : THEME.border}`,
+                          backgroundColor: checked ? "#F0F9FF" : "white",
+                          transition: "all 0.15s", userSelect: "none",
+                        }}
+                      >
+                        <div style={{
+                          width: 18, height: 18, borderRadius: 4, flexShrink: 0,
+                          border: `2px solid ${checked ? "#0EA5E9" : "#CBD5E1"}`,
+                          backgroundColor: checked ? "#0EA5E9" : "white",
+                          display: "flex", alignItems: "center", justifyContent: "center",
+                          transition: "all 0.15s",
+                        }}>
+                          {checked && <span style={{ color: "white", fontSize: 12, fontWeight: 900, lineHeight: 1 }}>✓</span>}
+                        </div>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: 13, fontWeight: 800, color: checked ? "#0C4A6E" : THEME.textMain, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                            {p.name || "（物件名未設定）"}
+                          </div>
+                          {p.address && (
+                            <div style={{ fontSize: 11, color: THEME.textMuted, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                              {p.address}
+                            </div>
+                          )}
+                        </div>
+                        {p.assessmentPrice && (
+                          <div style={{ fontSize: 12, fontWeight: 800, color: checked ? "#0EA5E9" : THEME.textMuted, flexShrink: 0 }}>
+                            {p.assessmentPrice}万円
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                  {checkedIds.size === 0 && (
+                    <div style={{ fontSize: 12, color: "#DC2626", fontWeight: 700, paddingLeft: 2 }}>1件以上選択してください</div>
+                  )}
+                </div>
+              </div>
+
+              {/* 契約種別 */}
+              <div>
+                <label style={labelStyle}>契約種別 <span style={{ color: "#DC2626" }}>*</span></label>
+                <select style={selectStyle} value={contractType} onChange={e => setContractType(e.target.value)}>
+                  <option value="">選択してください</option>
+                  {contractTypes.map(t => <option key={t} value={t}>{t}</option>)}
+                </select>
+              </div>
+
+              {/* 担当者 */}
+              <div>
+                <label style={labelStyle}>担当者 <span style={{ color: "#DC2626" }}>*</span></label>
+                <select style={selectStyle} value={staffEmail} onChange={e => setStaffEmail(e.target.value)}>
+                  <option value="">選択してください</option>
+                  {staffList.map(s => <option key={s.email} value={s.email}>{s.lastName} {s.firstName}</option>)}
+                </select>
+              </div>
+            </div>
+
+            <div style={{ display: "flex", gap: 12, marginTop: 28 }}>
+              <button
+                onClick={() => { setPriceStep(0); setPhase("price"); }}
+                disabled={!canProceed}
+                style={{ flex: 2, padding: 14, borderRadius: 12, border: "none", backgroundColor: canProceed ? "#0EA5E9" : "#E5E7EB", color: "white", fontWeight: 900, fontSize: 15, cursor: canProceed ? "pointer" : "not-allowed" }}
+              >
+                次へ（金額を入力）
+              </button>
+              <button onClick={onCancel} style={{ flex: 1, padding: 14, borderRadius: 12, border: `1px solid ${THEME.border}`, backgroundColor: "white", color: THEME.textMuted, fontWeight: 800, fontSize: 15, cursor: "pointer" }}>
+                キャンセル
+              </button>
+            </div>
+          </>
+        )}
+
+        {/* ── フェーズ2: 物件ごとの金額入力（ステッパー） ── */}
+        {phase === "price" && currentProp && (
+          <>
+            {/* ステップインジケーター */}
+            {checkedProps.length > 1 && (
+              <div style={{ display: "flex", gap: 6, justifyContent: "center", marginBottom: 20 }}>
+                {checkedProps.map((p, i) => (
+                  <div key={p.id} style={{
+                    width: 28, height: 6, borderRadius: 3,
+                    backgroundColor: i < priceStep ? "#BAE6FD" : i === priceStep ? "#0EA5E9" : "#E2E8F0",
+                    transition: "background-color 0.2s",
+                  }} />
+                ))}
+              </div>
+            )}
+
+            {/* 物件情報表示 */}
+            <div style={{ backgroundColor: "#F0F9FF", border: "1px solid #BAE6FD", borderRadius: 12, padding: "14px 16px", marginBottom: 20 }}>
+              <div style={{ fontSize: 11, fontWeight: 800, color: "#0EA5E9", marginBottom: 4 }}>
+                物件 {priceStep + 1} / {checkedProps.length}
+              </div>
+              <div style={{ fontSize: 14, fontWeight: 900, color: "#0C4A6E" }}>{currentProp.name || "（物件名未設定）"}</div>
+              {currentProp.address && <div style={{ fontSize: 12, color: THEME.textMuted, marginTop: 2 }}>{currentProp.address}</div>}
+            </div>
+
+            {/* 査定金額入力 */}
+            <div style={{ marginBottom: 28 }}>
+              <label style={labelStyle}>査定金額（万円）<span style={{ color: "#DC2626" }}>*</span></label>
+              <input
+                style={inputStyle}
+                type="number"
+                value={currentPrice}
+                onChange={e => setPriceMap(prev => ({ ...prev, [currentProp.id]: e.target.value }))}
+                placeholder="例：3500"
+                autoFocus
+              />
+            </div>
+
+            <div style={{ display: "flex", gap: 12 }}>
+              <button
+                onClick={handlePriceNext}
+                disabled={saving || !currentPrice}
+                style={{ flex: 2, padding: 14, borderRadius: 12, border: "none", backgroundColor: currentPrice ? "#0EA5E9" : "#E5E7EB", color: "white", fontWeight: 900, fontSize: 15, cursor: currentPrice ? "pointer" : "not-allowed" }}
+              >
+                {saving ? "処理中..." : isLastProp ? "受託確定" : "OK（次の物件へ）"}
+              </button>
+              <button
+                onClick={() => priceStep > 0 ? setPriceStep(s => s - 1) : setPhase("select")}
+                style={{ flex: 1, padding: 14, borderRadius: 12, border: `1px solid ${THEME.border}`, backgroundColor: "white", color: THEME.textMuted, fontWeight: 800, fontSize: 15, cursor: "pointer" }}
+              >
+                戻る
+              </button>
+            </div>
+          </>
+        )}
+
+        {/* ── フェーズ3（新規物件なし）: 新規登録フォーム ── */}
+        {phase === "new" && (
+          <>
+            <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+              <div style={{ backgroundColor: "#F0F9FF", border: "1px solid #BAE6FD", borderRadius: 10, padding: "14px 16px" }}>
+                <div style={{ fontSize: 11, fontWeight: 800, color: "#0EA5E9", marginBottom: 10 }}>新規物件を登録</div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                  <div>
+                    <label style={labelStyle}>物件名 <span style={{ color: "#DC2626" }}>*</span></label>
+                    <input style={inputStyle} value={propName} onChange={e => setPropName(e.target.value)} placeholder="例：〇〇マンション101号室" />
+                  </div>
+                  <div>
+                    <label style={labelStyle}>住所 <span style={{ color: "#DC2626" }}>*</span></label>
+                    <input style={inputStyle} value={propAddr} onChange={e => setPropAddr(e.target.value)} placeholder="例：東京都渋谷区〇〇1-2-3" />
+                  </div>
+                  <div>
+                    <label style={labelStyle}>査定金額（万円）<span style={{ color: "#DC2626" }}>*</span></label>
+                    <input style={inputStyle} type="number" value={newAssessPrice} onChange={e => setNewAssessPrice(e.target.value)} placeholder="例：3500" />
+                  </div>
+                </div>
+              </div>
+              <div>
+                <label style={labelStyle}>契約種別 <span style={{ color: "#DC2626" }}>*</span></label>
+                <select style={selectStyle} value={contractType} onChange={e => setContractType(e.target.value)}>
+                  <option value="">選択してください</option>
+                  {contractTypes.map(t => <option key={t} value={t}>{t}</option>)}
+                </select>
+              </div>
+              <div>
+                <label style={labelStyle}>担当者 <span style={{ color: "#DC2626" }}>*</span></label>
+                <select style={selectStyle} value={staffEmail} onChange={e => setStaffEmail(e.target.value)}>
+                  <option value="">選択してください</option>
+                  {staffList.map(s => <option key={s.email} value={s.email}>{s.lastName} {s.firstName}</option>)}
+                </select>
+              </div>
+            </div>
+            <div style={{ display: "flex", gap: 12, marginTop: 28 }}>
+              <button
+                onClick={() => handleFinalSubmit({})}
+                disabled={saving || !propName || !propAddr || !newAssessPrice || !contractType || !staffEmail}
+                style={{ flex: 2, padding: 14, borderRadius: 12, border: "none", backgroundColor: (propName && propAddr && newAssessPrice && contractType && staffEmail) ? "#0EA5E9" : "#E5E7EB", color: "white", fontWeight: 900, fontSize: 15, cursor: (propName && propAddr && newAssessPrice && contractType && staffEmail) ? "pointer" : "not-allowed" }}
+              >
+                {saving ? "処理中..." : "受託確定"}
+              </button>
+              <button onClick={onCancel} style={{ flex: 1, padding: 14, borderRadius: 12, border: `1px solid ${THEME.border}`, backgroundColor: "white", color: THEME.textMuted, fontWeight: 800, fontSize: 15, cursor: "pointer" }}>
+                キャンセル
+              </button>
+            </div>
+          </>
+        )}
+
+      </div>
+    </div>
+  );
+}
+
+// 成約モーダル（物件ごとに成約金額を入力するウィザード）
+function WonModal({ info, gasUrl, onDone, onCancel }) {
+  const hasProps = info?.customerProperties && info.customerProperties.length > 0;
+  const [phase, setPhase]           = useState(hasProps ? "select" : "confirm");
+  const [checkedIds, setCheckedIds] = useState(
+    () => new Set((info?.customerProperties || []).map(p => p.id))
+  );
+  const [priceStep, setPriceStep] = useState(0);
+  const [priceMap,  setPriceMap]  = useState({});
+  const [saving,    setSaving]    = useState(false);
+
+  if (!info) return null;
+
+  const checkedProps  = (info.customerProperties || []).filter(p => checkedIds.has(p.id));
+  const currentProp   = checkedProps[priceStep];
+  const currentPrice  = priceMap[currentProp?.id] || "";
+  const isLastProp    = priceStep === checkedProps.length - 1;
+
+  const inputStyle = {
+    width: "100%", padding: "10px 12px", borderRadius: 10,
+    border: `1px solid ${THEME.border}`, fontSize: 13, fontWeight: 700,
+    backgroundColor: "white", color: THEME.textMain, boxSizing: "border-box",
+  };
+  const labelStyle = { fontSize: 12, fontWeight: 800, color: THEME.textMuted, marginBottom: 5, display: "block" };
+
+  const handleFinalSubmit = async (finalPriceMap) => {
+    setSaving(true);
+    try {
+      await axios.post(gasUrl, JSON.stringify({
+        action: "updateStatus", id: info.customerId,
+        status: info.newStatus, applyScenario: info.scenarioId || "",
+      }), { headers: { "Content-Type": "text/plain;charset=utf-8" } });
+
+      if (Object.keys(finalPriceMap).length > 0) {
+        await Promise.all(
+          Object.entries(finalPriceMap).map(([propId, contractPrice]) =>
+            axios.post(gasUrl, JSON.stringify({
+              action: "updateProperty", id: propId,
+              contractPrice, status: "成約",
+            }), { headers: { "Content-Type": "text/plain;charset=utf-8" } })
+          )
+        );
+      }
+      onDone(info.customerId, info.newStatus, info.prevStatus);
+    } catch {
+      alert("更新に失敗しました");
+      setSaving(false);
+    }
+  };
+
+  const handlePriceNext = () => {
+    if (!currentPrice) return;
+    const next = { ...priceMap, [currentProp.id]: currentPrice };
+    setPriceMap(next);
+    if (!isLastProp) {
+      setPriceStep(s => s + 1);
+    } else {
+      handleFinalSubmit(next);
+    }
+  };
+
+  return (
+    <div style={{ position: "fixed", inset: 0, backgroundColor: "rgba(15,23,42,0.6)", display: "flex", justifyContent: "center", alignItems: "center", zIndex: 2000, backdropFilter: "blur(4px)" }}>
+      <div style={{ backgroundColor: "white", borderRadius: 24, padding: "36px 40px", width: 500, boxShadow: "0 24px 48px rgba(0,0,0,0.15)", maxHeight: "90vh", overflowY: "auto" }}>
+
+        {/* ヘッダー */}
+        <div style={{ textAlign: "center", marginBottom: 24 }}>
+          <div style={{ fontSize: 44, marginBottom: 8 }}>🏆</div>
+          <h3 style={{ fontSize: 19, fontWeight: 900, color: THEME.textMain, margin: "0 0 6px" }}>成約に進みます</h3>
+          <p style={{ fontSize: 13, color: THEME.textMuted, margin: 0, lineHeight: 1.6 }}>
+            <strong style={{ color: "#059669" }}>「{info.newStatus}」</strong> への変更に必要な情報を入力してください。
+          </p>
+        </div>
+
+        {/* フェーズ1: 物件選択 */}
+        {phase === "select" && (
+          <>
+            <div>
+              <div style={{ fontSize: 12, fontWeight: 800, color: THEME.textMuted, marginBottom: 8 }}>
+                成約物件を選択 <span style={{ color: "#DC2626" }}>*</span>
+                <span style={{ fontSize: 11, fontWeight: 700, color: "#059669", marginLeft: 8 }}>（成約した物件にチェック）</span>
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {info.customerProperties.map(p => {
+                  const checked = checkedIds.has(p.id);
+                  return (
+                    <div
+                      key={p.id}
+                      onClick={() => setCheckedIds(prev => {
+                        const next = new Set(prev);
+                        next.has(p.id) ? next.delete(p.id) : next.add(p.id);
+                        return next;
+                      })}
+                      style={{
+                        display: "flex", alignItems: "center", gap: 12,
+                        padding: "10px 14px", borderRadius: 10, cursor: "pointer",
+                        border: `1.5px solid ${checked ? "#059669" : THEME.border}`,
+                        backgroundColor: checked ? "#ECFDF5" : "white",
+                        transition: "all 0.15s", userSelect: "none",
+                      }}
+                    >
+                      <div style={{
+                        width: 18, height: 18, borderRadius: 4, flexShrink: 0,
+                        border: `2px solid ${checked ? "#059669" : "#CBD5E1"}`,
+                        backgroundColor: checked ? "#059669" : "white",
+                        display: "flex", alignItems: "center", justifyContent: "center",
+                        transition: "all 0.15s",
+                      }}>
+                        {checked && <span style={{ color: "white", fontSize: 12, fontWeight: 900, lineHeight: 1 }}>✓</span>}
+                      </div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 13, fontWeight: 800, color: checked ? "#065F46" : THEME.textMain, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          {p.name || "（物件名未設定）"}
+                        </div>
+                        {p.address && (
+                          <div style={{ fontSize: 11, color: THEME.textMuted, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                            {p.address}
+                          </div>
+                        )}
+                      </div>
+                      {p.assessmentPrice && (
+                        <div style={{ fontSize: 12, fontWeight: 800, color: checked ? "#059669" : THEME.textMuted, flexShrink: 0 }}>
+                          査定 {p.assessmentPrice}万円
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+                {checkedIds.size === 0 && (
+                  <div style={{ fontSize: 12, color: "#DC2626", fontWeight: 700, paddingLeft: 2 }}>1件以上選択してください</div>
+                )}
+              </div>
+            </div>
+            <div style={{ display: "flex", gap: 12, marginTop: 24 }}>
+              <button
+                onClick={() => { setPriceStep(0); setPhase("price"); }}
+                disabled={checkedIds.size === 0}
+                style={{ flex: 2, padding: 14, borderRadius: 12, border: "none", backgroundColor: checkedIds.size > 0 ? "#059669" : "#E5E7EB", color: "white", fontWeight: 900, fontSize: 15, cursor: checkedIds.size > 0 ? "pointer" : "not-allowed" }}
+              >
+                次へ（成約金額を入力）
+              </button>
+              <button onClick={onCancel} style={{ flex: 1, padding: 14, borderRadius: 12, border: `1px solid ${THEME.border}`, backgroundColor: "white", color: THEME.textMuted, fontWeight: 800, fontSize: 15, cursor: "pointer" }}>
+                キャンセル
+              </button>
+            </div>
+          </>
+        )}
+
+        {/* フェーズ2: 物件ごとの成約金額入力 */}
+        {phase === "price" && currentProp && (
+          <>
+            {checkedProps.length > 1 && (
+              <div style={{ display: "flex", gap: 6, justifyContent: "center", marginBottom: 20 }}>
+                {checkedProps.map((p, i) => (
+                  <div key={p.id} style={{
+                    width: 28, height: 6, borderRadius: 3,
+                    backgroundColor: i < priceStep ? "#BBF7D0" : i === priceStep ? "#059669" : "#E2E8F0",
+                    transition: "background-color 0.2s",
+                  }} />
+                ))}
+              </div>
+            )}
+            <div style={{ backgroundColor: "#ECFDF5", border: "1px solid #6EE7B7", borderRadius: 12, padding: "14px 16px", marginBottom: 20 }}>
+              <div style={{ fontSize: 11, fontWeight: 800, color: "#059669", marginBottom: 4 }}>
+                物件 {priceStep + 1} / {checkedProps.length}
+              </div>
+              <div style={{ fontSize: 14, fontWeight: 900, color: "#065F46" }}>{currentProp.name || "（物件名未設定）"}</div>
+              {currentProp.address && <div style={{ fontSize: 12, color: THEME.textMuted, marginTop: 2 }}>{currentProp.address}</div>}
+              {currentProp.assessmentPrice && (
+                <div style={{ fontSize: 12, fontWeight: 700, color: "#059669", marginTop: 6 }}>査定金額：{currentProp.assessmentPrice}万円</div>
+              )}
+            </div>
+            <div style={{ marginBottom: 28 }}>
+              <label style={labelStyle}>成約金額（万円）<span style={{ color: "#DC2626" }}>*</span></label>
+              <input
+                style={inputStyle} type="number" value={currentPrice}
+                onChange={e => setPriceMap(prev => ({ ...prev, [currentProp.id]: e.target.value }))}
+                placeholder="例：3200" autoFocus
+              />
+            </div>
+            <div style={{ display: "flex", gap: 12 }}>
+              <button
+                onClick={handlePriceNext}
+                disabled={saving || !currentPrice}
+                style={{ flex: 2, padding: 14, borderRadius: 12, border: "none", backgroundColor: currentPrice ? "#059669" : "#E5E7EB", color: "white", fontWeight: 900, fontSize: 15, cursor: currentPrice ? "pointer" : "not-allowed" }}
+              >
+                {saving ? "処理中..." : isLastProp ? "成約確定" : "OK（次の物件へ）"}
+              </button>
+              <button
+                onClick={() => priceStep > 0 ? setPriceStep(s => s - 1) : setPhase("select")}
+                style={{ flex: 1, padding: 14, borderRadius: 12, border: `1px solid ${THEME.border}`, backgroundColor: "white", color: THEME.textMuted, fontWeight: 800, fontSize: 15, cursor: "pointer" }}
+              >
+                戻る
+              </button>
+            </div>
+          </>
+        )}
+
+        {/* 物件なし: シンプル確認 */}
+        {phase === "confirm" && (
+          <>
+            <p style={{ fontSize: 14, color: THEME.textMuted, textAlign: "center", lineHeight: 1.8, marginBottom: 28 }}>
+              成約ステータスに変更します。<br />よろしいですか？
+            </p>
+            <div style={{ display: "flex", gap: 12 }}>
+              <button
+                onClick={() => handleFinalSubmit({})}
+                disabled={saving}
+                style={{ flex: 2, padding: 14, borderRadius: 12, border: "none", backgroundColor: "#059669", color: "white", fontWeight: 900, fontSize: 15, cursor: "pointer" }}
+              >
+                {saving ? "処理中..." : "成約確定"}
+              </button>
+              <button onClick={onCancel} style={{ flex: 1, padding: 14, borderRadius: 12, border: `1px solid ${THEME.border}`, backgroundColor: "white", color: THEME.textMuted, fontWeight: 800, fontSize: 15, cursor: "pointer" }}>
+                キャンセル
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// 受託越え後退モーダル（警告・契約種別リセット）
+function UketsukeBackModal({ info, onConfirm, onCancel }) {
+  if (!info) return null;
+  return (
+    <div style={{ position: "fixed", inset: 0, backgroundColor: "rgba(15,23,42,0.6)", display: "flex", justifyContent: "center", alignItems: "center", zIndex: 2000, backdropFilter: "blur(4px)" }}>
+      <div style={{ backgroundColor: "white", borderRadius: 24, padding: "40px", width: 460, boxShadow: "0 24px 48px rgba(0,0,0,0.15)" }}>
+        <div style={{ textAlign: "center", marginBottom: 28 }}>
+          <div style={{ fontSize: 48, marginBottom: 10 }}>⚠️</div>
+          <h3 style={{ fontSize: 20, fontWeight: 900, color: THEME.textMain, margin: "0 0 12px" }}>受託済みステータスを前に戻します</h3>
+          <p style={{ fontSize: 14, color: THEME.textMuted, lineHeight: 1.8, margin: 0 }}>
+            <strong style={{ color: "#D97706" }}>「{info.newStatus}」</strong> に変更します。<br />
+            <span style={{ fontSize: 13 }}>契約種別がリセットされます。この操作は取り消せません。</span>
+          </p>
+        </div>
+        <div style={{ display: "flex", gap: 12 }}>
+          <button
+            onClick={onConfirm}
+            style={{ flex: 1, padding: 14, borderRadius: 12, border: "none", backgroundColor: "#D97706", color: "white", fontWeight: 900, fontSize: 15, cursor: "pointer" }}
+          >
+            戻す
+          </button>
+          <button
+            onClick={onCancel}
+            style={{ flex: 1, padding: 14, borderRadius: 12, border: `1px solid ${THEME.border}`, backgroundColor: "white", color: THEME.textMuted, fontWeight: 800, fontSize: 15, cursor: "pointer" }}
+          >
+            キャンセル
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─────────────────────────────────────────────────────────
 // DropZone コンポーネント（右パネル・下部バー共用）
 // ─────────────────────────────────────────────────────────
 function DropZone({ status, count, isDragging, isOver, visual, onDragOver, onDragLeave, onDrop, compact = false }) {
-  const { emoji, color, bg, border, routeType } = visual;
+  const { emoji, color, bg, border } = visual;
   return (
     <div
       onDragOver={onDragOver}
@@ -221,9 +799,7 @@ function DropZone({ status, count, isDragging, isOver, visual, onDragOver, onDra
         transition: "all 0.2s",
         transform: isOver ? "scale(1.03)" : "scale(1)",
         boxShadow: isOver ? `0 0 0 3px ${color}25` : "none",
-        // compact（右パネル）は固定高、bottomBar は親の高さに合わせて伸びる
         minHeight: compact ? 80 : undefined,
-        flex: compact ? 1 : undefined,
         alignSelf: compact ? undefined : "stretch",
         minWidth: compact ? undefined : "200px",
         flex: compact ? 1 : "1 1 200px",
@@ -236,15 +812,13 @@ function DropZone({ status, count, isDragging, isOver, visual, onDragOver, onDra
           {count}
         </span>
       </div>
-      {routeType && (
-        <Link
-          to={`/status-list/${routeType}`}
-          onClick={e => e.stopPropagation()}
-          style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10, fontWeight: 800, color, backgroundColor: bg, border: `1px solid ${border}`, padding: "2px 8px", borderRadius: 8, textDecoration: "none" }}
-        >
-          <ExternalLink size={10} /> リスト
-        </Link>
-      )}
+      <Link
+        to={`/status-list/by-name/${encodeURIComponent(status.name)}`}
+        onClick={e => e.stopPropagation()}
+        style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10, fontWeight: 800, color, backgroundColor: bg, border: `1px solid ${border}`, padding: "2px 8px", borderRadius: 8, textDecoration: "none" }}
+      >
+        <ExternalLink size={10} /> リスト
+      </Link>
     </div>
   );
 }
@@ -302,6 +876,9 @@ export default function KanbanBoard({
   const [promptModal,   setPromptModal]   = useState(null);
   const [dormantModal,  setDormantModal]  = useState(null);
   const [lostModal,     setLostModal]     = useState(null);
+  const [uketsukeModal,     setUketsukeModal]     = useState(null);
+  const [uketsukeBackModal, setUketsukeBackModal] = useState(null);
+  const [wonModal,          setWonModal]          = useState(null);
 
   // pending管理: Map<id, newStatus> でステータスまで記憶する
   const pendingUpdates = useRef(new Map());
@@ -349,7 +926,17 @@ export default function KanbanBoard({
   // フロー：terminalTypeなし
   const flowStatuses = statuses.filter(s => !s.terminalType);
   // 終点：placement別
-  const bottomTerminals = statuses.filter(s => s.terminalType && s.terminalType !== "excluded" && (s.placement || "bottom") === "bottom");
+  // bottomTerminals は StatusSettings の表示と同じ種別グループ順（dormant→won→lost）で並べる
+  const TERMINAL_ORDER = { dormant: 0, won: 1, lost: 2 };
+  const bottomTerminals = statuses
+    .filter(s => s.terminalType && s.terminalType !== "excluded" && (s.placement || "bottom") === "bottom")
+    .sort((a, b) => {
+      const ga = TERMINAL_ORDER[a.terminalType] ?? 9;
+      const gb = TERMINAL_ORDER[b.terminalType] ?? 9;
+      if (ga !== gb) return ga - gb;
+      // 同じ種別内はstatuses配列のインデックス順（シート行順）を維持
+      return statuses.indexOf(a) - statuses.indexOf(b);
+    });
   const rightTerminals  = statuses.filter(s => s.terminalType && s.terminalType !== "excluded" && (s.placement || "bottom") === "right");
   const excludedStatuses = statuses.filter(s => s.terminalType === "excluded");
 
@@ -376,19 +963,37 @@ export default function KanbanBoard({
     const prevStatus = target["対応ステータス"];
     const statusDef  = statuses.find(s => s.name === newStatus);
 
+    // ── 受託固定ステータス越え判定 ──────────────────────
+    const fixedIdx = flowStatuses.findIndex(s => s.isFixed);
+    if (fixedIdx !== -1) {
+      const prevIdx = flowStatuses.findIndex(s => s.name === prevStatus);
+      const newIdx  = flowStatuses.findIndex(s => s.name === newStatus);
+      // ケース A: 受託前 → 受託（受託自身含む）以降
+      if (prevIdx !== -1 && prevIdx < fixedIdx && newIdx >= fixedIdx) {
+        const customerProperties = properties.filter(p => String(p.customerId) === String(cid));
+        const currentStaff = target["担当者メール"] || "";
+        const scenarioId = statusDef?.scenarioId || "";
+        setUketsukeModal({ customerId: cid, newStatus, prevStatus, scenarioId, customerProperties, currentStaff });
+        return;
+      }
+      // ケース B: 受託後 → 受託前（終点からの復帰 prevIdx=-1 は除く）
+      if (prevIdx !== -1 && prevIdx >= fixedIdx && newIdx !== -1 && newIdx < fixedIdx) {
+        setUketsukeBackModal({ customerId: cid, newStatus, prevStatus });
+        return;
+      }
+      // ケース C: それ以外（通常処理へフォールスルー）
+    }
+
     // 失注
     if (statusDef?.terminalType === "lost") {
       setLostModal({ customerId: cid, newStatus, prevStatus });
       return;
     }
-    // 成約 → シンプル確認モーダル経由で更新
+    // 成約 → WonModal（物件ごとの成約金額入力）
     if (statusDef?.terminalType === "won") {
       const scenarioId = statusDef?.scenarioId || "";
-      if (scenarioId) {
-        setScenarioModal({ customerId: cid, newStatus, prevStatus, scenarioId });
-      } else {
-        execUpdate(cid, newStatus, prevStatus, "");
-      }
+      const customerProperties = properties.filter(p => String(p.customerId) === String(cid));
+      setWonModal({ customerId: cid, newStatus, prevStatus, scenarioId, customerProperties });
       return;
     }
     // 休眠系（dormant）→ 再アプローチモーダル
@@ -408,7 +1013,7 @@ export default function KanbanBoard({
     } else {
       execUpdate(cid, newStatus, prevStatus, "");
     }
-  }, [localCustomers, statuses]);
+  }, [localCustomers, statuses, flowStatuses, properties]);
 
   const execUpdate = useCallback(async (cid, newStatus, prevStatus, scenarioId) => {
     // ── 楽観的更新：ストアとpendingの両方に登録 ──
@@ -472,6 +1077,49 @@ export default function KanbanBoard({
   };
   const handleModalDone = () => { setDormantModal(null); setLostModal(null); onRefresh(); };
 
+  const handleUketsukeDone = useCallback((cid, newStatus, prevStatus, staffEmail) => {
+    // execUpdate の楽観的更新を模倣（GASへのステータス更新は UketsukeModal 内で済み）
+    customerStore.patch(cid, { "対応ステータス": newStatus, "担当者メール": staffEmail });
+    setLocalCustomers(prev => {
+      const card    = prev.find(c => String(c.id) === cid);
+      if (!card) return prev;
+      const without = prev.filter(c => String(c.id) !== cid);
+      const updated = { ...card, "対応ステータス": newStatus, "担当者メール": staffEmail };
+      const firstIdx = without.findIndex(c => (c["対応ステータス"] || "").trim() === newStatus.trim());
+      if (firstIdx === -1) return [...without, updated];
+      return [...without.slice(0, firstIdx), updated, ...without.slice(firstIdx)];
+    });
+    setUketsukeModal(null);
+    onRefresh();
+  }, [onRefresh]);
+
+  const handleUketsukeBackConfirm = useCallback(async () => {
+    const { customerId, newStatus, prevStatus } = uketsukeBackModal;
+    setUketsukeBackModal(null);
+    execUpdate(customerId, newStatus, prevStatus, "");
+    try {
+      await axios.post(gasUrl, JSON.stringify({
+        action: "updateFields", id: customerId,
+        fields: { "契約種別": "" },
+      }), { headers: { "Content-Type": "text/plain;charset=utf-8" } });
+    } catch { /* 契約種別リセット失敗は無視しない：再試行は手動対応 */ }
+  }, [uketsukeBackModal, gasUrl, execUpdate]);
+
+  const handleWonDone = useCallback((cid, newStatus) => {
+    customerStore.patch(cid, { "対応ステータス": newStatus });
+    setLocalCustomers(prev => {
+      const card = prev.find(c => String(c.id) === cid);
+      if (!card) return prev;
+      const without  = prev.filter(c => String(c.id) !== cid);
+      const updated  = { ...card, "対応ステータス": newStatus };
+      const firstIdx = without.findIndex(c => (c["対応ステータス"] || "").trim() === newStatus.trim());
+      if (firstIdx === -1) return [...without, updated];
+      return [...without.slice(0, firstIdx), updated, ...without.slice(firstIdx)];
+    });
+    setWonModal(null);
+    onRefresh();
+  }, [onRefresh]);
+
   // ── フィルタ ──────────────────────────────────────
   const filtered = filterStaff ? localCustomers.filter(c => c["担当者メール"] === filterStaff) : localCustomers;
   const colCustomers = (st, idx) => filtered.filter(c => {
@@ -517,22 +1165,42 @@ export default function KanbanBoard({
                 {flowStatuses.map((st, idx) => {
                   const cards  = colCustomers(st, idx);
                   const isOver = overColumn === st.name;
+                  const fixed  = !!st.isFixed;
+                  const colBg       = fixed ? (isOver ? "#E0F2FE" : "#F0F9FF") : (isOver ? "#E0E7FF" : "#EDF2F7");
+                  const colBorder   = fixed ? (isOver ? "#0EA5E9" : "#BAE6FD") : (isOver ? THEME.primary : THEME.border);
+                  const badgeColor  = fixed ? "#0EA5E9" : THEME.primary;
+                  const colShadow   = isOver ? `0 0 0 2px ${fixed ? "#0EA5E940" : `${THEME.primary}40`}` : "none";
                   return (
                     <div
                       key={st.name}
                       onDragOver={e => onDragOver(e, st.name)}
                       onDragLeave={onDragLeave}
                       onDrop={e => onDrop(e, st.name)}
-                      style={{ ...S.col, backgroundColor: isOver ? "#E0E7FF" : "#EDF2F7", borderColor: isOver ? THEME.primary : THEME.border, boxShadow: isOver ? `0 0 0 2px ${THEME.primary}40` : "none" }}
+                      style={{ ...S.col, backgroundColor: colBg, borderColor: colBorder, boxShadow: colShadow }}
                     >
                       {/* ── 固定ヘッダー（ステータス名表示 - スクロールしない） ── */}
-                      <div style={{ ...S.colHeader, backgroundColor: isOver ? "#E0E7FF" : "#EDF2F7" }}>
+                      <div style={{ ...S.colHeader, backgroundColor: colBg }}>
                         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                           <div>
-                            <h3 style={{ fontSize: "13px", fontWeight: "900", color: THEME.textMain, margin: 0 }}>{st.name}</h3>
-                            {st.scenarioId && <div style={{ fontSize: 10, color: THEME.primary, fontWeight: 700, marginTop: 2 }}>▶ {st.scenarioId}</div>}
+                            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                              {fixed && (
+                                <span style={{ fontSize: 10, fontWeight: 900, backgroundColor: "#0EA5E9", color: "white", padding: "2px 7px", borderRadius: 99, letterSpacing: "0.03em" }}>
+                                  🔑 受託
+                                </span>
+                              )}
+                              <h3 style={{ fontSize: "13px", fontWeight: "900", color: THEME.textMain, margin: 0 }}>{st.name}</h3>
+                            </div>
+                            {st.scenarioId && <div style={{ fontSize: 10, color: fixed ? "#0EA5E9" : THEME.primary, fontWeight: 700, marginTop: 2 }}>▶ {st.scenarioId}</div>}
+                            {fixed && (
+                              <Link
+                                to={`/status-list/by-name/${encodeURIComponent(st.name)}`}
+                                style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 10, fontWeight: 800, color: "#0EA5E9", backgroundColor: "#E0F2FE", border: "1px solid #BAE6FD", padding: "2px 8px", borderRadius: 8, textDecoration: "none", marginTop: 4 }}
+                              >
+                                <ExternalLink size={10} /> リスト
+                              </Link>
+                            )}
                           </div>
-                          <span style={{ backgroundColor: THEME.primary, color: "white", padding: "2px 10px", borderRadius: "20px", fontSize: "12px", fontWeight: "900" }}>{cards.length}</span>
+                          <span style={{ backgroundColor: badgeColor, color: "white", padding: "2px 10px", borderRadius: "20px", fontSize: "12px", fontWeight: "900" }}>{cards.length}</span>
                         </div>
                       </div>
 
@@ -553,10 +1221,10 @@ export default function KanbanBoard({
                             if (n >= 10000) return `${(n / 10000).toFixed(1).replace(/\.0$/, "")}億`;
                             return `${n.toLocaleString()}万`;
                           };
+                          const wonTotal  = wonProps.reduce((s, p) => s + (Number(String(p.contractPrice || "").replace(/[^0-9.]/g, "")) || 0), 0);
                           const maxActive = activeProps.length > 0
-                            ? Math.max(...activeProps.map(p => Number(String(p.price).replace(/[^0-9.]/g, "")) || 0))
+                            ? Math.max(...activeProps.map(p => Number(String(p.assessmentPrice || "").replace(/[^0-9.]/g, "")) || 0))
                             : 0;
-                          const wonTotal  = wonProps.reduce((s, p) => s + (Number(String(p.price).replace(/[^0-9.]/g, "")) || 0), 0);
                           return (
                             <div
                               key={c.id}
@@ -689,7 +1357,7 @@ export default function KanbanBoard({
                   style={{
                     ...S.excludedCorner,
                     display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
-                    gap: 8, cursor: "default", transition: "all 0.2s",
+                    gap: 6, cursor: "default", transition: "all 0.2s",
                     backgroundColor: isOver ? "#E5E7EB" : "#F1F2F4",
                     border: isOver ? "2px dashed #9CA3AF" : "2px dashed transparent",
                     boxShadow: isOver ? "inset 0 0 0 2px #9CA3AF22" : "none",
@@ -702,6 +1370,22 @@ export default function KanbanBoard({
                     backgroundColor: totalCount > 0 ? "#9CA3AF" : "#D1D5DB",
                     padding: "2px 10px", borderRadius: 20,
                   }}>{totalCount}</span>
+                  {/* 除外ステータスごとのリストリンク */}
+                  <div style={{ display: "flex", flexDirection: "column", gap: 4, marginTop: 2 }}>
+                    {excludedStatuses.map(st => {
+                      const cnt = localCustomers.filter(c => (c["対応ステータス"] || "").trim() === st.name.trim()).length;
+                      return (
+                        <Link
+                          key={st.name}
+                          to={`/status-list/by-name/${encodeURIComponent(st.name)}`}
+                          onClick={e => e.stopPropagation()}
+                          style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10, fontWeight: 800, color: "#6B7280", backgroundColor: "#E5E7EB", border: "1px solid #D1D5DB", padding: "2px 8px", borderRadius: 8, textDecoration: "none" }}
+                        >
+                          <ExternalLink size={10} /> {st.name}（{cnt}）
+                        </Link>
+                      );
+                    })}
+                  </div>
                 </div>
               );
             })()}
@@ -713,6 +1397,29 @@ export default function KanbanBoard({
       <ScenarioConfirmModal info={scenarioModal} onConfirm={handleScenarioConfirm} onCancel={() => setScenarioModal(null)} />
       <DormantModal info={dormantModal} scenarios={scenarios} gasUrl={gasUrl} onDone={handleModalDone} onCancel={() => setDormantModal(null)} />
       <LostModal info={lostModal} gasUrl={gasUrl} onDone={handleModalDone} onCancel={() => setLostModal(null)} />
+      {wonModal && (
+        <WonModal
+          info={wonModal}
+          gasUrl={gasUrl}
+          onDone={handleWonDone}
+          onCancel={() => setWonModal(null)}
+        />
+      )}
+      {uketsukeModal && (
+        <UketsukeModal
+          info={uketsukeModal}
+          gasUrl={gasUrl}
+          contractTypes={contractTypes}
+          staffList={staffList}
+          onDone={handleUketsukeDone}
+          onCancel={() => setUketsukeModal(null)}
+        />
+      )}
+      <UketsukeBackModal
+        info={uketsukeBackModal}
+        onConfirm={handleUketsukeBackConfirm}
+        onCancel={() => setUketsukeBackModal(null)}
+      />
       {promptModal && (
         <PromptFieldsModal
           newStatus={localCustomers.find(c => String(c.id) === promptModal.customerId)?.["対応ステータス"] || ""}

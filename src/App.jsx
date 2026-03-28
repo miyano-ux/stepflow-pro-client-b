@@ -41,8 +41,6 @@ import UserForm              from "./pages/UserForm";
 import SourceManager         from "./pages/SourceManager";
 import ContractTypeManager   from "./pages/ContractTypeManager";
 import MasterSettings        from "./pages/MasterSettings";
-import SourceIntegrationIndex  from "./pages/SourceIntegrationIndex";
-import SourceIntegrationDetail from "./pages/SourceIntegrationDetail";
 
 // ==========================================
 // 🚀 App - 認証 & ルーティング
@@ -65,11 +63,6 @@ function App() {
     statusHistory: [],
     contractTypes: [],
     properties: [],
-    sourceIntegrations: [],
-    sourceCredsStatus:  {},
-    sourceLoginIds:     {},
-    clientInfo:         {},
-    fieldMappings:      {},
   });
 
   // displaySettings: ユーザー個別に localStorage で管理
@@ -134,6 +127,10 @@ function App() {
         refreshStaff(), // GASデータと並列で取得
       ]);
       const data = gasRes?.data || {};
+      // statuses をシート行順ではなく order 値でソートして全コンポーネントに渡す
+      if (data.statuses) {
+        data.statuses = [...data.statuses].sort((a, b) => (Number(a.order) || 0) - (Number(b.order) || 0));
+      }
       setD(data);
       // displaySettings はlocalStorageが未設定の場合のみGAS値を初期値として使う
       const local = getDisplaySettings();
@@ -290,31 +287,6 @@ function App() {
               <Route path="/gmail-settings" element={<GmailSettings gmailSettings={d?.gmailSettings} scenarios={d?.scenarios} formSettings={d?.formSettings} statuses={d?.statuses} sources={d?.sources} staffList={staffList} groups={d?.groups} onRefresh={refresh} />} />
               <Route path="/import-errors" element={<ImportErrorList errors={d?.importErrors} onRefresh={refresh} />} />
 
-              {/* 媒体連携 */}
-              <Route path="/source-integrations" element={
-                <SourceIntegrationIndex
-                  sourceCredsStatus={d?.sourceCredsStatus}
-                  clientInfo={d?.clientInfo}
-                />
-              } />
-              <Route path="/source-integrations/:sourceKey" element={
-                <SourceIntegrationDetail
-                  sourceIntegrations={d?.sourceIntegrations}
-                  sourceCredsStatus={d?.sourceCredsStatus}
-                  sourceLoginIds={d?.sourceLoginIds}
-                  clientInfo={d?.clientInfo}
-                  scenarios={d?.scenarios}
-                  statuses={d?.statuses}
-                  sources={d?.sources}
-                  staffList={staffList}
-                  groups={d?.groups}
-                  formSettings={d?.formSettings}
-                  fieldMappings={d?.fieldMappings}
-                  gasUrl={GAS_URL}
-                  onRefresh={refresh}
-                />
-              } />
-
               {/* ユーザー管理 */}
               <Route path="/users" element={<UserManager staffList={staffList} groups={d?.groups} statuses={d?.statuses} onRefreshStaff={refreshStaff} onRefresh={refresh} masterUrl={MASTER_WHITELIST_API} companyName={CLIENT_COMPANY_NAME} gasUrl={GAS_URL} />} />
               <Route path="/users/add" element={<UserForm masterUrl={MASTER_WHITELIST_API} onRefreshStaff={refreshStaff} />} />
@@ -329,6 +301,7 @@ function App() {
 
               {/* ステータス別リスト */}
               <Route path="/status-list/:type" element={<CustomerStatusList customers={d?.customers} statuses={d?.statuses} staffList={staffList} />} />
+              <Route path="/status-list/:type/:name" element={<CustomerStatusList customers={d?.customers} statuses={d?.statuses} staffList={staffList} />} />
 
               {/* カンバン */}
               <Route path="/kanban" element={<KanbanBoard customers={d?.customers} statuses={d?.statuses} scenarios={d?.scenarios} scenarioSettings={d?.scenarioSettings} staffList={staffList} properties={d?.properties} onRefresh={refresh} onLightRefresh={lightRefresh} gasUrl={GAS_URL} sources={d?.sources} contractTypes={d?.contractTypes} />} />

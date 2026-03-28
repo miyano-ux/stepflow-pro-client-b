@@ -11,9 +11,12 @@ import { THEME } from "../lib/constants";
 // /status-list/lost     → 失注リスト
 
 const PAGE_CONFIG = {
-  won:     { emoji: "🏆", label: "成約",  color: "#16A34A", bg: "#DCFCE7", border: "#86EFAC" },
-  dormant: { emoji: "🌙", label: "休眠",  color: "#D97706", bg: "#FEF3C7", border: "#FDE68A" },
-  lost:    { emoji: "🗑",  label: "失注",  color: "#DC2626", bg: "#FEE2E2", border: "#FCA5A5" },
+  won:      { emoji: "🏆", label: "成約",  color: "#16A34A", bg: "#DCFCE7", border: "#86EFAC" },
+  dormant:  { emoji: "🌙", label: "休眠",  color: "#D97706", bg: "#FEF3C7", border: "#FDE68A" },
+  lost:     { emoji: "🗑",  label: "失注",  color: "#DC2626", bg: "#FEE2E2", border: "#FCA5A5" },
+  excluded: { emoji: "🚫", label: "除外",  color: "#6B7280", bg: "#F3F4F6", border: "#D1D5DB" },
+  fixed:    { emoji: "🔑", label: "受託",  color: "#0EA5E9", bg: "#F0F9FF", border: "#BAE6FD" },
+  default:  { emoji: "📋", label: "",      color: "#6B7280", bg: "#F3F4F6", border: "#D1D5DB" },
 };
 
 const formatDate = (v) => {
@@ -25,18 +28,32 @@ const formatDate = (v) => {
 };
 
 export default function CustomerStatusList({ customers = [], statuses = [], staffList = [] }) {
-  const { type } = useParams(); // "won" | "dormant" | "lost"
+  const { type, name } = useParams(); // type: "won"|"dormant"|"lost" | name: encodeURIComponent(ステータス名)
   const navigate = useNavigate();
-  const config = PAGE_CONFIG[type] || PAGE_CONFIG.won;
 
-  // ステータス名を statuses 配列から特定（末尾3つが 成約・休眠・失注）
-  const wonLabel     = statuses[statuses.length - 3]?.name || "成約";
-  const dormantLabel = statuses[statuses.length - 2]?.name || "休眠";
-  const lostLabel    = statuses[statuses.length - 1]?.name || "失注";
-  const targetLabel  = type === "won" ? wonLabel : type === "dormant" ? dormantLabel : lostLabel;
+  // ステータス名ベース（新ルート /status-list/by-name/:name）
+  const byName = type === "by-name";
+  const decodedName = byName ? decodeURIComponent(name || "") : null;
+
+  // terminalType ベース（旧ルート /status-list/:type）
+  const matchedStatus = !byName
+    ? statuses.find(s => s.terminalType === type)
+    : statuses.find(s => s.name === decodedName);
+
+  const targetLabel = byName
+    ? decodedName
+    : matchedStatus?.name || (type === "won" ? "成約" : type === "dormant" ? "休眠" : "失注");
+
+  const terminalType = matchedStatus?.terminalType || (byName ? "" : type);
+  const configKey = matchedStatus?.isFixed
+    ? "fixed"
+    : terminalType === "excluded"
+    ? "excluded"
+    : (PAGE_CONFIG[terminalType] ? terminalType : "default");
+  const config = PAGE_CONFIG[configKey];
 
   const list = useMemo(() =>
-    customers.filter((c) => (c["対応ステータス"] || "").trim() === targetLabel.trim()),
+    customers.filter((c) => (c["対応ステータス"] || "").trim() === (targetLabel || "").trim()),
     [customers, targetLabel]
   );
 
@@ -58,49 +75,25 @@ export default function CustomerStatusList({ customers = [], statuses = [], staf
           </div>
           <div>
             <h1 style={{ fontSize: 28, fontWeight: 900, color: THEME.textMain, margin: 0 }}>
-              {config.label}リスト
+              {targetLabel}リスト
             </h1>
             <p style={{ color: THEME.textMuted, fontSize: 14, margin: "4px 0 0" }}>
               {list.length} 名
             </p>
-          </div>
-
-          {/* 他のリストへのタブ */}
-          <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
-            {[
-              { key: "won",     label: "🏆 成約" },
-              { key: "dormant", label: "🌙 休眠" },
-              { key: "lost",    label: "🗑 失注" },
-            ].map(({ key, label }) => (
-              <Link
-                key={key}
-                to={`/status-list/${key}`}
-                style={{
-                  padding: "8px 16px", borderRadius: 10, fontWeight: 800, fontSize: 13,
-                  textDecoration: "none",
-                  backgroundColor: type === key ? PAGE_CONFIG[key].bg : "white",
-                  color: type === key ? PAGE_CONFIG[key].color : THEME.textMuted,
-                  border: `1px solid ${type === key ? PAGE_CONFIG[key].border : THEME.border}`,
-                  transition: "all 0.15s",
-                }}
-              >
-                {label}
-              </Link>
-            ))}
           </div>
         </div>
 
         {/* リスト */}
         {list.length === 0 ? (
           <div style={{ backgroundColor: "white", borderRadius: 16, border: `1px solid ${THEME.border}`, padding: "80px", textAlign: "center", color: THEME.textMuted }}>
-            {config.label}の顧客はいません
+            {targetLabel}の顧客はいません
           </div>
         ) : (
           <div style={{ backgroundColor: "white", borderRadius: 16, border: `1px solid ${THEME.border}`, overflow: "hidden" }}>
             <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: 0 }}>
               <thead>
                 <tr style={{ backgroundColor: "#F8FAFC" }}>
-                  {["顧客名", "担当者", "シナリオ", "登録日", "操作"].map((h) => (
+                  {["顧客名", "対応ステータス", "担当者", "シナリオ", "登録日", "操作"].map((h) => (
                     <th key={h} style={{ padding: "14px 20px", fontSize: 11, fontWeight: 800, color: THEME.textMuted, textAlign: "left", borderBottom: `1px solid ${THEME.border}`, textTransform: "uppercase", letterSpacing: "0.05em" }}>
                       {h}
                     </th>
@@ -110,6 +103,16 @@ export default function CustomerStatusList({ customers = [], statuses = [], staf
               <tbody>
                 {list.map((c) => {
                   const staff = staffList.find((s) => s.email === c["担当者メール"]);
+                  const statusDef = statuses.find(s => s.name === (c["対応ステータス"] || "").trim());
+                  const stColor = statusDef?.isFixed
+                    ? { bg: "#F0F9FF", text: "#0EA5E9" }
+                    : statusDef?.terminalType === "won"
+                    ? { bg: "#DCFCE7", text: "#16A34A" }
+                    : statusDef?.terminalType === "lost"
+                    ? { bg: "#FEE2E2", text: "#DC2626" }
+                    : statusDef?.terminalType === "excluded"
+                    ? { bg: "#F3F4F6", text: "#6B7280" }
+                    : { bg: "#FEF3C7", text: "#D97706" };
                   return (
                     <tr
                       key={c.id}
@@ -125,6 +128,12 @@ export default function CustomerStatusList({ customers = [], statuses = [], staf
                         <div style={{ fontSize: 12, color: THEME.textMuted, marginTop: 2 }}>
                           {c["電話番号"] || "-"}
                         </div>
+                      </td>
+                      {/* 対応ステータス */}
+                      <td style={{ padding: "16px 20px", borderBottom: `1px solid ${THEME.border}` }}>
+                        <span style={{ fontSize: 12, backgroundColor: stColor.bg, color: stColor.text, padding: "4px 10px", borderRadius: 8, fontWeight: 800, whiteSpace: "nowrap" }}>
+                          {c["対応ステータス"] || "-"}
+                        </span>
                       </td>
                       {/* 担当者 */}
                       <td style={{ padding: "16px 20px", borderBottom: `1px solid ${THEME.border}` }}>

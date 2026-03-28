@@ -704,8 +704,20 @@ export default function CustomerList({
                                   </span>
                                 </div>
                                 {/* 金額（万円単位） */}
-                                <div style={{ flex: "0 0 130px", padding: "11px 16px", borderRight: `1px solid #EEF0F8`, fontWeight: 800, fontSize: 14, color: prop.status === "成約" ? "#166534" : THEME.textMain, whiteSpace: "nowrap" }}>
-                                  {formatPriceMan(prop.price)}
+                                <div style={{ flex: "0 0 200px", padding: "11px 16px", borderRight: `1px solid #EEF0F8`, whiteSpace: "nowrap" }}>
+                                  {prop.assessmentPrice && (
+                                    <span style={{ fontSize: 12, color: THEME.textMuted, fontWeight: 600, marginRight: 8 }}>
+                                      査定 {formatPriceMan(prop.assessmentPrice)}
+                                    </span>
+                                  )}
+                                  {prop.contractPrice && (
+                                    <span style={{ fontSize: 13, fontWeight: 800, color: "#166534" }}>
+                                      成約 {formatPriceMan(prop.contractPrice)}
+                                    </span>
+                                  )}
+                                  {!prop.assessmentPrice && !prop.contractPrice && (
+                                    <span style={{ fontSize: 13, fontWeight: 700, color: THEME.textMuted }}>－</span>
+                                  )}
                                 </div>
                                 {/* 登録日 */}
                                 <div style={{ flex: "0 0 120px", padding: "11px 16px", fontSize: 12, color: THEME.textMuted, whiteSpace: "nowrap" }}>

@@ -31,23 +31,42 @@ const PLACEMENT_OPTIONS = [
 
 // ── 通常フロー行 ───────────────────────────────────────
 function StatusRow({ s, idx, scenarios, onChange, onDelete, onDragStart, onDragOver, onDrop, onPromptAdd, onPromptRemove, usedScenarios }) {
+  const fixed = !!s.isFixed;
   return (
     <div
       draggable
       onDragStart={e => onDragStart(e, idx)}
       onDragOver={e => onDragOver(e, idx)}
       onDrop={e => onDrop(e, idx)}
-      style={{ display: "flex", alignItems: "flex-start", gap: 8, backgroundColor: "white", border: `1px solid ${THEME.border}`, borderRadius: 12, padding: "12px 14px", marginBottom: 8, cursor: "grab" }}
+      style={{
+        display: "flex", alignItems: "flex-start", gap: 8,
+        backgroundColor: fixed ? "#F0F9FF" : "white",
+        border: `1px solid ${fixed ? "#BAE6FD" : THEME.border}`,
+        borderRadius: 12, padding: "12px 14px", marginBottom: 8, cursor: "grab",
+      }}
     >
-      <div style={{ paddingTop: 10, color: THEME.textMuted, flexShrink: 0 }}><GripVertical size={16} /></div>
+      <div style={{ paddingTop: 10, color: fixed ? "#0EA5E9" : THEME.textMuted, flexShrink: 0 }}><GripVertical size={16} /></div>
 
       <div style={{ flex: 1, display: "grid", gridTemplateColumns: "2fr 2fr 1.2fr", gap: 10, alignItems: "start" }}>
         <div>
-          <div style={{ fontSize: 11, fontWeight: 700, color: THEME.textMuted, marginBottom: 4 }}>ステータス名</div>
-          <input style={{ ...styles.input, margin: 0 }} value={s.name} onChange={e => onChange(idx, "name", e.target.value)} placeholder="例: 対応中" />
+          <div style={{ fontSize: 11, fontWeight: 700, color: fixed ? "#0EA5E9" : THEME.textMuted, marginBottom: 4, display: "flex", alignItems: "center", gap: 6 }}>
+            ステータス名
+            {fixed && (
+              <span style={{ fontSize: 10, fontWeight: 900, backgroundColor: "#0EA5E9", color: "white", padding: "1px 7px", borderRadius: 99 }}>
+                🔑 固定
+              </span>
+            )}
+          </div>
+          <input
+            style={{ ...styles.input, margin: 0, backgroundColor: fixed ? "#EFF6FF" : undefined, color: fixed ? THEME.textMuted : undefined }}
+            value={s.name}
+            onChange={e => !fixed && onChange(idx, "name", e.target.value)}
+            readOnly={fixed}
+            placeholder="例: 対応中"
+          />
         </div>
         <div>
-          <div style={{ fontSize: 11, fontWeight: 700, color: THEME.textMuted, marginBottom: 4 }}>自動シナリオ（任意）</div>
+          <div style={{ fontSize: 11, fontWeight: 700, color: fixed ? "#0EA5E9" : THEME.textMuted, marginBottom: 4 }}>自動シナリオ（任意）</div>
           <CustomSelect
             value={s.scenarioId || ""}
             onChange={v => onChange(idx, "scenarioId", v)}
@@ -61,31 +80,35 @@ function StatusRow({ s, idx, scenarios, onChange, onDelete, onDragStart, onDragO
           />
         </div>
         <div>
-          <div style={{ fontSize: 11, fontWeight: 700, color: THEME.textMuted, marginBottom: 6 }}>レポート集計</div>
+          <div style={{ fontSize: 11, fontWeight: 700, color: fixed ? "#0EA5E9" : THEME.textMuted, marginBottom: 6 }}>レポート集計</div>
           <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", fontSize: 12, fontWeight: 700 }}>
-            <input type="checkbox" checked={!!s.reportCount} onChange={e => { onChange(idx, "reportCount", e.target.checked); onChange(idx, "reportArrival", e.target.checked); }} style={{ width: 14, height: 14, accentColor: THEME.primary }} /> 集計する
+            <input type="checkbox" checked={!!s.reportCount} onChange={e => { onChange(idx, "reportCount", e.target.checked); onChange(idx, "reportArrival", e.target.checked); }} style={{ width: 14, height: 14, accentColor: fixed ? "#0EA5E9" : THEME.primary }} /> 集計する
           </label>
         </div>
         <div style={{ gridColumn: "1 / -1" }}>
-          <div style={{ fontSize: 11, fontWeight: 700, color: THEME.textMuted, marginBottom: 4 }}>移動時の追加入力項目</div>
+          <div style={{ fontSize: 11, fontWeight: 700, color: fixed ? "#0EA5E9" : THEME.textMuted, marginBottom: 4 }}>移動時の追加入力項目</div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" }}>
             {(s.promptFields || []).map((pf, pi) => (
-              <span key={pi} style={{ display: "flex", alignItems: "center", gap: 4, backgroundColor: "#EEF2FF", color: THEME.primary, padding: "4px 10px", borderRadius: 99, fontSize: 12, fontWeight: 800 }}>
+              <span key={pi} style={{ display: "flex", alignItems: "center", gap: 4, backgroundColor: fixed ? "#E0F2FE" : "#EEF2FF", color: fixed ? "#0EA5E9" : THEME.primary, padding: "4px 10px", borderRadius: 99, fontSize: 12, fontWeight: 800 }}>
                 {pf}
-                <button onClick={() => onPromptRemove(idx, pi)} style={{ background: "none", border: "none", cursor: "pointer", padding: 0, color: THEME.primary, lineHeight: 1, fontSize: 14 }}>×</button>
+                <button onClick={() => onPromptRemove(idx, pi)} style={{ background: "none", border: "none", cursor: "pointer", padding: 0, color: fixed ? "#0EA5E9" : THEME.primary, lineHeight: 1, fontSize: 14 }}>×</button>
               </span>
             ))}
             {PROMPT_FIELD_OPTIONS.filter(o => !(s.promptFields || []).includes(o.key)).map(o => (
-              <button key={o.key} onClick={() => onPromptAdd(idx, o.key)} style={{ fontSize: 12, fontWeight: 800, padding: "4px 10px", borderRadius: 99, border: `1px dashed ${THEME.border}`, backgroundColor: "transparent", color: THEME.textMuted, cursor: "pointer" }}>
+              <button key={o.key} onClick={() => onPromptAdd(idx, o.key)} style={{ fontSize: 12, fontWeight: 800, padding: "4px 10px", borderRadius: 99, border: `1px dashed ${fixed ? "#BAE6FD" : THEME.border}`, backgroundColor: "transparent", color: fixed ? "#0EA5E9" : THEME.textMuted, cursor: "pointer" }}>
                 + {o.label}
               </button>
             ))}
           </div>
         </div>
       </div>
-      <button onClick={() => onDelete(idx)} style={{ background: "none", border: "none", cursor: "pointer", padding: 6, borderRadius: 8, color: THEME.textMuted }}>
-        <Trash2 size={15} />
-      </button>
+      {fixed ? (
+        <div style={{ width: 27 }} />
+      ) : (
+        <button onClick={() => onDelete(idx)} style={{ background: "none", border: "none", cursor: "pointer", padding: 6, borderRadius: 8, color: THEME.textMuted }}>
+          <Trash2 size={15} />
+        </button>
+      )}
     </div>
   );
 }
@@ -229,8 +252,8 @@ export default function StatusSettings({ statuses: statusesProp = [], scenarios 
 
   // フロー行操作
   const handleFlowChange   = (idx, key, val) => setFlowRows(prev => prev.map((r, i) => i === idx ? { ...r, [key]: val } : r));
-  const handleFlowDelete   = (idx) => setFlowRows(prev => prev.filter((_, i) => i !== idx));
-  const handleFlowAdd      = () => setFlowRows(prev => [...prev, { name: "", terminalType: "", scenarioId: "", reportArrival: false, reportCount: false }]);
+  const handleFlowDelete   = (idx) => setFlowRows(prev => prev.filter((r, i) => i !== idx || r.isFixed));
+  const handleFlowAdd      = () => setFlowRows(prev => [...prev, { name: "", terminalType: "", scenarioId: "", reportArrival: false, reportCount: false, isFixed: false }]);
   const handlePromptAdd    = (idx, fk) => setFlowRows(prev => prev.map((r, i) => i === idx ? { ...r, promptFields: [...(r.promptFields || []).filter(p => p !== fk), fk] } : r));
   const handlePromptRemove = (idx, pi) => setFlowRows(prev => prev.map((r, i) => i === idx ? { ...r, promptFields: (r.promptFields || []).filter((_, j) => j !== pi) } : r));
 

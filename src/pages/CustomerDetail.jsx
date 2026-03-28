@@ -525,19 +525,19 @@ export default function CustomerDetail({
                 {/* 合計サマリー */}
                 {properties.length > 0 && (() => {
                   const wonTotal = properties.filter(p => p.status === "成約")
-                    .reduce((s, p) => s + (Number(String(p.price || "").replace(/[^0-9.]/g, "")) || 0), 0);
+                    .reduce((s, p) => s + (Number(String(p.contractPrice || "").replace(/[^0-9.]/g, "")) || 0), 0);
                   const maxActive = Math.max(0, ...properties.filter(p => p.status === "検討中")
-                    .map(p => Number(String(p.price || "").replace(/[^0-9.]/g, "")) || 0));
+                    .map(p => Number(String(p.assessmentPrice || "").replace(/[^0-9.]/g, "")) || 0));
                   return (
                     <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12 }}>
                       {wonTotal > 0 && <span style={{ color: "#166534", fontWeight: 700 }}>成約 {formatPrice(wonTotal)}</span>}
                       {wonTotal > 0 && maxActive > 0 && <span style={{ color: THEME.textMuted }}>／</span>}
-                      {maxActive > 0 && <span style={{ color: THEME.textMuted }}>検討中 〜{formatPrice(maxActive)}</span>}
+                      {maxActive > 0 && <span style={{ color: THEME.textMuted }}>査定 〜{formatPrice(maxActive)}</span>}
                     </div>
                   );
                 })()}
                 <button
-                  onClick={() => setNewProp(newProp ? null : { name: "", address: "", price: "", propertyType: "マンション", area: "", status: "検討中", note: "" })}
+                  onClick={() => setNewProp(newProp ? null : { name: "", address: "", assessmentPrice: "", contractPrice: "", propertyType: "マンション", area: "", status: "検討中", note: "" })}
                   style={{ display: "flex", alignItems: "center", gap: 5, padding: "6px 12px", border: `1px solid ${THEME.border}`, borderRadius: 8, background: "white", cursor: "pointer", fontSize: 12, fontWeight: 700, color: THEME.textMain }}
                 >
                   <Plus size={13} /> 物件を追加
@@ -574,8 +574,22 @@ export default function CustomerDetail({
                           </div>
                         </div>
                         <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
-                          <span style={{ fontSize: 16, fontWeight: 900, color: prop.status === "成約" ? "#166534" : THEME.textMain }}>{formatPrice(prop.price)}</span>
-                          <button onClick={() => { setEditingPropId(prop.id); setEditingPropData({ name: prop.name, address: prop.address, price: prop.price, propertyType: prop.propertyType, area: prop.area, status: prop.status, note: prop.note }); }}
+                          <div style={{ textAlign: "right" }}>
+                            {prop.assessmentPrice && (
+                              <div style={{ fontSize: 12, color: THEME.textMuted, fontWeight: 600 }}>
+                                査定 {formatPrice(prop.assessmentPrice)}
+                              </div>
+                            )}
+                            {prop.contractPrice && (
+                              <div style={{ fontSize: 15, fontWeight: 900, color: "#166534" }}>
+                                成約 {formatPrice(prop.contractPrice)}
+                              </div>
+                            )}
+                            {!prop.assessmentPrice && !prop.contractPrice && (
+                              <div style={{ fontSize: 14, fontWeight: 700, color: THEME.textMuted }}>－</div>
+                            )}
+                          </div>
+                          <button onClick={() => { setEditingPropId(prop.id); setEditingPropData({ name: prop.name, address: prop.address, assessmentPrice: prop.assessmentPrice, contractPrice: prop.contractPrice, propertyType: prop.propertyType, area: prop.area, status: prop.status, note: prop.note }); }}
                             style={{ padding: "4px 8px", border: `1px solid ${THEME.border}`, borderRadius: 6, background: "white", cursor: "pointer", color: THEME.textMuted, fontSize: 11 }}>編集</button>
                           <button onClick={() => handleDeleteProperty(prop.id)}
                             style={{ padding: "4px 6px", border: "none", borderRadius: 6, background: "#FEF2F2", cursor: "pointer", color: THEME.danger, display: "flex" }}>
@@ -592,14 +606,18 @@ export default function CustomerDetail({
                             <input style={styles.input} value={editingPropData.name || ""} onChange={e => setEditingPropData(p => ({ ...p, name: e.target.value }))} />
                           </div>
                           <div>
-                            <label style={{ ...styles.label }}>金額（万円）</label>
-                            <input style={styles.input} placeholder="例: 8500 → 8,500万円" value={editingPropData.price || ""} onChange={e => setEditingPropData(p => ({ ...p, price: e.target.value }))} />
-                          </div>
-                          <div>
                             <label style={{ ...styles.label }}>物件種別</label>
                             <select style={{ ...styles.input, appearance: "none" }} value={editingPropData.propertyType || ""} onChange={e => setEditingPropData(p => ({ ...p, propertyType: e.target.value }))}>
                               {PROP_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
                             </select>
+                          </div>
+                          <div>
+                            <label style={{ ...styles.label }}>査定金額（万円）</label>
+                            <input style={styles.input} placeholder="例: 8500 → 8,500万円" value={editingPropData.assessmentPrice || ""} onChange={e => setEditingPropData(p => ({ ...p, assessmentPrice: e.target.value }))} />
+                          </div>
+                          <div>
+                            <label style={{ ...styles.label }}>成約金額（万円）</label>
+                            <input style={styles.input} placeholder="例: 8200 → 8,200万円" value={editingPropData.contractPrice || ""} onChange={e => setEditingPropData(p => ({ ...p, contractPrice: e.target.value }))} />
                           </div>
                           <div>
                             <label style={{ ...styles.label }}>面積（㎡）</label>
@@ -646,14 +664,18 @@ export default function CustomerDetail({
                       <input style={styles.input} placeholder="例: 渋谷区代々木 Bマンション" value={newProp.name || ""} onChange={e => setNewProp(p => ({ ...p, name: e.target.value }))} autoFocus />
                     </div>
                     <div>
-                      <label style={{ ...styles.label }}>金額（万円）</label>
-                      <input style={styles.input} placeholder="例: 8500 → 8,500万円" value={newProp.price || ""} onChange={e => setNewProp(p => ({ ...p, price: e.target.value }))} />
-                    </div>
-                    <div>
                       <label style={{ ...styles.label }}>物件種別</label>
                       <select style={{ ...styles.input, appearance: "none" }} value={newProp.propertyType || "マンション"} onChange={e => setNewProp(p => ({ ...p, propertyType: e.target.value }))}>
                         {PROP_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
                       </select>
+                    </div>
+                    <div>
+                      <label style={{ ...styles.label }}>査定金額（万円）</label>
+                      <input style={styles.input} placeholder="例: 8500 → 8,500万円" value={newProp.assessmentPrice || ""} onChange={e => setNewProp(p => ({ ...p, assessmentPrice: e.target.value }))} />
+                    </div>
+                    <div>
+                      <label style={{ ...styles.label }}>成約金額（万円）</label>
+                      <input style={styles.input} placeholder="例: 8200 → 8,200万円" value={newProp.contractPrice || ""} onChange={e => setNewProp(p => ({ ...p, contractPrice: e.target.value }))} />
                     </div>
                     <div>
                       <label style={{ ...styles.label }}>面積（㎡）</label>
