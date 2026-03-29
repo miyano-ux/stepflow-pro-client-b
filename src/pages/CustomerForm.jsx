@@ -8,6 +8,7 @@ import CustomSelect from "../components/CustomSelect";
 
 
 import { apiCall, smartNormalizePhone, downloadCSV } from "../lib/utils";
+import ExcelJS from "exceljs";
 import Page from "../components/Page";
 import StaffGroupSelect from "../components/StaffGroupSelect";
 import DynamicField from "../components/DynamicField";
@@ -36,65 +37,267 @@ function CustomerForm({ formSettings = [], scenarios = [], statuses = [], staffL
   const [submitting, setSubmitting] = useState(false); // 二重送信防止
   const [sc, setSc] = useState("");
 
-  // CSVインポート処理
+  // 行データ（ヘッダー名→値マップの配列）をAPIに送信する共通処理
+  const bulkSubmit = async (rowMaps) => {
+    const items = rowMaps.map((row) => {
+      const get = (name) => row[name] ?? "";
+
+      // 担当者名→メール変換：「担当者名」列があればメールに解決、なければ「担当者メール」列をそのまま使用
+      let staffEmail = get("担当者メール");
+      const staffName = get("担当者名");
+      if (staffName && staffName !== "未選択") {
+        const matched = (staffList || []).find(
+          (s) => `${s.lastName} ${s.firstName}` === staffName || `${s.lastName}${s.firstName}` === staffName
+        );
+        if (matched) staffEmail = matched.email;
+      }
+
+      // シナリオID・契約種別の「未選択」を空文字に正規化
+      const rawScenario = get("シナリオID");
+      const rawContract = get("契約種別");
+
+      const obj = {
+        lastName:   get("姓"),
+        firstName:  get("名"),
+        phone:      smartNormalizePhone(get("電話番号")),
+        email:      get("メールアドレス"),
+        scenarioID: rawScenario === "未選択" ? "" : rawScenario,
+        data: {
+          "対応ステータス": get("対応ステータス") || "未対応",
+          "担当者メール":   staffEmail,
+          "流入元":         get("流入元")         || "",
+          "契約種別":       rawContract === "未選択" ? "" : rawContract,
+        },
+      };
+      (formSettings || []).forEach((f) => {
+        if (f.name in row) {
+          const v = get(f.name);
+          obj.data[f.name] = (f.type === "dropdown" && v === "未選択") ? "" : v;
+        }
+      });
+      return obj;
+    });
+    await apiCall.post(GAS_URL, { action: "bulkAdd", customers: items });
+    alert("一括登録完了");
+    onRefresh();
+    navigate("/");
+  };
+
+  // CSV / xlsx どちらでもインポート可能
   const handleUpload = (e) => {
     const file = e.target.files[0];
     if (!file) return;
+    const isXlsx = file.name.endsWith(".xlsx") || file.name.endsWith(".xls");
 
     const reader = new FileReader();
     reader.onload = async (ev) => {
-      const rows = ev.target.result
-        .split("\n")
-        .map((r) =>
-          r.split(",").map((c) => c.replace(/^"|"$/g, "").trim())
-        );
-
-      const items = rows
-        .slice(1)
-        .filter((r) => r.length > 2)
-        .map((row) => {
-          const obj = {
-            lastName: row[0],
-            firstName: row[1],
-            phone: smartNormalizePhone(row[2]),
-            scenarioID: row[3],
-            data: { "対応ステータス": "未対応" },
-          };
-          rows[0].slice(4).forEach((h, i) => {
-            if (h) obj.data[h] = row[i + 4];
-          });
-          return obj;
-        });
-
       try {
-        await apiCall.post(GAS_URL, { action: "bulkAdd", customers: items });
-        alert("一括登録完了");
-        onRefresh();
-        navigate("/");
+        let rowMaps = [];
+
+        if (isXlsx) {
+          // ── xlsx ──────────────────────────────────────────
+          const wb = new ExcelJS.Workbook();
+          await wb.xlsx.load(ev.target.result);
+          // "顧客登録" シートを優先、なければ最初のシート
+          const ws = wb.getWorksheet("顧客登録") || wb.worksheets[0];
+          const allRows = [];
+          ws.eachRow((row) => { allRows.push(row.values.slice(1)); }); // index 0 は空
+          if (allRows.length < 2) return;
+          const headers = allRows[0].map((v) => String(v ?? "").trim());
+          rowMaps = allRows.slice(1)
+            .filter((r) => r.some(Boolean))
+            .map((r) => Object.fromEntries(headers.map((h, i) => [h, String(r[i] ?? "").trim()])));
+        } else {
+          // ── CSV ───────────────────────────────────────────
+          const rows = ev.target.result
+            .split("\n")
+            .map((r) => r.split(",").map((c) => c.replace(/^"|"$/g, "").trim()));
+          if (rows.length < 2) return;
+          const headers = rows[0];
+          rowMaps = rows.slice(1)
+            .filter((r) => r.length > 2)
+            .map((r) => Object.fromEntries(headers.map((h, i) => [h, r[i] ?? ""])));
+        }
+
+        await bulkSubmit(rowMaps);
       } catch (err) {
         alert(err.message);
       }
     };
-    reader.readAsText(file);
+
+    if (isXlsx) {
+      reader.readAsArrayBuffer(file);
+    } else {
+      reader.readAsText(file, "UTF-8");
+    }
   };
 
-  // CSVテンプレートダウンロード
-  const handleDownloadTemplate = () => {
-    const headers = [
-      "姓", "名", "電話番号", "シナリオID",
-      ...(formSettings || []).map((f) => f.name),
+  // Excelテンプレートダウンロード（ドロップダウン付き）
+  const handleDownloadTemplate = async () => {
+    const wb = new ExcelJS.Workbook();
+
+    // ── 選択肢データを準備 ──────────────────────────────────
+    const statusOpts   = statuses.map((s) => s.name);
+    const staffEmails  = staffList.map((s) => s.email);
+    const staffOpts    = staffList.map((s) => `${s.lastName} ${s.firstName}`);
+    const sourceOpts   = sources.map((s) => s.name);
+
+    // 契約種別：「未選択」を先頭に追加
+    const contractOpts = ["未選択", ...contractTypes];
+
+    // シナリオID：ステータスに紐づいているものを除外し「未選択」を先頭に追加
+    const linkedScenarioIds = new Set(statuses.map((s) => s.scenarioId).filter(Boolean));
+    const scenarioOpts = [
+      "未選択",
+      ...new Set((scenarios || []).map((x) => x["シナリオID"]).filter((sid) => !linkedScenarioIds.has(sid))),
     ];
-    downloadCSV(
-      [headers, ["山田", "太郎", "09012345678", scenarios[0]?.["シナリオID"] || "A"]],
-      "template.csv"
-    );
+
+    // カスタム項目のドロップダウン選択肢（dropdown型のみ）
+    const customDropdowns = (formSettings || [])
+      .map((f, i) => {
+        if (f.type !== "dropdown") return null;
+        const opts = ["未選択", ...(f.options || "").split(",").map((o) => o.trim()).filter(Boolean)];
+        return { field: f, fieldIndex: i, opts };
+      })
+      .filter(Boolean);
+
+    // ── 選択肢シート（非表示）──────────────────────────────
+    const optSheet = wb.addWorksheet("選択肢", { state: "veryHidden" });
+
+    // 固定列：A=対応ステータス, B=担当者名, C=流入元, D=契約種別, E=シナリオID
+    // カスタムドロップダウン列：F列以降
+    const colLetters = ["A","B","C","D","E","F","G","H","I","J","K","L","M","N","O","P","Q","R","S","T","U","V","W","X","Y","Z"];
+
+    optSheet.getCell("A1").value = "対応ステータス";
+    optSheet.getCell("B1").value = "担当者名";
+    optSheet.getCell("C1").value = "流入元";
+    optSheet.getCell("D1").value = "契約種別";
+    optSheet.getCell("E1").value = "シナリオID";
+
+    statusOpts.forEach((v, i)  => { optSheet.getCell(`A${i + 2}`).value = v; });
+    staffOpts.forEach((v, i)   => { optSheet.getCell(`B${i + 2}`).value = v; });
+    sourceOpts.forEach((v, i)  => { optSheet.getCell(`C${i + 2}`).value = v; });
+    contractOpts.forEach((v, i) => { optSheet.getCell(`D${i + 2}`).value = v; });
+    scenarioOpts.forEach((v, i) => { optSheet.getCell(`E${i + 2}`).value = v; });
+
+    // カスタムドロップダウンの選択肢をF列以降に格納
+    customDropdowns.forEach(({ field, opts }, ci) => {
+      const colLetter = colLetters[5 + ci]; // F から開始
+      optSheet.getCell(`${colLetter}1`).value = field.name;
+      opts.forEach((v, i) => { optSheet.getCell(`${colLetter}${i + 2}`).value = v; });
+    });
+
+    // ── データシート ────────────────────────────────────────
+    const ws = wb.addWorksheet("顧客登録");
+
+    const fixedHeaders = [
+      { key: "姓",             note: "（必須）",                                              type: "text" },
+      { key: "名",             note: "（必須）",                                              type: "text" },
+      { key: "電話番号",       note: "例: 09012345678（必須）",                               type: "text" },
+      { key: "メールアドレス", note: "例: example@email.com",                                 type: "text" },
+      { key: "対応ステータス", note: "プルダウンから選択",                                     type: "dropdown" },
+      { key: "担当者名",       note: "プルダウンから担当者を選択",                         type: "dropdown" },
+      { key: "流入元",         note: "プルダウンから選択",                                     type: "dropdown" },
+      { key: "契約種別",       note: "プルダウンから選択（未選択も可）",                       type: "dropdown" },
+      { key: "シナリオID",     note: "プルダウンから選択（ステータス未紐付けのもののみ表示）", type: "dropdown" },
+    ];
+    const customHeaders = (formSettings || []).map((f) => ({
+      key:  f.name,
+      note: f.type === "date"     ? "例: 2025/01/31（YYYY/MM/DD形式）"
+          : f.type === "dropdown" ? "プルダウンから選択（未選択も可）"
+          : "",
+      type: f.type,
+      field: f,
+    }));
+    const allHeaders = [...fixedHeaders, ...customHeaders];
+
+    // ヘッダー行
+    ws.addRow(allHeaders.map((h) => h.key));
+    ws.getRow(1).font = { bold: true, color: { argb: "FFFFFFFF" } };
+    ws.getRow(1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF6366F1" } };
+    ws.getRow(1).height = 22;
+
+    // サンプルデータ行
+    const sampleRow = allHeaders.map((h) => {
+      if (h.key === "姓")             return "山田";
+      if (h.key === "名")             return "太郎";
+      if (h.key === "電話番号")       return "09012345678";
+      if (h.key === "メールアドレス") return "yamada@example.com";
+      if (h.key === "対応ステータス") return statusOpts[0] || "";
+      if (h.key === "担当者名")       return staffOpts[0] || "";
+      if (h.key === "流入元")         return sourceOpts[0] || "";
+      if (h.key === "契約種別")       return "未選択";
+      if (h.key === "シナリオID")     return "未選択";
+      // カスタム項目
+      if (h.type === "date")          return "2025/01/31";
+      if (h.type === "dropdown") {
+        const cd = customDropdowns.find((d) => d.field.name === h.key);
+        return cd ? cd.opts[0] : "未選択"; // 先頭は「未選択」
+      }
+      return "";
+    });
+    ws.addRow(sampleRow);
+
+    // 列幅
+    ws.getColumn(1).width = 12;
+    ws.getColumn(2).width = 12;
+    ws.getColumn(3).width = 16;
+    ws.getColumn(4).width = 24;
+    ws.getColumn(5).width = 18;
+    ws.getColumn(6).width = 28;
+    ws.getColumn(7).width = 16;
+    ws.getColumn(8).width = 16;
+    ws.getColumn(9).width = 18;
+    customHeaders.forEach((_, i) => { ws.getColumn(10 + i).width = 18; });
+
+    // コメント（ノート）
+    allHeaders.forEach((h, i) => {
+      if (h.note) ws.getCell(1, i + 1).note = h.note;
+    });
+
+    // ── データバリデーション（ドロップダウン）2〜1001行目 ──
+    const addDropdown = (colIndex, sheetColLetter, len) => {
+      if (len === 0) return;
+      const colLetter = ws.getColumn(colIndex).letter;
+      ws.dataValidations.add(`${colLetter}2:${colLetter}1001`, {
+        type: "list",
+        allowBlank: true,
+        formulae: [`選択肢!$${sheetColLetter}$2:$${sheetColLetter}$${len + 1}`],
+        showErrorMessage: true,
+        errorTitle: "入力エラー",
+        error: "リストから選択してください",
+      });
+    };
+
+    addDropdown(5, "A", statusOpts.length);                // 対応ステータス
+    addDropdown(6, "B", staffOpts.length);                 // 担当者名
+    addDropdown(7, "C", sourceOpts.length);                // 流入元
+    addDropdown(8, "D", contractOpts.length);              // 契約種別（未選択含む）
+    addDropdown(9, "E", scenarioOpts.length);              // シナリオID（未選択・未紐付けのみ）
+
+    // カスタムドロップダウン
+    customDropdowns.forEach(({ field, opts }, ci) => {
+      const dataColIndex = 10 + (formSettings || []).findIndex((f) => f.name === field.name);
+      const sheetColLetter = colLetters[5 + ci];
+      addDropdown(dataColIndex, sheetColLetter, opts.length);
+    });
+
+    // ダウンロード
+    const buffer = await wb.xlsx.writeBuffer();
+    const blob = new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "顧客登録テンプレート.xlsx";
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
   // ファイル選択ダイアログを開く
   const handleOpenFileDialog = () => {
     const f = document.createElement("input");
     f.type = "file";
-    f.accept = ".csv";
+    f.accept = ".csv,.xlsx,.xls";
     f.onchange = handleUpload;
     f.click();
   };

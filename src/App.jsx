@@ -41,6 +41,8 @@ import UserForm              from "./pages/UserForm";
 import SourceManager         from "./pages/SourceManager";
 import ContractTypeManager   from "./pages/ContractTypeManager";
 import MasterSettings        from "./pages/MasterSettings";
+import SourceIntegrationIndex  from "./pages/SourceIntegrationIndex";
+import SourceIntegrationDetail from "./pages/SourceIntegrationDetail";
 
 // ==========================================
 // 🚀 App - 認証 & ルーティング
@@ -281,6 +283,10 @@ function App() {
               <Route path="/scenarios" element={<ScenarioList scenarios={d?.scenarios} statuses={d?.statuses} onRefresh={refresh} gasUrl={GAS_URL} />} />
               <Route path="/scenarios/new" element={<ScenarioForm scenarios={d?.scenarios} onRefresh={refresh} gasUrl={GAS_URL} />} />
               <Route path="/scenarios/edit/:id" element={<ScenarioForm scenarios={d?.scenarios} onRefresh={refresh} gasUrl={GAS_URL} />} />
+
+              {/* 媒体連携設定 */}
+              <Route path="/source-integrations" element={<SourceIntegrationIndex sourceCredsStatus={d?.sourceCredsStatus ?? {}} clientInfo={d?.clientInfo ?? {}} />} />
+              <Route path="/source-integrations/:sourceKey" element={<SourceIntegrationDetail sourceIntegrations={d?.sourceIntegrations ?? []} sourceCredsStatus={d?.sourceCredsStatus ?? {}} sourceLoginIds={d?.sourceLoginIds ?? {}} clientInfo={d?.clientInfo ?? {}} scenarios={d?.scenarios} statuses={d?.statuses} sources={d?.sources} staffList={staffList} groups={d?.groups} formSettings={d?.formSettings} fieldMappings={d?.fieldMappings ?? {}} gasUrl={GAS_URL} onRefresh={refresh} />} />
 
               {/* 反響取り込み */}
               <Route path="/response-import" element={<ResponseImportPortal />} />
