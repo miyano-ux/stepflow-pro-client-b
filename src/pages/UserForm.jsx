@@ -1,10 +1,50 @@
 import React, { useState } from "react";
 import { useNavigate, useParams, useLocation } from "react-router-dom";
-import { ChevronLeft, Check, UserPlus, Loader2 } from "lucide-react";
+import { ChevronLeft, Check, UserPlus, Loader2, AlertCircle, CheckCircle2, X } from "lucide-react";
 import axios from "axios";
 import { THEME, CLIENT_COMPANY_NAME, MASTER_WHITELIST_API } from "../lib/constants";
 import { styles } from "../lib/styles";
 import Page from "../components/Page";
+
+// ==========================================
+// 💬 Toast/Modal コンポーネント
+// ==========================================
+function AlertModal({ modal, onClose }) {
+  if (!modal) return null;
+  const isSuccess = modal.type === "success";
+  return (
+    <div style={{
+      position: "fixed", inset: 0, zIndex: 9999,
+      display: "flex", alignItems: "center", justifyContent: "center",
+      backgroundColor: "rgba(0,0,0,0.45)",
+    }}>
+      <div style={{
+        background: "#fff", borderRadius: "16px", padding: "32px 36px",
+        minWidth: "340px", maxWidth: "480px", boxShadow: "0 8px 40px rgba(0,0,0,0.18)",
+        display: "flex", flexDirection: "column", alignItems: "center", gap: "16px",
+        textAlign: "center",
+      }}>
+        {isSuccess
+          ? <CheckCircle2 size={48} color="#22c55e" strokeWidth={1.5} />
+          : <AlertCircle size={48} color={THEME.danger} strokeWidth={1.5} />
+        }
+        <p style={{ fontSize: "15px", color: THEME.text, margin: 0, lineHeight: 1.6 }}>
+          {modal.message}
+        </p>
+        <button
+          onClick={onClose}
+          style={{
+            ...styles.btn,
+            ...(isSuccess ? styles.btnPrimary : { background: THEME.danger, color: "#fff" }),
+            minWidth: "120px", height: "42px", fontSize: "14px",
+          }}
+        >
+          OK
+        </button>
+      </div>
+    </div>
+  );
+}
 
 // ==========================================
 // 👤 UserForm - ユーザー登録・編集ページ
@@ -20,6 +60,14 @@ function UserForm({ masterUrl, onRefreshStaff }) {
   const isEdit = !!id;
   const location = useLocation();
   const [loading, setLoading] = useState(false);
+  const [modal, setModal] = useState(null); // { type: "success"|"error", message: string }
+
+  const showModal = (type, message) => setModal({ type, message });
+  const closeModal = () => {
+    const wasSuccess = modal?.type === "success";
+    setModal(null);
+    if (wasSuccess) navigate("/users");
+  };
 
   // 初期データの安全なパース（編集時は location.state から取得）
   const [form, setForm] = useState(() => {
@@ -36,7 +84,7 @@ function UserForm({ masterUrl, onRefreshStaff }) {
   // 保存処理
   const handleSave = async () => {
     if (!form.email || !form.lastName) {
-      return alert("氏名とメールアドレスは必須です");
+      return showModal("error", "氏名とメールアドレスは必須です");
     }
 
     setLoading(true);
@@ -48,23 +96,23 @@ function UserForm({ masterUrl, onRefreshStaff }) {
           : "'" + form.phone
         : "";
 
+      // GAS の許可リストシートの列名に合わせたペイロード
       const payload = isEdit
         ? {
-            action: "editUser",          // 編集: oldEmail で対象を特定
-            oldEmail: decodeURIComponent(id), // 変更前のメール（URLパラメータから）
-            email: form.email,
-            company: CLIENT_COMPANY_NAME,
-            lastName: form.lastName,
-            firstName: form.firstName,
-            phone: finalPhone,
+            action: "editAllowUser",        // 編集: メールで対象を特定
+            "メール": decodeURIComponent(id),
+            "会社名": CLIENT_COMPANY_NAME,
+            "姓": form.lastName,
+            "名": form.firstName,
+            "電話番号": finalPhone,
           }
         : {
-            action: "addUser",           // 新規登録
-            email: form.email,
-            company: CLIENT_COMPANY_NAME,
-            lastName: form.lastName,
-            firstName: form.firstName,
-            phone: finalPhone,
+            action: "addAllowUser",          // 新規登録
+            "メール": form.email,
+            "会社名": CLIENT_COMPANY_NAME,
+            "姓": form.lastName,
+            "名": form.firstName,
+            "電話番号": finalPhone,
           };
 
       const res = await axios.post(masterUrl, JSON.stringify(payload), {
@@ -72,14 +120,13 @@ function UserForm({ masterUrl, onRefreshStaff }) {
       });
 
       if (res.data.status === "success") {
-        await onRefreshStaff?.(); // キャッシュを即時更新してから画面遷移
-        alert(isEdit ? "ユーザー情報を更新しました" : "新しいユーザーを登録しました");
-        navigate("/users");
+        await onRefreshStaff?.();
+        showModal("success", isEdit ? "ユーザー情報を更新しました" : "新しいユーザーを登録しました");
       } else {
-        alert("保存失敗: " + (res.data.message || "不明なエラー"));
+        showModal("error", "保存失敗: " + (res.data.message || "不明なエラー"));
       }
     } catch (e) {
-      alert("通信エラーが発生しました。インターネット接続を確認してください。");
+      showModal("error", "通信エラーが発生しました。インターネット接続を確認してください。");
     } finally {
       setLoading(false);
     }
@@ -87,6 +134,7 @@ function UserForm({ masterUrl, onRefreshStaff }) {
 
   return (
     <Page title={isEdit ? "ユーザー情報の編集" : "新規ユーザー登録"}>
+      <AlertModal modal={modal} onClose={closeModal} />
 
       {/* 戻るボタン */}
       <button
