@@ -1,6 +1,6 @@
 import React from "react";
 import { Link } from "react-router-dom";
-import { BarChart3, GitBranch, Trash2, ChevronRight } from "lucide-react";
+import { BarChart3, GitBranch, Trash2, Activity, ChevronRight } from "lucide-react";
 import { THEME } from "../lib/constants";
 
 const REPORTS = [
@@ -16,7 +16,14 @@ const REPORTS = [
     icon: <GitBranch size={28} color="#0891B2" />,
     bg: "#ECFEFF", border: "#A5F3FC",
     title: "流入経路評価",
-    desc: "流入元ごとのステータス到達率・期間・契約種別割合を2カラムで比較",
+    desc: "到達率・費用対効果・成約金額ROI・専任率ランキングを流入元別に集計",
+  },
+  {
+    path: "/analysis/status",
+    icon: <Activity size={28} color="#0891B2" />,
+    bg: "#ECFEFF", border: "#A5F3FC",
+    title: "営業ステータス分析",
+    desc: "流入元ごとのステータス到達件数・到達割合・平均到達日数（レポート集計有効ステータスのみ）",
   },
   {
     path: "/analysis/lost",
