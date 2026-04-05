@@ -461,6 +461,20 @@ export default function CustomerList({
     // 氏名 → 姓・名を結合してテキストリンク
     if (col === "氏名") {
       const name = `${c["姓"] || ""} ${c["名"] || ""}`.trim() || "-";
+      // 楽観的顧客（登録直後・実IDが未確定）はリンク無効にしてホワイトアウトを防ぐ
+      if (c._optimistic) {
+        return (
+          <span
+            style={{
+              color: THEME.primary, fontWeight: 800, fontSize: 14,
+              whiteSpace: "nowrap", opacity: 0.6, cursor: "default",
+            }}
+            title="データ反映中..."
+          >
+            {name}
+          </span>
+        );
+      }
       return (
         <Link
           to={`/detail/${c.id}`}
@@ -656,9 +670,15 @@ export default function CustomerList({
                         ))}
                         <td style={{ ...localStyles.tableTd, position: "sticky", right: 0, backgroundColor: "white", borderLeft: `1px solid ${THEME.border}`, textAlign: "center", minWidth: 148 }}>
                           <div style={{ display: "flex", gap: 6, justifyContent: "center", alignItems: "center" }}>
-                            <Link to={`/detail/${c.id}`} title="顧客詳細" style={{ display: "flex", alignItems: "center", gap: 5, padding: "6px 10px", backgroundColor: "#EEF2FF", color: THEME.primary, borderRadius: 8, fontWeight: 800, fontSize: 12, textDecoration: "none", whiteSpace: "nowrap" }}>
-                              <ExternalLink size={14} /> 詳細
-                            </Link>
+                            {c._optimistic ? (
+                              <span title="データ反映中..." style={{ display: "flex", alignItems: "center", gap: 5, padding: "6px 10px", backgroundColor: "#F3F4F6", color: "#9CA3AF", borderRadius: 8, fontWeight: 800, fontSize: 12, whiteSpace: "nowrap", cursor: "default" }}>
+                                <ExternalLink size={14} /> 詳細
+                              </span>
+                            ) : (
+                              <Link to={`/detail/${c.id}`} title="顧客詳細" style={{ display: "flex", alignItems: "center", gap: 5, padding: "6px 10px", backgroundColor: "#EEF2FF", color: THEME.primary, borderRadius: 8, fontWeight: 800, fontSize: 12, textDecoration: "none", whiteSpace: "nowrap" }}>
+                                <ExternalLink size={14} /> 詳細
+                              </Link>
+                            )}
                             <Link to={`/direct-sms/${c.id}`} title="SMS配信" style={{ display: "flex", alignItems: "center", gap: 5, padding: "6px 10px", backgroundColor: "#F0FDF4", color: "#16A34A", borderRadius: 8, fontWeight: 800, fontSize: 12, textDecoration: "none", whiteSpace: "nowrap" }}>
                               <Send size={14} /> SMS
                             </Link>
