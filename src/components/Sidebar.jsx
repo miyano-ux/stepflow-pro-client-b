@@ -3,7 +3,7 @@ import { Link, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Columns, UserPlus, BarChart3, LogOut,
   ChevronLeft, ChevronRight, ChevronDown,
-  MessageSquare, Copy, Users, Mail, Settings, Globe
+  MessageSquare, Copy, Users, Settings, Globe
 } from 'lucide-react';
 
 const EXPANDED_WIDTH  = "240px";
@@ -28,9 +28,8 @@ const MAIN_ITEMS = [
 const SETTINGS_ITEMS = [
   { name: "管理項目設定",  path: "/master-settings",  icon: <Settings size={16} /> },
   { name: "テンプレート",  path: "/templates",         icon: <Copy size={16} /> },
-  { name: "反響取り込み",  path: "/response-import",  icon: <Mail size={16} /> },
   { name: "ユーザー管理",  path: "/users",             icon: <Users size={16} /> },
-  { name: "媒体連携設定",  path: "/source-integrations", icon: <Globe size={16} /> },
+  { name: "自動連携設定",  path: "/source-integrations", icon: <Globe size={16} /> },
 ];
 
 // 設定グループに含まれるパスかどうか

@@ -1,5 +1,6 @@
 import React, { useState } from "react";
-import { Plus, Edit3, Trash2, X, AlertCircle, ChevronDown } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { Plus, Edit3, Trash2, X, AlertCircle, ChevronDown, ChevronLeft } from "lucide-react";
 import { THEME, GAS_URL } from "../lib/constants";
 import { styles } from "../lib/styles";
 import CustomSelect from "../components/CustomSelect";
@@ -42,6 +43,7 @@ function GmailSettings({
   const [modal, setModal] = useState({ open: false, mode: "add", id: null, data: INITIAL_DATA });
   const [testBody, setTestBody] = useState("");
   const [parsePreview, setParsePreview] = useState(null);
+  const navigate = useNavigate();
 
   const scenarioIds = [...new Set((scenarios || []).map(s => s["シナリオID"]).filter(Boolean))];
 
@@ -121,6 +123,18 @@ function GmailSettings({
 
   return (
     <Page title="Gmail自動取り込み設定" subtitle="メールを受信したとき、自動で顧客を登録するルールを定義できます">
+
+      {/* 戻るボタン */}
+      <button
+        onClick={() => navigate("/source-integrations")}
+        style={{
+          display: "inline-flex", alignItems: "center", gap: 4,
+          fontSize: 13, color: THEME.textMuted, background: "none",
+          border: "none", cursor: "pointer", padding: "0 0 20px", fontWeight: 500,
+        }}
+      >
+        <ChevronLeft size={14} /> 自動連携設定に戻る
+      </button>
 
       {/* ルール一覧 */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(420px, 1fr))", gap: 24, marginBottom: 32 }}>

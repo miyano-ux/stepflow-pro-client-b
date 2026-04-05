@@ -346,7 +346,7 @@ export default function SourceIntegrationDetail({
     >
       {/* 戻るボタン */}
       <button style={S.backBtn} onClick={() => navigate("/source-integrations")}>
-        <ChevronLeft size={14} /> 媒体一覧に戻る
+        <ChevronLeft size={14} /> 自動連携設定に戻る
       </button>
 
       {/* ── ステータスバナー ─────────────────────────────── */}

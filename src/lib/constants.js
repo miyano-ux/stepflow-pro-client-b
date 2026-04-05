@@ -2,7 +2,7 @@
 // 🔑 環境設定・定数定義
 // ==========================================
 
-export const CLIENT_COMPANY_NAME = "B社";
+export const CLIENT_COMPANY_NAME = import.meta.env.VITE_COMPANY_NAME;
 
 export const GAS_URL = import.meta.env.VITE_GAS_URL;
 export const MASTER_WHITELIST_API = import.meta.env.VITE_MASTER_WHITELIST_API;

@@ -1,5 +1,6 @@
 import React, { useState } from "react";
-import { Trash2, Eye } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { Trash2, Eye, ChevronLeft } from "lucide-react";
 import { THEME } from "../lib/constants";
 import { GAS_URL } from "../lib/constants";
 import { styles } from "../lib/styles";
@@ -17,6 +18,7 @@ import Page from "../components/Page";
  */
 function ImportErrorList({ errors = [], onRefresh }) {
   const [selected, setSelected] = useState(null);
+  const navigate = useNavigate();
 
   // 全ログ削除
   const handleClearAll = async () => {
@@ -35,6 +37,17 @@ function ImportErrorList({ errors = [], onRefresh }) {
       title="取り込みエラーログ"
       subtitle="抽出に失敗したメールがここに表示されます。キーワード設定の修正に役立ててください。"
     >
+      {/* 戻るボタン */}
+      <button
+        onClick={() => navigate("/source-integrations")}
+        style={{
+          display: "inline-flex", alignItems: "center", gap: 4,
+          fontSize: 13, color: THEME.textMuted, background: "none",
+          border: "none", cursor: "pointer", padding: "0 0 20px", fontWeight: 500,
+        }}
+      >
+        <ChevronLeft size={14} /> 自動連携設定に戻る
+      </button>
       {/* 操作ボタン */}
       <div style={{ display: "flex", gap: "20px", marginBottom: "20px" }}>
         <button

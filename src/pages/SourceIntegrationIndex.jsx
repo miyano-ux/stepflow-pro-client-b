@@ -1,6 +1,6 @@
 import React from "react";
 import { useNavigate } from "react-router-dom";
-import { Globe, CheckCircle2, AlertCircle, Zap, ChevronRight, Mail } from "lucide-react";
+import { Globe, CheckCircle2, AlertCircle, Zap, ChevronRight, Mail, Settings } from "lucide-react";
 import { THEME, GAS_URL } from "../lib/constants";
 import { styles } from "../lib/styles";
 import Page from "../components/Page";
@@ -290,6 +290,23 @@ function badgeStyle(color) {
   };
 }
 
+const IMPORT_MENU_ITEMS = [
+  {
+    title: "Gmail自動取り込み設定",
+    desc: "メールからの顧客自動登録ルールを作成・編集します",
+    path: "/gmail-settings",
+    icon: <Settings size={28} color={THEME.primary} />,
+    iconBg: "#EEF2FF",
+  },
+  {
+    title: "取り込みエラーログ",
+    desc: "キーワード不一致等で取り込めなかったメールを確認します",
+    path: "/import-errors",
+    icon: <AlertCircle size={28} color="#EF4444" />,
+    iconBg: "#FEF2F2",
+  },
+];
+
 export default function SourceIntegrationIndex({
   sourceCredsStatus = {},
   clientInfo        = {},
@@ -297,8 +314,9 @@ export default function SourceIntegrationIndex({
   const navigate = useNavigate();
 
   return (
-    <Page title="媒体連携設定" icon={<Globe size={20} />}>
-      <p style={{ fontSize: 13, color: THEME.textMuted, marginTop: -8, marginBottom: 28 }}>
+    <Page title="自動連携設定" icon={<Globe size={20} />}>
+      {/* ── 媒体連携 ── */}
+      <p style={{ fontSize: 13, color: THEME.textMuted, marginTop: -8, marginBottom: 20 }}>
         反響メールを自動取り込みする媒体を選択して設定を行ってください。
       </p>
 
@@ -306,6 +324,7 @@ export default function SourceIntegrationIndex({
         display: "grid",
         gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))",
         gap: 20,
+        marginBottom: 40,
       }}>
         {SUPPORTED_SOURCES.map(src => (
           <SourceCard
@@ -315,6 +334,66 @@ export default function SourceIntegrationIndex({
             clientInfo={clientInfo}
             onClick={() => navigate(`/source-integrations/${src.key}`)}
           />
+        ))}
+      </div>
+
+      {/* ── 反響取り込み管理 ── */}
+      <div style={{ marginBottom: 16 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+          <Mail size={15} color={THEME.primary} />
+          <span style={{ fontSize: 13, fontWeight: 700, color: THEME.textMain }}>反響取り込み管理</span>
+        </div>
+        <p style={{ fontSize: 12, color: THEME.textMuted, margin: 0 }}>
+          自動取り込みの設定およびエラーの監視を行います
+        </p>
+      </div>
+
+      <div style={{
+        display: "grid",
+        gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))",
+        gap: 20,
+      }}>
+        {IMPORT_MENU_ITEMS.map(item => (
+          <div
+            key={item.path}
+            onClick={() => navigate(item.path)}
+            style={{
+              ...styles.card,
+              padding: "20px 24px",
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              gap: 16,
+              transition: "box-shadow 0.15s, transform 0.15s",
+            }}
+            onMouseEnter={e => {
+              e.currentTarget.style.boxShadow = "0 8px 24px rgba(0,0,0,0.10)";
+              e.currentTarget.style.transform = "translateY(-2px)";
+              e.currentTarget.style.borderColor = THEME.primary;
+            }}
+            onMouseLeave={e => {
+              e.currentTarget.style.boxShadow = styles.card.boxShadow;
+              e.currentTarget.style.transform = "translateY(0)";
+              e.currentTarget.style.borderColor = THEME.border;
+            }}
+          >
+            <div style={{
+              width: 52, height: 52, borderRadius: 12, flexShrink: 0,
+              backgroundColor: item.iconBg,
+              display: "flex", alignItems: "center", justifyContent: "center",
+            }}>
+              {item.icon}
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 14, fontWeight: 700, color: THEME.textMain, marginBottom: 4 }}>
+                {item.title}
+              </div>
+              <div style={{ fontSize: 12, color: THEME.textMuted, lineHeight: 1.5 }}>
+                {item.desc}
+              </div>
+            </div>
+            <ChevronRight size={16} color={THEME.textMuted} style={{ flexShrink: 0 }} />
+          </div>
         ))}
       </div>
     </Page>
