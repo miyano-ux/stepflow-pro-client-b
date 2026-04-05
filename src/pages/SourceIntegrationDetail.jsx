@@ -1,9 +1,10 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import axios from "axios";
 import {
   CheckCircle2, XCircle, Loader2, Globe, KeyRound,
   Zap, AlertCircle, ChevronLeft, Copy, Check, Mail,
+  Bell, Phone, X, Plus, MessageSquare, UserCircle,
 } from "lucide-react";
 import { THEME, GAS_URL } from "../lib/constants";
 import { styles } from "../lib/styles";
@@ -167,6 +168,30 @@ export default function SourceIntegrationDetail({
   const [ruleSaving, setRuleSaving] = useState(false);
   const [ruleSaved,  setRuleSaved]  = useState(false);
 
+  // ── 通知設定 ──────────────────────────────────────────────
+  const [notifyUsers, setNotifyUsers] = useState(() => {
+    try { return JSON.parse(existingRule["通知先ユーザー"] || "[]"); }
+    catch { return []; }
+  });
+  const [notifyMessage, setNotifyMessage] = useState(
+    existingRule["通知文言"] || `${src.name}から反響がありました。確認をお願いします。`
+  );
+  const [showAddUser, setShowAddUser] = useState(false);
+  const [notifySaving, setNotifySaving] = useState(false);
+  const [notifySaved,  setNotifySaved]  = useState(false);
+  const addUserRef = useRef(null);
+
+  useEffect(() => {
+    if (!showAddUser) return;
+    const handler = (e) => {
+      if (addUserRef.current && !addUserRef.current.contains(e.target)) {
+        setShowAddUser(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [showAddUser]);
+
   // ── フィールドマッピング状態 ──────────────────────────────────
   // { fieldKey: "保存先カラム名", ... }  e.g. { assessmentId: "問い合わせ番号" }
   const [fieldMapping,  setFieldMapping]  = useState(() => {
@@ -223,12 +248,14 @@ export default function SourceIntegrationDetail({
     setRuleSaving(true);
     try {
       await api({
-        action:    "saveSourceIntegration",
+        action:      "saveSourceIntegration",
         sourceKey,
-        source:     ruleForm.source,
-        status:     ruleForm.status,
-        staffEmail: ruleForm.staffEmail,
-        scenarioId: ruleForm.scenarioId,
+        source:      ruleForm.source,
+        status:      ruleForm.status,
+        staffEmail:  ruleForm.staffEmail,
+        scenarioId:  ruleForm.scenarioId,
+        notifyUsers: JSON.stringify(notifyUsers),
+        notifyMessage,
       });
       setRuleSaved(true);
       setTimeout(() => setRuleSaved(false), 2000);
@@ -237,6 +264,30 @@ export default function SourceIntegrationDetail({
       alert("保存に失敗しました: " + (e?.message || e));
     } finally {
       setRuleSaving(false);
+    }
+  };
+
+  // ── 通知設定の保存 ───────────────────────────────────────────
+  const handleSaveNotify = async () => {
+    setNotifySaving(true);
+    try {
+      await api({
+        action:        "saveSourceIntegration",
+        sourceKey,
+        source:        ruleForm.source,
+        status:        ruleForm.status,
+        staffEmail:    ruleForm.staffEmail,
+        scenarioId:    ruleForm.scenarioId,
+        notifyUsers:   JSON.stringify(notifyUsers),
+        notifyMessage,
+      });
+      setNotifySaved(true);
+      setTimeout(() => setNotifySaved(false), 2000);
+      onRefresh?.();
+    } catch (e) {
+      alert("保存に失敗しました: " + (e?.message || e));
+    } finally {
+      setNotifySaving(false);
     }
   };
 
@@ -445,6 +496,177 @@ export default function SourceIntegrationDetail({
               : ruleSaved
                 ? <><CheckCircle2 size={14} /> 保存しました</>
                 : "連携ルールを保存"
+            }
+          </button>
+        </div>
+      </div>
+
+      {/* ── 通知設定セクション ──────────────────────────────── */}
+      <div style={S.section}>
+        <div style={S.sectionTitle}>
+          <Bell size={13} />
+          通知設定（反響受信時のSMS通知）
+        </div>
+        <p style={{ fontSize: 13, color: THEME.textMuted, margin: "0 0 20px" }}>
+          この媒体から反響があった際に、SMS通知を送るユーザーを設定します。
+        </p>
+
+        {/* 通知文言 */}
+        <div style={{ marginBottom: 20 }}>
+          <LabelText>通知文言</LabelText>
+          <textarea
+            style={{
+              ...S.input,
+              width: "100%", boxSizing: "border-box",
+              minHeight: 72, resize: "vertical", lineHeight: 1.6,
+              fontFamily: "inherit",
+            }}
+            value={notifyMessage}
+            onChange={e => setNotifyMessage(e.target.value)}
+            placeholder={`${src.name}から反響がありました。確認をお願いします。`}
+          />
+          <div style={{ fontSize: 11, color: THEME.textMuted, marginTop: 4 }}>
+            ※ 登録のたびに上記の文言でSMSが送信されます。
+          </div>
+        </div>
+
+        {/* 通知先ユーザー一覧 */}
+        <LabelText>通知先ユーザー</LabelText>
+
+        {notifyUsers.length === 0 && (
+          <div style={{
+            fontSize: 13, color: THEME.textMuted,
+            padding: "12px 16px", backgroundColor: "#F8FAFC",
+            borderRadius: 8, border: `1px solid ${THEME.border}`,
+            marginBottom: 12,
+          }}>
+            通知先が設定されていません。＋ボタンでユーザーを追加してください。
+          </div>
+        )}
+
+        {notifyUsers.map((u, idx) => (
+          <div key={idx} style={{
+            display: "grid", gridTemplateColumns: "1fr 1fr auto",
+            gap: 8, alignItems: "center", marginBottom: 8,
+          }}>
+            {/* 名前（表示のみ） */}
+            <div style={{
+              display: "flex", alignItems: "center", gap: 8,
+              padding: "9px 14px", borderRadius: 8,
+              backgroundColor: "#EEF2FF",
+              border: `1px solid #C7D2FE`,
+              fontSize: 13, fontWeight: 600, color: THEME.primary,
+            }}>
+              <UserCircle size={14} />
+              {u.name}
+            </div>
+
+            {/* 電話番号入力 */}
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <Phone size={13} color={THEME.textMuted} style={{ flexShrink: 0 }} />
+              <input
+                style={{ ...S.input, flex: 1, fontSize: 13 }}
+                type="tel"
+                placeholder="09012345678"
+                value={u.phone || ""}
+                onChange={e => {
+                  const updated = notifyUsers.map((x, i) =>
+                    i === idx ? { ...x, phone: e.target.value } : x
+                  );
+                  setNotifyUsers(updated);
+                }}
+              />
+            </div>
+
+            {/* 削除ボタン */}
+            <button
+              onClick={() => setNotifyUsers(notifyUsers.filter((_, i) => i !== idx))}
+              style={{
+                display: "flex", alignItems: "center", justifyContent: "center",
+                width: 32, height: 32, borderRadius: 8, border: "none",
+                backgroundColor: "#FEE2E2", color: "#DC2626", cursor: "pointer",
+                flexShrink: 0,
+              }}
+              title="削除"
+            >
+              <X size={14} />
+            </button>
+          </div>
+        ))}
+
+        {/* ＋ユーザー追加ボタン＋ドロップダウン */}
+        <div ref={addUserRef} style={{ position: "relative", display: "inline-block", marginTop: 4 }}>
+          <button
+            style={{
+              ...S.btn("default"),
+              border: `1px dashed ${THEME.border}`,
+              color: THEME.primary, gap: 6,
+            }}
+            onClick={() => setShowAddUser(v => !v)}
+          >
+            <Plus size={14} /> ユーザーを追加
+          </button>
+
+          {showAddUser && (
+            <div style={{
+              position: "absolute", top: "calc(100% + 6px)", left: 0, zIndex: 100,
+              backgroundColor: "white", borderRadius: 12,
+              border: `1px solid ${THEME.border}`,
+              boxShadow: "0 12px 28px rgba(0,0,0,0.12)",
+              minWidth: 220, overflow: "hidden",
+            }}>
+              <div style={{ padding: 6 }}>
+                {(staffList || []).length === 0 && (
+                  <div style={{ padding: "10px 12px", fontSize: 13, color: THEME.textMuted }}>
+                    ユーザーが見つかりません
+                  </div>
+                )}
+                {(staffList || [])
+                  .filter(s => !notifyUsers.some(u => u.email === s.email))
+                  .map(s => {
+                    const name = `${s.lastName || ""} ${s.firstName || ""}`.trim() || s.email;
+                    return (
+                      <button
+                        key={s.email}
+                        onClick={() => {
+                          const phone = s.phone ? String(s.phone).replace(/'/g, "").trim() : "";
+                          setNotifyUsers(prev => [...prev, { email: s.email, name, phone }]);
+                          setShowAddUser(false);
+                        }}
+                        style={{
+                          width: "100%", display: "flex", alignItems: "center", gap: 10,
+                          padding: "9px 12px", border: "none", borderRadius: 8,
+                          cursor: "pointer", backgroundColor: "transparent",
+                          fontSize: 13, color: THEME.textMain, fontWeight: 600,
+                        }}
+                        onMouseEnter={e => e.currentTarget.style.backgroundColor = "#F0F7FF"}
+                        onMouseLeave={e => e.currentTarget.style.backgroundColor = "transparent"}
+                      >
+                        <div style={{
+                          width: 26, height: 26, borderRadius: "50%",
+                          backgroundColor: "#EEF2FF", display: "flex",
+                          alignItems: "center", justifyContent: "center", flexShrink: 0,
+                        }}>
+                          <UserCircle size={15} color={THEME.primary} />
+                        </div>
+                        {name}
+                      </button>
+                    );
+                  })
+                }
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* 通知設定 保存ボタン */}
+        <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 16 }}>
+          <button style={S.btn("primary")} onClick={handleSaveNotify} disabled={notifySaving}>
+            {notifySaving
+              ? <><Loader2 size={14} /> 保存中…</>
+              : notifySaved
+                ? <><CheckCircle2 size={14} /> 保存しました</>
+                : "通知設定を保存"
             }
           </button>
         </div>
