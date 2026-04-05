@@ -304,6 +304,18 @@ export default function CustomerDetail({
     } catch { alert("物件の削除に失敗しました"); }
   };
 
+  // 顧客データ取得済みだが該当IDが見つからない場合（楽観的IDで来た場合など）
+  if (!customer && customers.length > 0) {
+    return (
+      <div style={{ display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", height: "60vh", gap: 16 }}>
+        <p style={{ color: THEME.textMuted, fontSize: 16 }}>顧客情報が見つかりません</p>
+        <button onClick={() => navigate("/")} style={{ padding: "10px 24px", backgroundColor: THEME.primary, color: "white", border: "none", borderRadius: 10, fontWeight: 800, fontSize: 14, cursor: "pointer" }}>
+          一覧に戻る
+        </button>
+      </div>
+    );
+  }
+
   if (!formData) {
     return (
       <div style={{ display: "flex", justifyContent: "center", alignItems: "center", height: "60vh" }}>
@@ -314,6 +326,9 @@ export default function CustomerDetail({
 
   const assignedStaff = staffList.find((s) => s.email === formData["担当者メール"]);
   const assignedName = assignedStaff ? `${assignedStaff.lastName} ${assignedStaff.firstName}` : null;
+
+  return (
+    <div style={{ minHeight: "100vh", backgroundColor: THEME.bg, padding: "40px 48px" }}>
 
       {/* ステータス変更シナリオ確認モーダル */}
       {promptModal && (
@@ -362,8 +377,6 @@ export default function CustomerDetail({
           </div>
         </div>
       )}
-  return (
-    <div style={{ minHeight: "100vh", backgroundColor: THEME.bg, padding: "40px 48px" }}>
 
       {/* ── ヘッダー ── */}
       <div style={{ marginBottom: 32 }}>
