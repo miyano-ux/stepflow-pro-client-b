@@ -32,9 +32,13 @@ function DirectSms({ customers = [], templates = [], onRefresh, masterUrl, curre
   const [isConverting, setIsConverting] = useState(false);
   const [staffList, setStaffList] = useState([]);
   const [selectedStaff, setSelectedStaff] = useState(null);
-  const [time, setTime] = useState(
-    new Date(new Date().getTime() + 10 * 60000).toISOString().slice(0, 16)
-  );
+  const [time, setTime] = useState(() => {
+    const d = new Date(Date.now() + 30 * 60000);
+    // toISOString() は UTC を返すため、タイムゾーンオフセット分を補正してローカル時刻の文字列を得る
+    return new Date(d.getTime() - d.getTimezoneOffset() * 60000)
+      .toISOString()
+      .slice(0, 16);
+  });
   // 確認モーダル
   const [showConfirm, setShowConfirm] = useState(false);
   const [isSending, setIsSending] = useState(false);
@@ -309,16 +313,21 @@ function DirectSms({ customers = [], templates = [], onRefresh, masterUrl, curre
               border: `1px solid ${THEME.border}`, borderRadius: 12, padding: "14px 16px", marginBottom: 24,
             }}>
               <MessageSquare size={18} color={THEME.textMuted} style={{ marginTop: 1, flexShrink: 0 }} />
-              <div style={{ minWidth: 0 }}>
-                <p style={{ margin: 0, fontSize: 11, fontWeight: 800, color: THEME.textMuted, marginBottom: 6 }}>メッセージ</p>
-                <p style={{
-                  margin: 0, fontSize: 13, color: THEME.textMain,
-                  whiteSpace: "pre-wrap", wordBreak: "break-all",
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <p style={{ margin: "0 0 6px 0", fontSize: 11, fontWeight: 800, color: THEME.textMuted }}>メッセージ</p>
+                {/* スクロール領域を div で独立させてバーを右端に固定 */}
+                <div style={{
                   maxHeight: 160, overflowY: "auto",
-                  lineHeight: 1.7,
+                  overflowX: "hidden",
                 }}>
-                  {msg}
-                </p>
+                  <p style={{
+                    margin: 0, fontSize: 13, color: THEME.textMain,
+                    whiteSpace: "pre-wrap", wordBreak: "break-all",
+                    lineHeight: 1.7,
+                  }}>
+                    {msg}
+                  </p>
+                </div>
               </div>
             </div>
 
