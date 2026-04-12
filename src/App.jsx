@@ -209,11 +209,27 @@ function App() {
           </p>
           <GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID}>
             <GoogleLogin
-              onSuccess={(res) => {
+              onSuccess={async (res) => {
                 const dec = jwtDecode(res.credential);
+                const email = dec.email || "";
+                // ── 許可リストチェック（会社名×メール） ──────────
+                try {
+                  const url = `${MASTER_WHITELIST_API}?action=checkAllowUser&email=${encodeURIComponent(email)}&company=${encodeURIComponent(CLIENT_COMPANY_NAME)}`;
+                  const check = await axios.get(url);
+                  if (!check.data?.allowed) {
+                    alert(`${email} はこの環境へのアクセス権がありません。\n管理者に連絡してください。`);
+                    return;
+                  }
+                } catch (e) {
+                  console.error("[checkAllowUser] 通信エラー", e);
+                  alert("認証サーバーとの通信に失敗しました。しばらく経ってから再度お試しください。");
+                  return;
+                }
+                // ── 認証OK ─────────────────────────────────────
                 setUser(dec);
                 localStorage.setItem("sf_user", JSON.stringify(dec));
               }}
+              onError={() => alert("Googleログインに失敗しました。再度お試しください。")}
             />
           </GoogleOAuthProvider>
         </div>
