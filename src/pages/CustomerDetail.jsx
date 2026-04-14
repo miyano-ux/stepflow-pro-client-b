@@ -126,6 +126,7 @@ export default function CustomerDetail({
   const [promptModal, setPromptModal]         = useState(null); // { promptFields }
   const [syncingCount, setSyncingCount] = useState(0);
   const [formData, setFormData] = useState(null);
+  const [pendingHistoryEntry, setPendingHistoryEntry] = useState(null); // 楽観的更新用
 
   // 物件管理ステート
   const [properties, setProperties] = useState([]);
@@ -167,12 +168,19 @@ export default function CustomerDetail({
     if (customer && syncingCount === 0) setFormData({ ...customer });
   }, [customer, syncingCount, location.state, id]);
 
-  // ステータス履歴（この顧客のものだけ、古い順）
+  // ステータス履歴（この顧客のものだけ）＋楽観的更新エントリをマージ
   const customerStatusHistory = useMemo(() => {
-    return (statusHistory || [])
+    const base = (statusHistory || [])
       .filter(h => String(h["顧客ID"]) === String(id))
       .sort((a, b) => new Date(a["変更日時"]) - new Date(b["変更日時"]));
-  }, [statusHistory, id]);
+    if (!pendingHistoryEntry) return base;
+    // すでに同じステータス・日時が存在する場合は重複追加しない
+    const alreadySynced = base.some(
+      h => h["ステータス"] === pendingHistoryEntry["ステータス"] &&
+           Math.abs(new Date(h["変更日時"]) - new Date(pendingHistoryEntry["変更日時"])) < 5000
+    );
+    return alreadySynced ? base : [...base, pendingHistoryEntry];
+  }, [statusHistory, id, pendingHistoryEntry]);
 
   const customerLogs = useMemo(
     () =>
@@ -203,6 +211,19 @@ export default function CustomerDetail({
           return;
         }
       }
+
+      // ステータス変更を検知して楽観的にタイムラインへ即時反映
+      const prevStatus = customer?.["対応ステータス"];
+      const nextStatus = snapshot["対応ステータス"];
+      if (prevStatus && nextStatus && prevStatus !== nextStatus) {
+        setPendingHistoryEntry({
+          "顧客ID": id,
+          "ステータス": nextStatus,
+          "変更日時": new Date().toISOString(),
+          _pending: true,
+        });
+      }
+
       await axios.post(
         gasUrl,
         JSON.stringify({ action: "update", id, data: snapshot }),
@@ -212,10 +233,12 @@ export default function CustomerDetail({
       setFormData(snapshot);
       onRefresh().finally(() => {
         setSyncingCount((p) => Math.max(0, p - 1));
+        setPendingHistoryEntry(null); // サーバーデータに置き換わったので楽観エントリ削除
       });
     } catch {
       alert("更新に失敗しました");
       setSyncingCount(0);
+      setPendingHistoryEntry(null); // 失敗時はエントリを取り消し
     }
   };
 
@@ -304,18 +327,6 @@ export default function CustomerDetail({
     } catch { alert("物件の削除に失敗しました"); }
   };
 
-  // 顧客データ取得済みだが該当IDが見つからない場合（楽観的IDで来た場合など）
-  if (!customer && customers.length > 0) {
-    return (
-      <div style={{ display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", height: "60vh", gap: 16 }}>
-        <p style={{ color: THEME.textMuted, fontSize: 16 }}>顧客情報が見つかりません</p>
-        <button onClick={() => navigate("/")} style={{ padding: "10px 24px", backgroundColor: THEME.primary, color: "white", border: "none", borderRadius: 10, fontWeight: 800, fontSize: 14, cursor: "pointer" }}>
-          一覧に戻る
-        </button>
-      </div>
-    );
-  }
-
   if (!formData) {
     return (
       <div style={{ display: "flex", justifyContent: "center", alignItems: "center", height: "60vh" }}>
@@ -329,54 +340,6 @@ export default function CustomerDetail({
 
   return (
     <div style={{ minHeight: "100vh", backgroundColor: THEME.bg, padding: "40px 48px" }}>
-
-      {/* ステータス変更シナリオ確認モーダル */}
-      {promptModal && (
-        <PromptFieldsModal
-          newStatus={formData["対応ステータス"] || ""}
-          promptFields={promptModal.promptFields}
-          sources={sources}
-          contractTypes={contractTypes}
-          staffList={staffList}
-          onConfirm={handlePromptConfirm}
-          onSkip={() => setPromptModal(null)}
-        />
-      )}
-      {scenarioConfirm && (
-        <div style={{ position: "fixed", inset: 0, backgroundColor: "rgba(15,23,42,0.6)", display: "flex", justifyContent: "center", alignItems: "center", zIndex: 3000, backdropFilter: "blur(4px)" }}>
-          <div style={{ backgroundColor: "white", borderRadius: 20, padding: 36, width: 440, boxShadow: "0 24px 48px rgba(0,0,0,0.15)" }}>
-            <div style={{ textAlign: "center", marginBottom: 24 }}>
-              <div style={{ fontSize: 44, marginBottom: 8 }}>🔄</div>
-              <h3 style={{ fontSize: 18, fontWeight: 900, color: "#0F172A", margin: "0 0 10px" }}>
-                ステータスを変更しますか？
-              </h3>
-              <p style={{ fontSize: 14, color: "#64748B", lineHeight: 1.8, margin: 0 }}>
-                <strong style={{ color: "#6366F1" }}>「{scenarioConfirm.newStatus}」</strong> に変更します。<br />
-                シナリオ <strong>「{scenarioConfirm.scenarioId}」</strong> が自動で適用されます。
-              </p>
-            </div>
-            <div style={{ display: "flex", gap: 12 }}>
-              <button
-                onClick={() => {
-                  const pf = scenarioConfirm.promptFields || [];
-                  setFormData(prev => ({ ...prev, "対応ステータス": scenarioConfirm.newStatus }));
-                  setScenarioConfirm(null);
-                  if (pf.length > 0) setPromptModal({ promptFields: pf });
-                }}
-                style={{ flex: 1, padding: 13, borderRadius: 10, border: "none", backgroundColor: "#6366F1", color: "white", fontWeight: 900, fontSize: 14, cursor: "pointer" }}
-              >
-                変更する
-              </button>
-              <button
-                onClick={() => setScenarioConfirm(null)}
-                style={{ flex: 1, padding: 13, borderRadius: 10, border: "1px solid #E2E8F0", backgroundColor: "white", color: "#64748B", fontWeight: 800, fontSize: 14, cursor: "pointer" }}
-              >
-                キャンセル
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* ── ヘッダー ── */}
       <div style={{ marginBottom: 32 }}>
@@ -500,6 +463,22 @@ export default function CustomerDetail({
                 </>
               )}
             </div>
+
+            {/* 失注理由（失注ステータスかつ理由が記録されている場合のみ表示） */}
+            {(() => {
+              const lostStatus = (statuses || []).find(s => s.terminalType === "lost");
+              const isLost = lostStatus && formData["対応ステータス"] === lostStatus.name;
+              if (!isLost || !formData["失注理由"]) return null;
+              return (
+                <div style={{ marginTop: 16, padding: "14px 16px", backgroundColor: "#FEF2F2", borderRadius: 10, border: "1px solid #FCA5A540", display: "flex", alignItems: "center", gap: 10 }}>
+                  <span style={{ fontSize: 18, flexShrink: 0 }}>🗑</span>
+                  <div>
+                    <div style={{ fontSize: 11, fontWeight: 800, color: "#DC2626", marginBottom: 3 }}>失注理由</div>
+                    <div style={{ fontSize: 14, fontWeight: 700, color: "#991B1B" }}>{formData["失注理由"]}</div>
+                  </div>
+                </div>
+              );
+            })()}
           </div>
 
           {/* カスタム項目カード */}
@@ -757,6 +736,54 @@ export default function CustomerDetail({
         </div>
 
       </div>
+
+      {/* ── モーダル群（return の中に配置することで正しくレンダリングされる） ── */}
+      {promptModal && (
+        <PromptFieldsModal
+          newStatus={formData["対応ステータス"] || ""}
+          promptFields={promptModal.promptFields}
+          sources={sources}
+          contractTypes={contractTypes}
+          staffList={staffList}
+          onConfirm={handlePromptConfirm}
+          onSkip={() => setPromptModal(null)}
+        />
+      )}
+      {scenarioConfirm && (
+        <div style={{ position: "fixed", inset: 0, backgroundColor: "rgba(15,23,42,0.6)", display: "flex", justifyContent: "center", alignItems: "center", zIndex: 3000, backdropFilter: "blur(4px)" }}>
+          <div style={{ backgroundColor: "white", borderRadius: 20, padding: 36, width: 440, boxShadow: "0 24px 48px rgba(0,0,0,0.15)" }}>
+            <div style={{ textAlign: "center", marginBottom: 24 }}>
+              <div style={{ fontSize: 44, marginBottom: 8 }}>🔄</div>
+              <h3 style={{ fontSize: 18, fontWeight: 900, color: "#0F172A", margin: "0 0 10px" }}>
+                ステータスを変更しますか？
+              </h3>
+              <p style={{ fontSize: 14, color: "#64748B", lineHeight: 1.8, margin: 0 }}>
+                <strong style={{ color: "#6366F1" }}>「{scenarioConfirm.newStatus}」</strong> に変更します。<br />
+                シナリオ <strong>「{scenarioConfirm.scenarioId}」</strong> が自動で適用されます。
+              </p>
+            </div>
+            <div style={{ display: "flex", gap: 12 }}>
+              <button
+                onClick={() => {
+                  const pf = scenarioConfirm.promptFields || [];
+                  setFormData(prev => ({ ...prev, "対応ステータス": scenarioConfirm.newStatus }));
+                  setScenarioConfirm(null);
+                  if (pf.length > 0) setPromptModal({ promptFields: pf });
+                }}
+                style={{ flex: 1, padding: 13, borderRadius: 10, border: "none", backgroundColor: "#6366F1", color: "white", fontWeight: 900, fontSize: 14, cursor: "pointer" }}
+              >
+                変更する
+              </button>
+              <button
+                onClick={() => setScenarioConfirm(null)}
+                style={{ flex: 1, padding: 13, borderRadius: 10, border: "1px solid #E2E8F0", backgroundColor: "white", color: "#64748B", fontWeight: 800, fontSize: 14, cursor: "pointer" }}
+              >
+                キャンセル
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

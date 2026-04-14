@@ -91,6 +91,7 @@ export default function StatusTimeline({ history = [] }) {
                     width: 12, height: 12, borderRadius: "50%", flexShrink: 0, marginTop: 3,
                     backgroundColor: isCurrent ? THEME.primary : "#94A3B8",
                     boxShadow: isCurrent ? `0 0 0 4px ${THEME.primary}25` : "none",
+                    opacity: h._pending ? 0.5 : 1,
                   }} />
                   {!isCurrent && (
                     <div style={{ width: 2, flex: 1, minHeight: 28, backgroundColor: "#E2E8F0", margin: "4px 0" }} />
@@ -103,18 +104,28 @@ export default function StatusTimeline({ history = [] }) {
                     <span style={{
                       fontSize: 14, fontWeight: 900,
                       color: isCurrent ? THEME.primary : THEME.textMain,
+                      opacity: h._pending ? 0.6 : 1,
                     }}>
                       {h["ステータス"]}
                     </span>
-                    {isCurrent && (
+                    {isCurrent && !h._pending && (
                       <span style={{
                         fontSize: 10, fontWeight: 800, padding: "2px 7px",
                         backgroundColor: THEME.primary, color: "white", borderRadius: 99,
                       }}>現在</span>
                     )}
-                    <DaysBadge duration={duration} isCurrent={isCurrent} />
+                    {h._pending && (
+                      <span style={{
+                        fontSize: 10, fontWeight: 800, padding: "2px 8px",
+                        backgroundColor: "#F1F5F9", color: "#64748B",
+                        border: "1px dashed #CBD5E1", borderRadius: 99,
+                      }}>
+                        保存中…
+                      </span>
+                    )}
+                    <DaysBadge duration={duration} isCurrent={isCurrent && !h._pending} />
                   </div>
-                  <span style={{ fontSize: 11, color: THEME.textMuted, fontWeight: 600 }}>
+                  <span style={{ fontSize: 11, color: THEME.textMuted, fontWeight: 600, opacity: h._pending ? 0.6 : 1 }}>
                     {formatDate(h["変更日時"])}
                   </span>
                 </div>
