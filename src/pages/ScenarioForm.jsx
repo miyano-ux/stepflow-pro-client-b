@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import axios from "axios";
 import { Plus, Trash2, Calendar, Clock, Save, Loader2, ArrowLeft } from "lucide-react";
+import { useToast } from "../ToastContext";
 
 const THEME = { primary: "#4F46E5", bg: "#F8FAFC", card: "#FFFFFF", textMain: "#1E293B", textMuted: "#64748B", border: "#E2E8F0", danger: "#EF4444" };
 
@@ -12,6 +13,7 @@ const styles = {
 };
 
 export default function ScenarioForm({ scenarios = [], onRefresh, gasUrl }) {
+  const showToast = useToast();
   const { id } = useParams();
   const navigate = useNavigate();
   const [name, setName] = useState("");
@@ -28,13 +30,13 @@ export default function ScenarioForm({ scenarios = [], onRefresh, gasUrl }) {
   }, [id, scenarios]);
 
   const handleSave = async () => {
-    if (!name) return alert("シナリオ名を入力してください");
+    if (!name) return showToast("シナリオ名を入力してください", "warning");
     setSaving(true);
     try {
       await axios.post(gasUrl, JSON.stringify({ action: "saveScenario", scenarioID: name, steps: st }), { headers: { 'Content-Type': 'text/plain;charset=utf-8' } });
       onRefresh();
       navigate("/scenarios");
-    } catch (e) { alert("保存失敗"); } finally { setSaving(false); }
+    } catch (e) { showToast("保存失敗", "error"); } finally { setSaving(false); }
   };
 
   return (

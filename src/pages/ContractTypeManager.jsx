@@ -4,12 +4,14 @@ import { ChevronLeft, Plus, Trash2, Save, GripVertical } from "lucide-react";
 import { THEME, GAS_URL } from "../lib/constants";
 import { styles } from "../lib/styles";
 import { apiCall } from "../lib/utils";
+import { useToast } from "../ToastContext";
 
 // ==========================================
 // 📋 ContractTypeManager - 契約種別設定
 // ==========================================
 
 export default function ContractTypeManager({ contractTypes: propTypes = [], onRefresh, gasUrl }) {
+  const showToast = useToast();
   const navigate = useNavigate();
   const [types, setTypes]     = useState([]);
   const [saving, setSaving]   = useState(false);
@@ -36,14 +38,14 @@ export default function ContractTypeManager({ contractTypes: propTypes = [], onR
 
   const handleSave = async () => {
     const clean = types.map(t => t.trim()).filter(Boolean);
-    if (clean.length === 0) { alert("1件以上入力してください"); return; }
+    if (clean.length === 0) { showToast("1件以上入力してください", "warning"); return; }
     setSaving(true);
     try {
       await apiCall.post(gasUrl || GAS_URL, { action: "saveContractTypes", types: clean });
       await onRefresh();
-      alert("保存しました");
+      showToast("保存しました", "success");
     } catch {
-      alert("保存に失敗しました");
+      showToast("保存に失敗しました", "error");
     } finally {
       setSaving(false);
     }

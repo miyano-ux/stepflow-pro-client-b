@@ -9,6 +9,7 @@ import {
 import { THEME } from "../lib/constants";
 import { parseLocalDate, downloadCSV, customerStore } from "../lib/utils";
 import DateRangePicker from "../components/DateRangePicker";
+import { useToast } from "../ToastContext";
 
 // ==========================================
 // 📋 CustomerList - 顧客ダッシュボード
@@ -129,6 +130,7 @@ export default function CustomerList({
   scenarios = [], statuses = [], staffList = [], scenarioSettings = {}, sources = [],
   properties = [], gasUrl, onRefresh, onLightRefresh,
 }) {
+  const showToast = useToast();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -336,7 +338,7 @@ export default function CustomerList({
         const already = prev.some((r) => String(r.id) === String(c.id));
         return already ? prev : [c, ...prev];
       });
-      alert("削除に失敗しました。もう一度お試しください。");
+      showToast("削除に失敗しました。もう一度お試しください。", "error");
     } finally {
       setDeletingIds((prev) => { const next = new Set(prev); next.delete(String(c.id)); return next; });
     }
@@ -366,7 +368,7 @@ export default function CustomerList({
       customerStore.patch(cid, { [field]: customer[field] });
       pendingMap.current.delete(cid);
       setLocalCustomers((prev) => prev.map((c) => String(c.id) === cid ? { ...c, [field]: customer[field] } : c));
-      alert("更新に失敗しました");
+      showToast("更新に失敗しました", "error");
     } finally {
       pendingMap.current.delete(cid);
       setSyncing(false);

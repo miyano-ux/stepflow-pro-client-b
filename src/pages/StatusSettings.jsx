@@ -5,7 +5,7 @@ import CustomSelect from "../components/CustomSelect";
 import { THEME, GAS_URL } from "../lib/constants";
 import { styles } from "../lib/styles";
 import { apiCall } from "../lib/utils";
-
+import { useToast } from "../ToastContext";
 
 
 const PROMPT_FIELD_OPTIONS = [
@@ -247,6 +247,7 @@ function SectionHeader({ icon, label, color, canAdd, onAdd, addLabel, note }) {
 // ── メイン ────────────────────────────────────────────
 export default function StatusSettings({ statuses: statusesProp = [], scenarios = [], onRefresh, gasUrl }) {
   const navigate  = useNavigate();
+  const showToast = useToast();
   const [flowRows,     setFlowRows]     = useState([]);
   const [terminalRows, setTerminalRows] = useState([]);
   const [saving,       setSaving]       = useState(false);
@@ -311,16 +312,16 @@ export default function StatusSettings({ statuses: statusesProp = [], scenarios 
   const usedScenarios = new Set([...flowRows, ...terminalRows].map(r => r.scenarioId).filter(Boolean));
 
   const handleSave = async () => {
-    if (flowRows.some(r => !r.name.trim()))     { alert("ステータス名を入力してください"); return; }
-    if (terminalRows.some(r => !r.name.trim())) { alert("終点ステータス名を入力してください"); return; }
-    if (!terminalRows.some(r => r.terminalType === "won"))  { alert("「成約」ステータスは必須です"); return; }
-    if (!terminalRows.some(r => r.terminalType === "lost")) { alert("「失注」ステータスは必須です"); return; }
+    if (flowRows.some(r => !r.name.trim()))     { showToast("ステータス名を入力してください", "warning"); return; }
+    if (terminalRows.some(r => !r.name.trim())) { showToast("終点ステータス名を入力してください", "warning"); return; }
+    if (!terminalRows.some(r => r.terminalType === "won"))  { showToast("「成約」ステータスは必須です", "warning"); return; }
+    if (!terminalRows.some(r => r.terminalType === "lost")) { showToast("「失注」ステータスは必須です", "warning"); return; }
 
     const allRows = [...flowRows, ...terminalRows];
     const sids = allRows.map(r => r.scenarioId).filter(Boolean);
     const dups = sids.filter((id, i) => sids.indexOf(id) !== i);
     if (dups.length > 0) {
-      alert(`シナリオ「${[...new Set(dups)].join("、")}」が複数のステータスに設定されています。`);
+      showToast(`シナリオ「${[...new Set(dups)].join("、")}」が複数のステータスに設定されています。`, "info");
       return;
     }
 
@@ -328,9 +329,9 @@ export default function StatusSettings({ statuses: statusesProp = [], scenarios 
     try {
       await apiCall.post(gasUrl || GAS_URL, { action: "saveStatuses", statuses: allRows });
       await onRefresh();
-      alert("保存しました");
+      showToast("保存しました", "success");
     } catch {
-      alert("保存に失敗しました");
+      showToast("保存に失敗しました", "error");
     } finally {
       setSaving(false);
     }

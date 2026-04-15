@@ -1,9 +1,11 @@
 import React from "react";
+import ConfirmModal from "../components/ConfirmModal";
 import { Link, useNavigate } from "react-router-dom";
 import axios from "axios";
 import { Plus, Trash2, Clock, ChevronRight, Settings } from "lucide-react";
 import { THEME, GAS_URL } from "../lib/constants";
 import { styles } from "../lib/styles";
+import { useToast } from "../ToastContext";
 
 // ==========================================
 // 🎬 ScenarioList - シナリオ管理
@@ -17,7 +19,10 @@ function statusColor(terminalType) {
   return { bg: "#EEF2FF", text: THEME.primary, border: THEME.primary };
 }
 
-export default function ScenarioList({ scenarios = [], statuses = [], onRefresh, gasUrl }) {
+export default function ScenarioList({
+scenarios = [], statuses = [], onRefresh, gasUrl }) {
+  const showToast = useToast();
+  const [confirmModal, setConfirmModal] = React.useState(null);
   const navigate = useNavigate();
 
   // シナリオIDごとにステップをグルーピング
@@ -38,8 +43,12 @@ export default function ScenarioList({ scenarios = [], statuses = [], onRefresh,
   const linkedStatuses = (statuses || []).filter(st => st.scenarioId);
 
   // 削除
-  const handleDelete = async (id) => {
-    if (!window.confirm(`シナリオ「${id}」を削除しますか？\n紐づいているステータスの設定も解除されます。`)) return;
+  const handleDelete = (id) => {
+    setConfirmModal({
+      title: `シナリオ「${id}」を削除しますか？`,
+      note: "紐づいているステータスの設定も解除されます。",
+      onConfirm: async () => {
+        setConfirmModal(null);
     try {
       await axios.post(
         gasUrl || GAS_URL,
@@ -48,11 +57,21 @@ export default function ScenarioList({ scenarios = [], statuses = [], onRefresh,
       );
       onRefresh();
     } catch {
-      alert("削除に失敗しました");
-    }
+          showToast("削除に失敗しました", "error");
+        }
+      },
+    });
   };
 
   return (
+    <>
+    <ConfirmModal
+      open={!!confirmModal}
+      title={confirmModal?.title || ""}
+      note={confirmModal?.note}
+      onConfirm={confirmModal?.onConfirm}
+      onCancel={() => setConfirmModal(null)}
+    />
     <div style={{ minHeight: "100vh", backgroundColor: THEME.bg, padding: "40px 64px" }}>
 
       {/* ── ヘッダー ── */}
@@ -217,5 +236,6 @@ export default function ScenarioList({ scenarios = [], statuses = [], onRefresh,
         )}
       </div>
     </div>
+    </>
   );
 }

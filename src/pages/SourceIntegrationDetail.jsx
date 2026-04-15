@@ -12,6 +12,7 @@ import CustomSelect from "../components/CustomSelect";
 import Page from "../components/Page";
 import StaffGroupSelect from "../components/StaffGroupSelect";
 import { SUPPORTED_SOURCES } from "./SourceIntegrationIndex";
+import { useToast } from "../ToastContext";
 
 // ============================================================
 // 🔗 SourceIntegrationDetail - 媒体連携 個別設定
@@ -130,6 +131,7 @@ export default function SourceIntegrationDetail({
   gasUrl             = GAS_URL,
   onRefresh,
 }) {
+  const showToast = useToast();
   const { sourceKey } = useParams();
   const navigate      = useNavigate();
 
@@ -213,7 +215,7 @@ export default function SourceIntegrationDetail({
   // ── 認証情報の保存 ───────────────────────────────────────────
   const handleSaveCreds = async () => {
     if (!loginForm.loginId || !loginForm.password) {
-      alert("ログインIDとパスワードを入力してください");
+      showToast("ログインIDとパスワードを入力してください", "warning");
       return;
     }
     setCredsSaving(true);
@@ -223,7 +225,7 @@ export default function SourceIntegrationDetail({
       setTimeout(() => setCredsSaved(false), 2000);
       onRefresh?.();
     } catch (e) {
-      alert("保存に失敗しました: " + (e?.message || e));
+      showToast("保存に失敗しました: " + (e?.message || e, "error"));
     } finally {
       setCredsSaving(false);
     }
@@ -261,7 +263,7 @@ export default function SourceIntegrationDetail({
       setTimeout(() => setRuleSaved(false), 2000);
       onRefresh?.();
     } catch (e) {
-      alert("保存に失敗しました: " + (e?.message || e));
+      showToast("保存に失敗しました: " + (e?.message || e, "error"));
     } finally {
       setRuleSaving(false);
     }
@@ -285,7 +287,7 @@ export default function SourceIntegrationDetail({
       setTimeout(() => setNotifySaved(false), 2000);
       onRefresh?.();
     } catch (e) {
-      alert("保存に失敗しました: " + (e?.message || e));
+      showToast("保存に失敗しました: " + (e?.message || e, "error"));
     } finally {
       setNotifySaving(false);
     }
@@ -304,7 +306,7 @@ export default function SourceIntegrationDetail({
       setTimeout(() => setMappingSaved(false), 2000);
       onRefresh?.();
     } catch (e) {
-      alert("保存に失敗しました: " + (e?.message || e));
+      showToast("保存に失敗しました: " + (e?.message || e, "error"));
     } finally {
       setMappingSaving(false);
     }

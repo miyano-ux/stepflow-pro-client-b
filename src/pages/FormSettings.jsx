@@ -8,6 +8,7 @@ import { THEME, GAS_URL } from "../lib/constants";
 import { styles } from "../lib/styles";
 import { apiCall } from "../lib/utils";
 import Page from "../components/Page";
+import { useToast } from "../ToastContext";
 
 // ==========================================
 // ⚙️ FormSettings - 登録項目定義ページ
@@ -22,6 +23,7 @@ const FIELD_TYPES = [
 const FIXED_FIELDS = ["姓", "名", "電話番号", "メールアドレス"];
 
 function buildItems(formSettings) {
+  const showToast = useToast();
   return (formSettings || []).map(f => ({
     name:     f.name || "",
     type:     f.type || "text",
@@ -68,9 +70,9 @@ export default function FormSettings({ formSettings = [], sheetCustomColumns = [
   // ── 保存（差分計算はGAS側で行う） ─────────────────
   const handleSave = async () => {
     for (const item of items) {
-      if (!item.name.trim()) return alert("項目名が未入力の項目があります");
+      if (!item.name.trim()) return showToast("項目名が未入力の項目があります", "warning");
       if (item.type === "dropdown" && !item.options.filter(o => o.trim()).length)
-        return alert(`「${item.name}」の選択肢が空です`);
+        return showToast(`「${item.name}」の選択肢が空です`, "warning");
     }
 
     const settings = items.map(item => ({
@@ -89,7 +91,7 @@ export default function FormSettings({ formSettings = [], sheetCustomColumns = [
       nav("/add");
     } catch (err) {
       console.error("saveFormSettings error:", err);
-      alert("保存に失敗しました: " + (err?.message || "不明なエラー"));
+      showToast("保存に失敗しました: " + (err?.message || "不明なエラー", "error"));
     } finally {
       setSaving(false);
     }

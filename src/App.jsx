@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from "react";
+import { ToastProvider, useToast } from "./ToastContext";
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
 import axios from "axios";
 import { MessageSquare, Loader2 } from "lucide-react";
@@ -104,6 +105,7 @@ function App() {
 
   // ── スタッフ一覧: App.jsx で一元管理・キャッシュ ──────────────
   // 各コンポーネントが個別に fetch しないよう、ここで取得して props で渡す
+  const [authError, setAuthError] = useState("");
   const [staffList, setStaffList] = useState(() => {
     try {
       const raw = localStorage.getItem("sf_staff_cache");
@@ -217,21 +219,26 @@ function App() {
                   const url = `${MASTER_WHITELIST_API}?action=checkAllowUser&email=${encodeURIComponent(email)}&company=${encodeURIComponent(CLIENT_COMPANY_NAME)}`;
                   const check = await axios.get(url);
                   if (!check.data?.allowed) {
-                    alert(`${email} はこの環境へのアクセス権がありません。\n管理者に連絡してください。`);
+                    setAuthError(`${email} はこの環境へのアクセス権がありません。管理者に連絡してください。`);
                     return;
                   }
                 } catch (e) {
                   console.error("[checkAllowUser] 通信エラー", e);
-                  alert("認証サーバーとの通信に失敗しました。しばらく経ってから再度お試しください。");
+                  setAuthError("認証サーバーとの通信に失敗しました。しばらく経ってから再度お試しください。");
                   return;
                 }
                 // ── 認証OK ─────────────────────────────────────
                 setUser(dec);
                 localStorage.setItem("sf_user", JSON.stringify(dec));
               }}
-              onError={() => alert("Googleログインに失敗しました。再度お試しください。")}
+              onError={() => setAuthError("Googleログインに失敗しました。再度お試しください。")}
             />
           </GoogleOAuthProvider>
+          {authError && (
+            <div style={{ marginTop: 16, padding: "12px 16px", backgroundColor: "#FEE2E2", borderRadius: 10, fontSize: 13, color: "#991B1B", fontWeight: 600, lineHeight: 1.6 }}>
+              {authError}
+            </div>
+          )}
         </div>
       </div>
     );
@@ -256,6 +263,7 @@ function App() {
 
   // ── メインレイアウト ──────────────────────────
   return (
+    <ToastProvider>
     <GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID}>
       <style>{globalStyle}</style>
       <Router>
@@ -335,6 +343,7 @@ function App() {
         </div>
       </Router>
     </GoogleOAuthProvider>
+    </ToastProvider>
   );
 }
 

@@ -4,6 +4,8 @@ import { Plus, Trash2, Globe, Loader2, GripVertical, CheckCircle2 } from "lucide
 import { THEME, GAS_URL } from "../lib/constants";
 import { styles } from "../lib/styles";
 import Page from "../components/Page";
+import ConfirmModal from "../components/ConfirmModal";
+import { useToast } from "../ToastContext";
 
 // ==========================================
 // 🌐 SourceManager - 流入元管理ページ
@@ -24,6 +26,8 @@ const PRESET_SOURCES = [
 ];
 
 export default function SourceManager({ sources = [], onRefresh, gasUrl = GAS_URL }) {
+  const showToast = useToast();
+  const [confirmModal, setConfirmModal] = React.useState(null);
   const [input, setInput]       = useState("");
   const [saving, setSaving]     = useState(false);
   const [saved, setSaved]       = useState(false);
@@ -36,7 +40,7 @@ export default function SourceManager({ sources = [], onRefresh, gasUrl = GAS_UR
     const name = (label || input).trim();
     if (!name) return;
     if (sources.some((s) => s.name === name)) {
-      alert(`「${name}」はすでに登録されています`);
+      showToast(`「${name}」はすでに登録されています`, "warning");
       return;
     }
     setSaving(true);
@@ -50,14 +54,14 @@ export default function SourceManager({ sources = [], onRefresh, gasUrl = GAS_UR
       setSaved(true);
       setTimeout(() => setSaved(false), 1800);
       onRefresh();
-    } catch { alert("追加に失敗しました"); }
+    } catch { showToast("追加に失敗しました", "error"); }
     finally { setSaving(false); }
   };
 
   // ── コスト更新 ────────────────────────────
   const handleCostSave = async (name) => {
     const cost = Number(costEdits[name] ?? "");
-    if (isNaN(cost) || cost < 0) { alert("正しい金額を入力してください"); return; }
+    if (isNaN(cost) || cost < 0) { showToast("正しい金額を入力してください", "warning"); return; }
     setCostSaving(name);
     try {
       await axios.post(
@@ -66,23 +70,29 @@ export default function SourceManager({ sources = [], onRefresh, gasUrl = GAS_UR
         { headers: { "Content-Type": "text/plain;charset=utf-8" } }
       );
       onRefresh();
-    } catch { alert("コストの保存に失敗しました"); }
+    } catch { showToast("コストの保存に失敗しました", "error"); }
     finally { setCostSaving(null); }
   };
 
   // ── 削除 ──────────────────────────────────
-  const handleDelete = async (name) => {
-    if (!window.confirm(`「${name}」を削除しますか？\n※ すでにこの流入元が設定されている顧客データには影響しません。`)) return;
-    setDeleting(name);
-    try {
-      await axios.post(
-        gasUrl,
-        JSON.stringify({ action: "deleteSource", name }),
-        { headers: { "Content-Type": "text/plain;charset=utf-8" } }
-      );
-      onRefresh();
-    } catch { alert("削除に失敗しました"); }
-    finally { setDeleting(null); }
+  const handleDelete = (name) => {
+    setConfirmModal({
+      title: `「${name}」を削除しますか？`,
+      note: "すでにこの流入元が設定されている顧客データには影響しません。",
+      onConfirm: async () => {
+        setConfirmModal(null);
+        setDeleting(name);
+        try {
+          await axios.post(
+            gasUrl,
+            JSON.stringify({ action: "deleteSource", name }),
+            { headers: { "Content-Type": "text/plain;charset=utf-8" } }
+          );
+          onRefresh();
+        } catch { showToast("削除に失敗しました", "error"); }
+        finally { setDeleting(null); }
+      },
+    });
   };
 
   // プリセットのうち未登録のもの
@@ -91,6 +101,14 @@ export default function SourceManager({ sources = [], onRefresh, gasUrl = GAS_UR
   );
 
   return (
+    <>
+    <ConfirmModal
+      open={!!confirmModal}
+      title={confirmModal?.title || ""}
+      note={confirmModal?.note}
+      onConfirm={confirmModal?.onConfirm}
+      onCancel={() => setConfirmModal(null)}
+    />
     <Page
       title="流入元の管理"
       subtitle="どの査定サイト・経路から来たお客様かを管理するための選択肢を設定します"
@@ -257,5 +275,6 @@ export default function SourceManager({ sources = [], onRefresh, gasUrl = GAS_UR
 
       </div>
     </Page>
+    </>
   );
 }

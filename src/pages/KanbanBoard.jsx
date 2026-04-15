@@ -9,6 +9,7 @@ import { THEME } from "../lib/constants";
 import { StaffDropdown } from "../components/StaffDropdown";
 import { apiCall, customerStore } from "../lib/utils";
 import PromptFieldsModal from "../components/PromptFieldsModal";
+import { useToast } from "../ToastContext";
 
 // ─────────────────────────────────────────────────────────
 // スタイル定数
@@ -417,7 +418,7 @@ function UketsukeModal({ info, gasUrl, contractTypes, staffList, onDone, onCance
       }
       onDone(info.customerId, info.newStatus, info.prevStatus, staffEmail);
     } catch {
-      alert("更新に失敗しました");
+      showToast("更新に失敗しました", "error");
       setSaving(false);
     }
   };
@@ -690,7 +691,7 @@ function WonModal({ info, gasUrl, onDone, onCancel }) {
       }
       onDone(info.customerId, info.newStatus, info.prevStatus);
     } catch {
-      alert("更新に失敗しました");
+      showToast("更新に失敗しました", "error");
       setSaving(false);
     }
   };
@@ -984,6 +985,7 @@ export default function KanbanBoard({
   customers = [], statuses = [], scenarios = [], scenarioSettings = {},
   onRefresh, onLightRefresh, staffList = [], properties = [], gasUrl, sources = [], contractTypes = [],
 }) {
+  const showToast = useToast();
   const navigate = useNavigate();
   const [filterStaff, setFilterStaff]       = useState("");
   // 初期値をストアのパッチ適用済みデータで初期化
@@ -1175,7 +1177,7 @@ export default function KanbanBoard({
       pendingUpdates.current.delete(cid);
       customerStore.patch(cid, { "対応ステータス": prevStatus });
       setLocalCustomers(prev => prev.map(c => String(c.id) === cid ? { ...c, "対応ステータス": prevStatus } : c));
-      alert("更新に失敗しました");
+      showToast("更新に失敗しました", "error");
     } finally {
       // ※ pendingUpdates.delete はここでは行わない
       //    サーバー確認（useEffect内）で削除することで、リフレッシュ後の先祖がえりを防ぐ

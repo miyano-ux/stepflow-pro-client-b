@@ -1,6 +1,8 @@
 import React, { useState, useRef } from "react";
+import ConfirmModal from "../components/ConfirmModal";
 import axios from "axios";
 import { Plus, Edit3, Trash2, Save, X, Loader2 } from "lucide-react";
+import { useToast } from "../ToastContext";
 
 const THEME = {
   primary: "#4F46E5", bg: "#F8FAFC", card: "#FFFFFF",
@@ -39,6 +41,7 @@ const PRESET_CONTENT =
 
 // ── 変数をハイライト表示するプレビュー ──────────────────
 function highlightVars(text) {
+  const showToast = useToast();
   if (!text) return null;
   const parts = text.split(/({{[^}]+}})/g);
   return parts.map((part, i) =>
@@ -49,6 +52,7 @@ function highlightVars(text) {
 }
 
 export default function TemplateManager({ templates = [], onRefresh, gasUrl }) {
+  const [confirmModal, setConfirmModal] = useState(null);
   const [modal, setModal]   = useState({ open: false, data: { id: "", name: "", content: "" } });
   const [saving, setSaving] = useState(false);
   const [lastInserted, setLastInserted] = useState(null); // 直近挿入した変数をフラッシュ表示
@@ -86,18 +90,23 @@ export default function TemplateManager({ templates = [], onRefresh, gasUrl }) {
       });
       setModal({ open: false, data: { id: "", name: "", content: "" } });
       onRefresh();
-    } catch { alert("保存に失敗しました"); }
+    } catch { showToast("保存に失敗しました", "error"); }
     finally { setSaving(false); }
   };
 
-  const handleDelete = async (id) => {
-    if (!window.confirm("このテンプレートを削除してもよろしいですか？")) return;
+  const handleDelete = (id) => {
+    setConfirmModal({
+      title: "このテンプレートを削除してもよろしいですか？",
+      onConfirm: async () => {
+        setConfirmModal(null);
     try {
       await axios.post(gasUrl, JSON.stringify({ action: "deleteTemplate", id }), {
         headers: { "Content-Type": "text/plain;charset=utf-8" },
       });
       onRefresh();
-    } catch { alert("削除に失敗しました"); }
+        } catch { showToast("削除に失敗しました", "error"); }
+      },
+    });
   };
 
   const openNew  = () => setModal({ open: true,  data: { id: "", name: "", content: PRESET_CONTENT } });
@@ -105,6 +114,13 @@ export default function TemplateManager({ templates = [], onRefresh, gasUrl }) {
   const closeModal = () => setModal({ open: false, data: { id: "", name: "", content: "" } });
 
   return (
+    <>
+    <ConfirmModal
+      open={!!confirmModal}
+      title={confirmModal?.title || ""}
+      onConfirm={confirmModal?.onConfirm}
+      onCancel={() => setConfirmModal(null)}
+    />
     <div style={{ minHeight: "100vh", backgroundColor: THEME.bg, padding: "40px 64px" }}>
 
       {/* ヘッダー */}
@@ -250,5 +266,6 @@ export default function TemplateManager({ templates = [], onRefresh, gasUrl }) {
         </div>
       )}
     </div>
+    </>
   );
 }

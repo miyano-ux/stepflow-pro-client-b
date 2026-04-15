@@ -7,6 +7,7 @@ import { styles } from "../lib/styles";
 import { apiCall, replaceVariables } from "../lib/utils";
 import Page from "../components/Page";
 import SmartDateTimePicker from "../components/SmartDateTimePicker";
+import { useToast } from "../ToastContext";
 
 // ==========================================
 // 💬 DirectSms - 個別メッセージ送信ページ
@@ -22,6 +23,7 @@ const formatScheduledTime = (iso) => {
 };
 
 function DirectSms({ customers = [], templates = [], onRefresh, masterUrl, currentUserEmail }) {
+  const showToast = useToast();
   const { id } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
@@ -95,7 +97,7 @@ function DirectSms({ customers = [], templates = [], onRefresh, masterUrl, curre
       setMsg(updatedMsg);
     } catch (e) {
       console.error(e);
-      alert("トラッキングURLへの変換に失敗しました。Vercelの環境変数BASE_URLが正しく設定されているか確認してください。");
+      showToast("トラッキングURLへの変換に失敗しました。Vercelの環境変数BASE_URLが正しく設定されているか確認してください。", "error");
     } finally {
       setIsConverting(false);
     }
@@ -103,7 +105,7 @@ function DirectSms({ customers = [], templates = [], onRefresh, masterUrl, curre
 
   // 確認ボタン押下 → モーダル表示
   const handleConfirmOpen = () => {
-    if (!msg) return alert("本文を入力してください");
+    if (!msg) return showToast("本文を入力してください", "warning");
     setShowConfirm(true);
   };
 
@@ -126,7 +128,7 @@ function DirectSms({ customers = [], templates = [], onRefresh, masterUrl, curre
       navigate(`/schedule/${id}`, { state: { justScheduled: true } });
     } catch (e) {
       console.error(e);
-      alert("配信予約に失敗しました");
+      showToast("配信予約に失敗しました", "error");
     } finally {
       setIsSending(false);
     }

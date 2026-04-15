@@ -6,7 +6,9 @@ import { styles } from "../lib/styles";
 import CustomSelect from "../components/CustomSelect";
 import { apiCall } from "../lib/utils";
 import Page from "../components/Page";
+import ConfirmModal from "../components/ConfirmModal";
 import StaffGroupSelect from "../components/StaffGroupSelect";
+import { useToast } from "../ToastContext";
 
 // ==========================================
 // 📧 GmailSettings - Gmail自動取り込み設定
@@ -40,6 +42,8 @@ function GmailSettings({
   gmailSettings = [], scenarios = [], formSettings = [],
   statuses = [], sources = [], staffList = [], groups = [], onRefresh,
 }) {
+  const showToast = useToast();
+  const [confirmModal, setConfirmModal] = React.useState(null);
   const [modal, setModal] = useState({ open: false, mode: "add", id: null, data: INITIAL_DATA });
   const [testBody, setTestBody] = useState("");
   const [parsePreview, setParsePreview] = useState(null);
@@ -74,14 +78,20 @@ function GmailSettings({
     setParsePreview(null);
   };
 
-  const handleDelete = async (index) => {
-    if (!window.confirm("削除しますか？")) return;
-    await apiCall.post(GAS_URL, { action: "deleteGmailSetting", id: index });
-    onRefresh();
+  const handleDelete = (index) => {
+    setConfirmModal({
+      title: "削除しますか？",
+      message: "このGmail取り込みルールを削除します。",
+      onConfirm: async () => {
+        setConfirmModal(null);
+        await apiCall.post(GAS_URL, { action: "deleteGmailSetting", id: index });
+        onRefresh();
+      },
+    });
   };
 
   const handleSave = async () => {
-    if (!modal.data.from) return alert("送信元アドレスは必須です");
+    if (!modal.data.from) return showToast("送信元アドレスは必須です", "warning");
     await apiCall.post(GAS_URL, {
       action: "saveGmailSetting",
       id: modal.id,
@@ -100,7 +110,7 @@ function GmailSettings({
   };
 
   const handleTest = () => {
-    if (!testBody) return alert("テスト用の本文を入力してください");
+    if (!testBody) return showToast("テスト用の本文を入力してください", "warning");
     try {
       const extract = (key) => {
         if (!key) return "－";
@@ -112,7 +122,7 @@ function GmailSettings({
         if (v) customs[k] = extract(v);
       });
       setParsePreview({ name: extract(modal.data.nameKey), phone: extract(modal.data.phoneKey), customs });
-    } catch { alert("キーの形式が正しくありません"); }
+    } catch { showToast("キーの形式が正しくありません", "info"); }
   };
 
   // カード上の管理項目サマリ表示用
@@ -122,6 +132,15 @@ function GmailSettings({
   };
 
   return (
+    <>
+    <ConfirmModal
+      open={!!confirmModal}
+      title={confirmModal?.title || ""}
+      message={confirmModal?.message}
+      note={confirmModal?.note}
+      onConfirm={confirmModal?.onConfirm}
+      onCancel={() => setConfirmModal(null)}
+    />
     <Page title="Gmail自動取り込み設定" subtitle="メールを受信したとき、自動で顧客を登録するルールを定義できます">
 
       {/* 戻るボタン */}
@@ -366,6 +385,8 @@ function GmailSettings({
         </div>
       )}
     </Page>
+  );
+    </>
   );
 }
 

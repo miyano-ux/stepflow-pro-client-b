@@ -6,11 +6,13 @@ import { styles } from "../lib/styles";
 import { apiCall, formatDate, smartNormalizePhone } from "../lib/utils";
 import Page from "../components/Page";
 import SmartDateTimePicker from "../components/SmartDateTimePicker";
+import { useToast } from "../ToastContext";
 
 function CustomerSchedule({ customers = [], deliveryLogs = [], onRefresh }) {
   const navigate  = useNavigate();
   const { id }    = useParams();
   const location  = useLocation();
+  const showToast = useToast();
 
   const justScheduled = location.state?.justScheduled || false;
 
@@ -91,7 +93,7 @@ function CustomerSchedule({ customers = [], deliveryLogs = [], onRefresh }) {
       await onRefresh();
       setEdit(null);
     } catch (e) {
-      alert("更新に失敗しました: " + e.message);
+      showToast("更新に失敗しました: " + e.message, "error");
     } finally {
       setIsSavingEdit(false);
     }
@@ -108,7 +110,7 @@ function CustomerSchedule({ customers = [], deliveryLogs = [], onRefresh }) {
       await onRefresh();
       setDeleteTarget(null);
     } catch (e) {
-      alert("削除に失敗しました: " + e.message);
+      showToast("削除に失敗しました: " + e.message, "error");
     } finally {
       setIsDeleting(false);
     }

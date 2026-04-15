@@ -13,6 +13,8 @@ import DatePicker from "../components/DatePicker";
 import StatusTimeline from "../components/StatusTimeline";
 import PromptFieldsModal from "../components/PromptFieldsModal";
 import StaffGroupSelect from "../components/StaffGroupSelect";
+import ConfirmModal from "../components/ConfirmModal";
+import { useToast } from "../ToastContext";
 
 // ==========================================
 // 👤 CustomerDetail - 顧客詳細ページ
@@ -117,6 +119,7 @@ export default function CustomerDetail({
   contractTypes = [], trackingLogs = [], staffList = [], groups = [],
   statusHistory = [], properties: allProperties = [], gasUrl, onRefresh,
 }) {
+  const showToast = useToast();
   const { id } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
@@ -133,6 +136,7 @@ export default function CustomerDetail({
   const [propSaving, setPropSaving]  = useState(false);
   const [newProp, setNewProp]        = useState(null); // null or {} でフォーム表示切替
   const [editingPropId, setEditingPropId] = useState(null);
+  const [confirmModal, setConfirmModal] = useState(null);
   const [editingPropData, setEditingPropData] = useState({});
   const PROP_STATUSES   = ["検討中", "成約", "見送り"];
   const PROP_TYPES      = ["マンション", "戸建", "土地", "事務所", "その他"];
@@ -206,7 +210,7 @@ export default function CustomerDetail({
           snapshot = { ...snapshot, "担当者メール": res.data.email };
           setFormData(snapshot);
         } else {
-          alert("グループ割り当てに失敗しました: " + (res.data?.message || ""));
+          showToast("グループ割り当てに失敗しました: " + (res.data?.message || "", "error"));
           setSyncingCount(0);
           return;
         }
@@ -236,7 +240,7 @@ export default function CustomerDetail({
         setPendingHistoryEntry(null); // サーバーデータに置き換わったので楽観エントリ削除
       });
     } catch {
-      alert("更新に失敗しました");
+      showToast("更新に失敗しました", "error");
       setSyncingCount(0);
       setPendingHistoryEntry(null); // 失敗時はエントリを取り消し
     }
@@ -285,7 +289,7 @@ export default function CustomerDetail({
 
   // ── 物件 CRUD ────────────────────────────────────────
   const handleAddProperty = async () => {
-    if (!newProp?.name) { alert("物件名を入力してください"); return; }
+    if (!newProp?.name) { showToast("物件名を入力してください", "warning"); return; }
     setPropSaving(true);
     try {
       const res = await axios.post(gasUrl,
@@ -297,7 +301,7 @@ export default function CustomerDetail({
       }
       setNewProp(null);
       onRefresh();
-    } catch { alert("物件の登録に失敗しました"); }
+    } catch { showToast("物件の登録に失敗しました", "error"); }
     finally { setPropSaving(false); }
   };
 
@@ -311,12 +315,15 @@ export default function CustomerDetail({
       setProperties(prev => prev.map(p => p.id === propId ? { ...p, ...editingPropData } : p));
       setEditingPropId(null);
       onRefresh();
-    } catch { alert("物件の更新に失敗しました"); }
+    } catch { showToast("物件の更新に失敗しました", "error"); }
     finally { setPropSaving(false); }
   };
 
-  const handleDeleteProperty = async (propId) => {
-    if (!window.confirm("この物件を削除しますか？")) return;
+  const handleDeleteProperty = (propId) => {
+    setConfirmModal({
+      title: "この物件を削除しますか？",
+      onConfirm: async () => {
+        setConfirmModal(null);
     try {
       await axios.post(gasUrl,
         JSON.stringify({ action: "deleteProperty", id: propId }),
@@ -324,7 +331,9 @@ export default function CustomerDetail({
       );
       setProperties(prev => prev.filter(p => p.id !== propId));
       onRefresh();
-    } catch { alert("物件の削除に失敗しました"); }
+        } catch { showToast("物件の削除に失敗しました", "error"); }
+      },
+    });
   };
 
   if (!formData) {
@@ -339,6 +348,13 @@ export default function CustomerDetail({
   const assignedName = assignedStaff ? `${assignedStaff.lastName} ${assignedStaff.firstName}` : null;
 
   return (
+    <>
+      <ConfirmModal
+        open={!!confirmModal}
+        title={confirmModal?.title || ""}
+        onConfirm={confirmModal?.onConfirm}
+        onCancel={() => setConfirmModal(null)}
+      />
     <div style={{ minHeight: "100vh", backgroundColor: THEME.bg, padding: "40px 48px" }}>
 
       {/* ── ヘッダー ── */}
@@ -785,5 +801,6 @@ export default function CustomerDetail({
         </div>
       )}
     </div>
+    </>
   );
 }

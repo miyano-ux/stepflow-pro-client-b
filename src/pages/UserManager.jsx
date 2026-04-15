@@ -7,6 +7,8 @@ import {
 } from "lucide-react";
 import { THEME, GAS_URL } from "../lib/constants";
 import { styles } from "../lib/styles";
+import ConfirmModal from "../components/ConfirmModal";
+import { useToast } from "../ToastContext";
 
 // ==========================================
 // 👥 UserManager - ユーザー管理 + グループ管理
@@ -36,7 +38,7 @@ function GroupCard({ group, staffList, onSave, onDelete }) {
     );
 
   const handleSave = async () => {
-    if (!name.trim()) return alert("グループ名を入力してください");
+    if (!name.trim()) return showToast("グループ名を入力してください", "warning");
     setSaving(true);
     // 楽観的更新：即座にヘッダーに反映
     setSavedLabel({ name: name.trim(), members: [...members] });
@@ -160,6 +162,8 @@ export default function UserManager({
   staffList = [], groups: groupsProp = [], statuses = [],
   onRefreshStaff, onRefresh, masterUrl, gasUrl, companyName = "B社",
 }) {
+  const [confirmModal, setConfirmModal] = useState(null);
+  const showToast = useToast();
   const navigate = useNavigate();
   const [refreshing,      setRefreshing]      = useState(false);
   const [addingGroup,     setAddingGroup]      = useState(false);
@@ -177,17 +181,23 @@ export default function UserManager({
     try { await onRefreshStaff(); } finally { setRefreshing(false); }
   };
 
-  const handleDeleteUser = async (email) => {
-    if (!window.confirm("このユーザーを完全に削除しますか？")) return;
-    try {
-      const res = await axios.post(
-        masterUrl,
-        JSON.stringify({ action: "deleteUser", email, company: companyName }),
-        { headers: { "Content-Type": "text/plain;charset=utf-8" } }
-      );
-      if (res.data.status === "success") await onRefreshStaff();
-      else alert("失敗: " + res.data.message);
-    } catch { alert("通信エラーが発生しました"); }
+  const handleDeleteUser = (email) => {
+    setConfirmModal({
+      title: "このユーザーを完全に削除しますか？",
+      message: email,
+      onConfirm: async () => {
+        setConfirmModal(null);
+        try {
+          const res = await axios.post(
+            masterUrl,
+            JSON.stringify({ action: "deleteUser", email, company: companyName }),
+            { headers: { "Content-Type": "text/plain;charset=utf-8" } }
+          );
+          if (res.data.status === "success") await onRefreshStaff();
+          else showToast("失敗: " + res.data.message, "error");
+        } catch { showToast("通信エラーが発生しました", "error"); }
+      },
+    });
   };
 
   // グループ保存（楽観的更新：即座にローカルに反映 → バックグラウンドでGAS保存）
@@ -201,20 +211,20 @@ export default function UserManager({
     try {
       const res = await axios.post(GAS_URL, JSON.stringify({ action: "saveGroup", groupId, name, members }), { headers: { "Content-Type": "text/plain;charset=utf-8" } });
       if (res.data?.status === "error") {
-        alert("エラー: " + (res.data.message || "保存に失敗しました"));
+        showToast("エラー: " + (res.data.message || "保存に失敗しました", "error"));
         if (onRefresh) onRefresh(); // 失敗時は正確なデータを再取得
       } else {
         onRefresh?.(); // バックグラウンドで同期（awaitしない）
       }
     } catch(e) {
-      alert("通信エラー: " + (e?.message || "不明なエラー"));
+      showToast("通信エラー: " + (e?.message || "不明なエラー", "error"));
       if (onRefresh) onRefresh();
     }
   };
 
   // グループ新規作成
   const handleAddGroup = async () => {
-    if (!newGroupName.trim()) return alert("グループ名を入力してください");
+    if (!newGroupName.trim()) return showToast("グループ名を入力してください", "warning");
     const groupId = "g_" + Date.now();
     const newGroup = {
       "グループID": groupId,
@@ -229,35 +239,48 @@ export default function UserManager({
     try {
       const res = await axios.post(GAS_URL, JSON.stringify({ action: "saveGroup", groupId, name: newGroupName.trim(), members: newGroupMembers }), { headers: { "Content-Type": "text/plain;charset=utf-8" } });
       if (res.data?.status === "error") {
-        alert("エラー: " + (res.data.message || "保存に失敗しました"));
+        showToast("エラー: " + (res.data.message || "保存に失敗しました", "error"));
         setLocalGroups(prev => prev.filter(g => g["グループID"] !== groupId));
       } else {
         onRefresh?.();
       }
     } catch(e) {
-      alert("通信エラー: " + (e?.message || "不明なエラー"));
+      showToast("通信エラー: " + (e?.message || "不明なエラー", "error"));
       setLocalGroups(prev => prev.filter(g => g["グループID"] !== groupId));
     }
   };
 
   // グループ削除
-  const handleDeleteGroup = async (groupId) => {
-    if (!window.confirm("このグループを削除しますか？")) return;
-    // 即時反映
-    const removed = localGroups.find(g => g["グループID"] === groupId);
-    setLocalGroups(prev => prev.filter(g => g["グループID"] !== groupId));
-    try {
-      await axios.post(GAS_URL, JSON.stringify({ action: "deleteGroup", groupId }), { headers: { "Content-Type": "text/plain;charset=utf-8" } });
-      onRefresh?.();
-    } catch(e) {
-      alert("通信エラー: " + (e?.message || "不明なエラー"));
-      // 失敗時は元に戻す
-      if (removed) setLocalGroups(prev => [...prev, removed]);
-    }
+  const handleDeleteGroup = (groupId) => {
+    setConfirmModal({
+      title: "このグループを削除しますか？",
+      onConfirm: async () => {
+        setConfirmModal(null);
+        // 即時反映
+        const removed = localGroups.find(g => g["グループID"] === groupId);
+        setLocalGroups(prev => prev.filter(g => g["グループID"] !== groupId));
+        try {
+          await axios.post(GAS_URL, JSON.stringify({ action: "deleteGroup", groupId }), { headers: { "Content-Type": "text/plain;charset=utf-8" } });
+          onRefresh?.();
+        } catch(e) {
+          showToast("通信エラー: " + (e?.message || "不明なエラー", "error"));
+          // 失敗時は元に戻す
+          if (removed) setLocalGroups(prev => [...prev, removed]);
+        }
+      },
+    });
   };
 
   return (
-    <div style={lS.main}>
+    <>
+      <ConfirmModal
+        open={!!confirmModal}
+        title={confirmModal?.title || ""}
+        message={confirmModal?.message}
+        onConfirm={confirmModal?.onConfirm}
+        onCancel={() => setConfirmModal(null)}
+      />
+      <div style={lS.main}>
       <div style={lS.wrapper}>
 
         {/* ── ユーザー一覧 ── */}
@@ -435,5 +458,6 @@ export default function UserManager({
 
       </div>
     </div>
+    </>
   );
 }
