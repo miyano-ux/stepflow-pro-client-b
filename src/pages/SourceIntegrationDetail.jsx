@@ -315,14 +315,8 @@ export default function SourceIntegrationDetail({
   // ── マッピング先カラム選択肢 ─────────────────────────────────
   // 「顧客情報」グループ：processCustomerRegistration で直接処理される特殊カラム
   const PERSONAL_DEST_COLS = ["姓", "名", "姓（カナ）", "名（カナ）", "電話番号", "メールアドレス"];
-  // 「物件・査定情報」グループ：data{} に格納される汎用カラム
-  const PROPERTY_DEST_COLS = [
-    "問い合わせ番号", "物件種別", "物件名", "物件住所", "所在地",
-    "土地面積", "建物面積", "専有面積", "間取り", "築年", "完成年",
-    "現況", "名義", "残債", "事業所名", "部屋番号",
-    "売却希望時期", "売却理由", "ご要望", "希望連絡時間",
-    "受付日時", "受信日時", "住所", "郵便番号",
-  ];
+  // 「物件情報」グループ：物件リストに紐づく4項目
+  const PROPERTY_DEST_COLS = ["物件名", "物件種別", "査定金額", "成約金額"];
   const ALL_FIXED = new Set([...PERSONAL_DEST_COLS, ...PROPERTY_DEST_COLS]);
   const customDestCols = (formSettings || [])
     .map(f => f.name)
@@ -331,7 +325,7 @@ export default function SourceIntegrationDetail({
     { value: "", label: "— 保存しない —" },
     { value: "__group_personal__", label: "── 顧客情報 ──", disabled: true },
     ...PERSONAL_DEST_COLS.map(c => ({ value: c, label: c })),
-    { value: "__group_property__", label: "── 物件・査定情報 ──", disabled: true },
+    { value: "__group_property__", label: "── 物件情報 ──", disabled: true },
     ...PROPERTY_DEST_COLS.map(c => ({ value: c, label: c })),
     ...(customDestCols.length > 0 ? [
       { value: "__group_custom__", label: "── カスタム項目 ──", disabled: true },

@@ -163,6 +163,26 @@ function App() {
     }
   }, [refresh]);
 
+  // シナリオの楽観的UI更新（新規追加・編集後にGAS再取得を待たずに即時反映）
+  const optimisticAddScenario = useCallback((scenarioID, steps) => {
+    const newRows = steps.map((step, i) => ({
+      シナリオID:  scenarioID,
+      ステップ数:  i + 1,
+      経過日数:    step.elapsedDays,
+      配信時間:    step.deliveryHour,
+      配信分:      step.deliveryMinute ?? 0,
+      message:     step.message,
+    }));
+    setD(prev => ({
+      ...prev,
+      scenarios: [
+        // 編集の場合は既存ステップを除去してから追加（新規の場合はそのまま追加）
+        ...prev.scenarios.filter(s => s["シナリオID"] !== scenarioID),
+        ...newRows,
+      ],
+    }));
+  }, []);
+
   useEffect(() => {
     refresh();
   }, [refresh]);
@@ -292,7 +312,7 @@ function App() {
               <Route path="/customers" element={<CustomerList customers={d?.customers} displaySettings={displaySettings} formSettings={d?.formSettings} scenarios={d?.scenarios} statuses={d?.statuses} staffList={staffList} scenarioSettings={d?.scenarioSettings} sources={d?.sources} properties={d?.properties} gasUrl={GAS_URL} onRefresh={refresh} onLightRefresh={lightRefresh} />} />
               <Route path="/add" element={<CustomerForm scenarios={d?.scenarios} formSettings={d?.formSettings} statuses={d?.statuses} staffList={staffList} sources={d?.sources} groups={d?.groups} contractTypes={d?.contractTypes} onRefresh={refresh} />} />
               <Route path="/schedule/:id" element={<CustomerSchedule customers={d?.customers} deliveryLogs={d?.deliveryLogs} onRefresh={refresh} />} />
-              <Route path="/detail/:id" element={<CustomerDetail customers={d?.customers} formSettings={d?.formSettings} statuses={d?.statuses} sources={d?.sources} contractTypes={d?.contractTypes} trackingLogs={d?.trackingLogs} staffList={staffList} groups={d?.groups} statusHistory={d?.statusHistory} properties={d?.properties} gasUrl={GAS_URL} onRefresh={refresh} />} />
+              <Route path="/detail/:id" element={<CustomerDetail customers={d?.customers} formSettings={d?.formSettings} statuses={d?.statuses} sources={d?.sources} contractTypes={d?.contractTypes} trackingLogs={d?.trackingLogs} staffList={staffList} groups={d?.groups} statusHistory={d?.statusHistory} properties={d?.properties} scenarios={d?.scenarios} gasUrl={GAS_URL} onRefresh={refresh} />} />
               <Route path="/direct-sms/:id" element={<DirectSms customers={d?.customers} templates={d?.templates} onRefresh={refresh} masterUrl={MASTER_WHITELIST_API} currentUserEmail={user?.email} />} />
 
               {/* 設定 */}
@@ -306,16 +326,16 @@ function App() {
               {/* テンプレート・シナリオ */}
               <Route path="/templates" element={<TemplateManager templates={d?.templates} onRefresh={refresh} gasUrl={GAS_URL} />} />
               <Route path="/scenarios" element={<ScenarioList scenarios={d?.scenarios} statuses={d?.statuses} onRefresh={refresh} gasUrl={GAS_URL} />} />
-              <Route path="/scenarios/new" element={<ScenarioForm scenarios={d?.scenarios} onRefresh={refresh} gasUrl={GAS_URL} />} />
-              <Route path="/scenarios/edit/:id" element={<ScenarioForm scenarios={d?.scenarios} onRefresh={refresh} gasUrl={GAS_URL} />} />
+              <Route path="/scenarios/new" element={<ScenarioForm scenarios={d?.scenarios} customers={d?.customers} staffList={staffList} currentUser={user} onRefresh={refresh} onOptimisticAdd={optimisticAddScenario} gasUrl={GAS_URL} />} />
+              <Route path="/scenarios/edit/:id" element={<ScenarioForm scenarios={d?.scenarios} customers={d?.customers} staffList={staffList} currentUser={user} onRefresh={refresh} onOptimisticAdd={optimisticAddScenario} gasUrl={GAS_URL} />} />
 
               {/* 媒体連携設定 */}
-              <Route path="/source-integrations" element={<SourceIntegrationIndex sourceCredsStatus={d?.sourceCredsStatus ?? {}} clientInfo={d?.clientInfo ?? {}} />} />
+              <Route path="/source-integrations" element={<SourceIntegrationIndex sourceCredsStatus={d?.sourceCredsStatus ?? {}} clientInfo={d?.clientInfo ?? {}} gmailSettings={d?.gmailSettings ?? []} />} />
               <Route path="/source-integrations/:sourceKey" element={<SourceIntegrationDetail sourceIntegrations={d?.sourceIntegrations ?? []} sourceCredsStatus={d?.sourceCredsStatus ?? {}} sourceLoginIds={d?.sourceLoginIds ?? {}} clientInfo={d?.clientInfo ?? {}} scenarios={d?.scenarios} statuses={d?.statuses} sources={d?.sources} staffList={staffList} groups={d?.groups} formSettings={d?.formSettings} fieldMappings={d?.fieldMappings ?? {}} gasUrl={GAS_URL} onRefresh={refresh} />} />
 
               {/* 反響取り込み */}
               <Route path="/response-import" element={<ResponseImportPortal />} />
-              <Route path="/gmail-settings" element={<GmailSettings gmailSettings={d?.gmailSettings} scenarios={d?.scenarios} formSettings={d?.formSettings} statuses={d?.statuses} sources={d?.sources} staffList={staffList} groups={d?.groups} onRefresh={refresh} />} />
+              <Route path="/gmail-settings" element={<GmailSettings gmailSettings={d?.gmailSettings} scenarios={d?.scenarios} formSettings={d?.formSettings} statuses={d?.statuses} sources={d?.sources} staffList={staffList} groups={d?.groups} clientInfo={d?.clientInfo ?? {}} onRefresh={refresh} />} />
               <Route path="/import-errors" element={<ImportErrorList errors={d?.importErrors} onRefresh={refresh} />} />
 
               {/* ユーザー管理 */}

@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
 import {
@@ -24,21 +24,126 @@ const lS = {
   secSub:   { fontSize: 14, color: THEME.textMuted, margin: 0 },
 };
 
+// ── 成功モーダル ──────────────────────────────────────────────
+function SuccessModal({ open, message, onClose }) {
+  useEffect(() => {
+    if (!open) return;
+    const timer = setTimeout(onClose, 2200);
+    return () => clearTimeout(timer);
+  }, [open, onClose]);
+
+  if (!open) return null;
+
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: "fixed", inset: 0,
+        backgroundColor: "rgba(15,23,42,0.45)",
+        backdropFilter: "blur(3px)",
+        display: "flex", justifyContent: "center", alignItems: "center",
+        zIndex: 4000,
+        animation: "smFadeIn 0.15s ease",
+      }}
+    >
+      <style>{`
+        @keyframes smFadeIn { from { opacity: 0 } to { opacity: 1 } }
+        @keyframes smPopIn  { from { opacity: 0; transform: scale(0.85) } to { opacity: 1; transform: scale(1) } }
+        @keyframes smDrawCheck {
+          from { stroke-dashoffset: 60 }
+          to   { stroke-dashoffset: 0  }
+        }
+        @keyframes smProgressBar {
+          from { width: 100% }
+          to   { width: 0% }
+        }
+      `}</style>
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          backgroundColor: "white",
+          borderRadius: 24,
+          padding: "44px 48px 36px",
+          maxWidth: 360,
+          width: "90%",
+          textAlign: "center",
+          boxShadow: "0 32px 64px rgba(0,0,0,0.18)",
+          animation: "smPopIn 0.2s cubic-bezier(0.34,1.56,0.64,1)",
+        }}
+      >
+        <div style={{
+          width: 72, height: 72, borderRadius: "50%",
+          backgroundColor: "#F0FDF4",
+          display: "flex", alignItems: "center", justifyContent: "center",
+          margin: "0 auto 20px",
+        }}>
+          <svg width="40" height="40" viewBox="0 0 40 40" fill="none">
+            <circle cx="20" cy="20" r="18" stroke="#22C55E" strokeWidth="2.5" fill="none" />
+            <path
+              d="M12 20.5 L17.5 26 L28 14"
+              stroke="#22C55E"
+              strokeWidth="3"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeDasharray="60"
+              strokeDashoffset="0"
+              style={{ animation: "smDrawCheck 0.35s ease 0.1s both" }}
+            />
+          </svg>
+        </div>
+        <h3 style={{ margin: "0 0 8px", fontSize: 22, fontWeight: 900, color: "#111827" }}>
+          完了しました
+        </h3>
+        <p style={{ margin: "0 0 28px", fontSize: 14, color: "#6B7280", lineHeight: 1.6 }}>
+          {message}
+        </p>
+        <button
+          onClick={onClose}
+          style={{
+            width: "100%", padding: "13px",
+            backgroundColor: "#22C55E", color: "white",
+            border: "none", borderRadius: 12,
+            fontSize: 15, fontWeight: 800, cursor: "pointer",
+          }}
+        >
+          OK
+        </button>
+        <div style={{ marginTop: 16, height: 3, borderRadius: 99, backgroundColor: "#F3F4F6", overflow: "hidden" }}>
+          <div style={{
+            height: "100%", backgroundColor: "#22C55E", borderRadius: 99,
+            animation: "smProgressBar 2.2s linear",
+            transformOrigin: "left",
+          }} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── グループカード ─────────────────────────────────────────────
 function GroupCard({ group, staffList, onSave, onDelete }) {
+  const showToast = useToast();
   const [open,        setOpen]        = useState(false);
   const [name,        setName]        = useState(group.name);
   const [members,     setMembers]     = useState(group.members);
   const [saving,      setSaving]      = useState(false);
   const [savedLabel,  setSavedLabel]  = useState(null); // 楽観的表示用
+  const [confirmSave, setConfirmSave] = useState(false); // 保存確認モーダル
 
   const toggle = (email) =>
     setMembers(prev =>
       prev.includes(email) ? prev.filter(e => e !== email) : [...prev, email]
     );
 
-  const handleSave = async () => {
+  // 保存ボタン押下 → バリデーション → 確認モーダルを表示
+  const handleSave = () => {
     if (!name.trim()) return showToast("グループ名を入力してください", "warning");
+    setConfirmSave(true);
+  };
+
+  // 確認モーダルで「保存する」を押したときの実処理
+  const doSave = async () => {
+    setConfirmSave(false);
     setSaving(true);
     // 楽観的更新：即座にヘッダーに反映
     setSavedLabel({ name: name.trim(), members: [...members] });
@@ -46,7 +151,7 @@ function GroupCard({ group, staffList, onSave, onDelete }) {
       await onSave({ groupId: group.groupId, name: name.trim(), members });
       setOpen(false); // 保存完了でパネルを閉じる
     } catch {
-      setSavedLabel(null); // 失敗時は戻す
+      setSavedLabel(null); // 失敗時は楽観的表示を元に戻す
     } finally {
       setSaving(false);
     }
@@ -61,6 +166,16 @@ function GroupCard({ group, staffList, onSave, onDelete }) {
   });
 
   return (
+    <>
+    <ConfirmModal
+      open={confirmSave}
+      title="グループを保存しますか？"
+      message={`「${name.trim() || "（名称未設定）"}」を保存します。`}
+      onConfirm={doSave}
+      onCancel={() => setConfirmSave(false)}
+      confirmLabel="保存する"
+      confirmColor={THEME.primary}
+    />
     <div style={{ border: `1px solid ${open ? THEME.primary : THEME.border}`, borderRadius: 14, overflow: "hidden", marginBottom: 12, transition: "border-color 0.15s" }}>
       {/* ヘッダー */}
       <div
@@ -154,6 +269,7 @@ function GroupCard({ group, staffList, onSave, onDelete }) {
         </div>
       )}
     </div>
+    </>
   );
 }
 
@@ -163,6 +279,7 @@ export default function UserManager({
   onRefreshStaff, onRefresh, masterUrl, gasUrl, companyName = "B社",
 }) {
   const [confirmModal, setConfirmModal] = useState(null);
+  const [successModal, setSuccessModal] = useState({ open: false, message: "" });
   const showToast = useToast();
   const navigate = useNavigate();
   const [refreshing,      setRefreshing]      = useState(false);
@@ -170,11 +287,27 @@ export default function UserManager({
   const [newGroupName,    setNewGroupName]     = useState("");
   const [newGroupMembers, setNewGroupMembers]  = useState([]);
 
-  // グループをローカルstateで管理して即時反映
+  // ── 楽観的UI（パターンA：固有IDあり） ──────────────────────
+  // ※ すべての state/ref 宣言は useEffect より前に書く（TDZエラー防止）
   const [localGroups, setLocalGroups] = useState(groupsProp);
+  // 削除済みグループIDを記録（GASキャッシュ staleデータ対策）
+  // onRefresh() が古いデータを返しても復活しないようにガード
+  const deletedIdsRef = useRef(new Set());
 
-  // propsが変わったとき（初回ロード・外部更新）だけ同期
-  React.useEffect(() => { setLocalGroups(groupsProp); }, [groupsProp]);
+  // groupsProp が変化したとき（初回ロード・手動更新）にローカルへ同期
+  // 削除済みIDを除外し、まだ正式IDが届いていない仮エントリを先頭に残す
+  React.useEffect(() => {
+    setLocalGroups((prev) => {
+      const filtered = groupsProp.filter(
+        (x) => !deletedIdsRef.current.has(x["グループID"])
+      );
+      // _isTemp かつ filtered に同IDがない → まだ正式エントリ未着
+      const pendingTemps = prev.filter(
+        (x) => x._isTemp && !filtered.some((f) => f["グループID"] === x["グループID"])
+      );
+      return [...pendingTemps, ...filtered];
+    });
+  }, [groupsProp]);
 
   const handleRefresh = async () => {
     setRefreshing(true);
@@ -190,7 +323,7 @@ export default function UserManager({
         try {
           const res = await axios.post(
             masterUrl,
-            JSON.stringify({ action: "deleteUser", email, company: companyName }),
+            JSON.stringify({ action: "deleteAllowUser", "メール": email, company: companyName }),
             { headers: { "Content-Type": "text/plain;charset=utf-8" } }
           );
           if (res.data.status === "success") await onRefreshStaff();
@@ -200,25 +333,37 @@ export default function UserManager({
     });
   };
 
-  // グループ保存（楽観的更新：即座にローカルに反映 → バックグラウンドでGAS保存）
+  // グループ保存（編集）楽観的更新：即座にローカルに反映 → バックグラウンドでGAS保存
+  // 成功時は onRefresh() 不要（GASキャッシュ遅延で書き込み前のデータが返るのを避ける）
   const handleSaveGroup = async ({ groupId, name, members }) => {
-    // 即時反映
-    setLocalGroups(prev => prev.map(g =>
-      g["グループID"] === groupId
-        ? { ...g, "グループ名": name, "メンバーメール": members.join(",") }
-        : g
-    ));
+    const prevItems = localGroups;
+    // 1) 楽観的更新
+    setLocalGroups((prev) =>
+      prev.map((g) =>
+        g["グループID"] === groupId
+          ? { ...g, "グループ名": name, "メンバーメール": members.join(",") }
+          : g
+      )
+    );
     try {
-      const res = await axios.post(GAS_URL, JSON.stringify({ action: "saveGroup", groupId, name, members }), { headers: { "Content-Type": "text/plain;charset=utf-8" } });
+      const res = await axios.post(
+        GAS_URL,
+        JSON.stringify({ action: "saveGroup", groupId, name, members }),
+        { headers: { "Content-Type": "text/plain;charset=utf-8" } }
+      );
       if (res.data?.status === "error") {
-        showToast("エラー: " + (res.data.message || "保存に失敗しました", "error"));
-        if (onRefresh) onRefresh(); // 失敗時は正確なデータを再取得
-      } else {
-        onRefresh?.(); // バックグラウンドで同期（awaitしない）
+        showToast("エラー: " + (res.data.message || "保存に失敗しました"), "error");
+        setLocalGroups(prevItems); // ロールバック
+        // GroupCard の catch（savedLabel リセット）に伝播させる
+        throw Object.assign(new Error(res.data.message), { _handled: true });
       }
-    } catch(e) {
-      showToast("通信エラー: " + (e?.message || "不明なエラー", "error"));
-      if (onRefresh) onRefresh();
+    } catch (e) {
+      if (!e._handled) {
+        // axios レベルの通信エラー（上記 throw は除外）
+        showToast("通信エラー: " + (e?.message || "不明なエラー"), "error");
+        setLocalGroups(prevItems); // ロールバック
+      }
+      throw e; // GroupCard の catch（savedLabel リセット）に伝播
     }
   };
 
@@ -230,42 +375,63 @@ export default function UserManager({
       "グループID": groupId,
       "グループ名": newGroupName.trim(),
       "メンバーメール": newGroupMembers.join(","),
+      _isTemp: true, // サーバーの正式IDが届くまでの仮エントリフラグ
     };
-    // 即時反映
-    setLocalGroups(prev => [...prev, newGroup]);
+    const prevItems = localGroups;
+    // 1) 楽観的更新：末尾に追加
+    setLocalGroups((prev) => [...prev, newGroup]);
+    setSuccessModal({ open: true, message: `「${newGroupName.trim()}」を作成しました。` });
     setNewGroupName("");
     setNewGroupMembers([]);
     setAddingGroup(false);
     try {
-      const res = await axios.post(GAS_URL, JSON.stringify({ action: "saveGroup", groupId, name: newGroupName.trim(), members: newGroupMembers }), { headers: { "Content-Type": "text/plain;charset=utf-8" } });
+      const res = await axios.post(
+        GAS_URL,
+        JSON.stringify({ action: "saveGroup", groupId, name: newGroupName.trim(), members: newGroupMembers }),
+        { headers: { "Content-Type": "text/plain;charset=utf-8" } }
+      );
       if (res.data?.status === "error") {
-        showToast("エラー: " + (res.data.message || "保存に失敗しました", "error"));
-        setLocalGroups(prev => prev.filter(g => g["グループID"] !== groupId));
+        showToast("エラー: " + (res.data.message || "保存に失敗しました"), "error");
+        setLocalGroups(prevItems); // ロールバック
       } else {
-        onRefresh?.();
+        if (onRefresh) onRefresh(); // 正式IDで仮エントリを置き換える
       }
-    } catch(e) {
-      showToast("通信エラー: " + (e?.message || "不明なエラー", "error"));
-      setLocalGroups(prev => prev.filter(g => g["グループID"] !== groupId));
+    } catch (e) {
+      showToast("通信エラー: " + (e?.message || "不明なエラー"), "error");
+      setLocalGroups(prevItems); // ロールバック
     }
   };
 
   // グループ削除
   const handleDeleteGroup = (groupId) => {
+    const target = localGroups.find((g) => g["グループID"] === groupId);
+    const label = target?.["グループ名"] || "このグループ";
     setConfirmModal({
       title: "このグループを削除しますか？",
+      message: `「${label}」を削除します。`,
+      note: "この操作は取り消せません。",
       onConfirm: async () => {
         setConfirmModal(null);
-        // 即時反映
-        const removed = localGroups.find(g => g["グループID"] === groupId);
-        setLocalGroups(prev => prev.filter(g => g["グループID"] !== groupId));
+        // 1) 削除済みIDを記録（GASキャッシュ staleデータ対策）
+        //    onRefresh() が古いデータを返しても復活しないようにガード
+        deletedIdsRef.current.add(groupId);
+        const prevItems = localGroups;
+        // 2) 楽観的更新
+        setLocalGroups((prev) => prev.filter((g) => g["グループID"] !== groupId));
+        setSuccessModal({ open: true, message: `「${label}」を削除しました。` });
+        // 3) バックグラウンドAPI
         try {
-          await axios.post(GAS_URL, JSON.stringify({ action: "deleteGroup", groupId }), { headers: { "Content-Type": "text/plain;charset=utf-8" } });
-          onRefresh?.();
-        } catch(e) {
-          showToast("通信エラー: " + (e?.message || "不明なエラー", "error"));
-          // 失敗時は元に戻す
-          if (removed) setLocalGroups(prev => [...prev, removed]);
+          await axios.post(
+            GAS_URL,
+            JSON.stringify({ action: "deleteGroup", groupId }),
+            { headers: { "Content-Type": "text/plain;charset=utf-8" } }
+          );
+          if (onRefresh) onRefresh(); // deletedIdsRef でフィルター済みなので復活しない
+        } catch (e) {
+          // 失敗時のみ記録を取り消してUIを元に戻す
+          deletedIdsRef.current.delete(groupId);
+          setLocalGroups(prevItems);
+          showToast("通信エラー: " + (e?.message || "不明なエラー"), "error");
         }
       },
     });
@@ -277,8 +443,14 @@ export default function UserManager({
         open={!!confirmModal}
         title={confirmModal?.title || ""}
         message={confirmModal?.message}
+        note={confirmModal?.note}
         onConfirm={confirmModal?.onConfirm}
         onCancel={() => setConfirmModal(null)}
+      />
+      <SuccessModal
+        open={successModal.open}
+        message={successModal.message}
+        onClose={() => setSuccessModal({ open: false, message: "" })}
       />
       <div style={lS.main}>
       <div style={lS.wrapper}>

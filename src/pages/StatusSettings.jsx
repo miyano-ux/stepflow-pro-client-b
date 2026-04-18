@@ -90,6 +90,89 @@ function StatusRow({ s, idx, scenarios, onChange, onDelete, onDragStart, onDragO
   );
 }
 
+
+// ── 契約固定ステータス行 ──────────────────────────────
+const CONTRACT_COLOR  = "#0EA5E9";
+const CONTRACT_BG     = "#F0F9FF";
+const CONTRACT_BORDER = "#BAE6FD";
+
+function ContractRow({ s, idx, scenarios, onChange, onDelete, onDragStart, onDragOver, onDrop, onPromptAdd, onPromptRemove, usedScenarios }) {
+  return (
+    <div
+      draggable
+      onDragStart={e => onDragStart(e, idx)}
+      onDragOver={e => onDragOver(e, idx)}
+      onDrop={e => onDrop(e, idx)}
+      style={{
+        display: "flex", alignItems: "flex-start", gap: 8,
+        backgroundColor: CONTRACT_BG,
+        border: `1.5px solid ${CONTRACT_BORDER}`,
+        borderLeft: `4px solid ${CONTRACT_COLOR}`,
+        borderRadius: 12, padding: "12px 14px", marginBottom: 8,
+        cursor: "grab",
+      }}
+    >
+      {/* ドラッグハンドル（水色） */}
+      <div style={{ paddingTop: 10, color: CONTRACT_COLOR, flexShrink: 0 }}><GripVertical size={16} /></div>
+
+      <div style={{ flex: 1, display: "grid", gridTemplateColumns: "2fr 2fr 1.2fr", gap: 10, alignItems: "start" }}>
+        <div>
+          <div style={{ fontSize: 11, fontWeight: 700, color: CONTRACT_COLOR, marginBottom: 4 }}>ステータス名</div>
+          <input
+            style={{ padding: "8px 12px", borderRadius: 8, border: `1.5px solid ${CONTRACT_COLOR}60`, fontSize: 13, fontWeight: 700, outline: "none", width: "100%", boxSizing: "border-box", backgroundColor: "white" }}
+            value={s.name}
+            onChange={e => onChange(idx, "name", e.target.value)}
+            placeholder="例: 契約"
+          />
+        </div>
+        <div>
+          <div style={{ fontSize: 11, fontWeight: 700, color: CONTRACT_COLOR, marginBottom: 4 }}>自動シナリオ（任意）</div>
+          <CustomSelect
+            value={s.scenarioId || ""}
+            onChange={v => onChange(idx, "scenarioId", v)}
+            options={[
+              { value: "", label: "設定しない" },
+              ...[...new Set(scenarios.map(sc => sc["シナリオID"]))].filter(Boolean).map(sid => {
+                const isUsed = usedScenarios.has(sid) && sid !== s.scenarioId;
+                return { value: sid, label: sid + (isUsed ? "（他で使用中）" : ""), disabled: isUsed };
+              })
+            ]}
+          />
+        </div>
+        <div>
+          <div style={{ fontSize: 11, fontWeight: 700, color: CONTRACT_COLOR, marginBottom: 6 }}>レポート集計</div>
+          <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", fontSize: 12, fontWeight: 700 }}>
+            <input type="checkbox" checked={!!s.reportCount}
+              onChange={e => { onChange(idx, "reportCount", e.target.checked); onChange(idx, "reportArrival", e.target.checked); }}
+              style={{ width: 14, height: 14, accentColor: CONTRACT_COLOR }}
+            /> 集計する
+          </label>
+        </div>
+        <div style={{ gridColumn: "1 / -1" }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: CONTRACT_COLOR, marginBottom: 4 }}>移動時の追加入力項目</div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" }}>
+            {(s.promptFields || []).map((pf, pi) => (
+              <span key={pi} style={{ display: "flex", alignItems: "center", gap: 4, backgroundColor: "#E0F2FE", color: CONTRACT_COLOR, padding: "4px 10px", borderRadius: 99, fontSize: 12, fontWeight: 800 }}>
+                {pf}
+                <button onClick={() => onPromptRemove(idx, pi)} style={{ background: "none", border: "none", cursor: "pointer", padding: 0, color: CONTRACT_COLOR, lineHeight: 1, fontSize: 14 }}>×</button>
+              </span>
+            ))}
+            {PROMPT_FIELD_OPTIONS.filter(o => !(s.promptFields || []).includes(o.key)).map(o => (
+              <button key={o.key} onClick={() => onPromptAdd(idx, o.key)}
+                style={{ fontSize: 12, fontWeight: 800, padding: "4px 10px", borderRadius: 99, border: `1px dashed ${CONTRACT_COLOR}80`, backgroundColor: "transparent", color: CONTRACT_COLOR, cursor: "pointer" }}>
+                + {o.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+      <button onClick={() => onDelete(idx)} style={{ background: "none", border: "none", cursor: "pointer", padding: 6, borderRadius: 8, color: CONTRACT_COLOR }} title="削除">
+        <Trash2 size={15} />
+      </button>
+    </div>
+  );
+}
+
 // ── 終点ステータス行 ──────────────────────────────────
 function TerminalRow({ row, idx, scenarios, usedScenarios, onChange, onDelete }) {
   const meta = TERMINAL_META[row.terminalType] || TERMINAL_META.dormant;
@@ -362,17 +445,37 @@ export default function StatusSettings({ statuses: statusesProp = [], scenarios 
         💡 ドラッグで順番を変更できます。終点ステータスは「下部ゾーン」か「右側エリア」への配置を選択できます。
       </div>
 
-      {/* フロー列 */}
-      {flowRows.map((s, idx) => (
-        <StatusRow key={idx} s={s} idx={idx} scenarios={scenarios} usedScenarios={usedScenarios}
-          onChange={handleFlowChange} onDelete={handleFlowDelete}
-          onDragStart={handleDragStart} onDragOver={handleDragOver} onDrop={handleDrop}
-          onPromptAdd={handlePromptAdd} onPromptRemove={handlePromptRemove}
-        />
-      ))}
-      <button onClick={handleFlowAdd} style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", padding: "14px", border: `2px dashed ${THEME.border}`, borderRadius: 12, backgroundColor: "transparent", color: THEME.textMuted, fontWeight: 800, fontSize: 14, cursor: "pointer", justifyContent: "center", marginTop: 4 }}>
-        <Plus size={16} /> ステータスを追加
-      </button>
+      {/* ── フロー列（通常 / 契約混在・順番通り） ── */}
+      {flowRows.map((s, idx) =>
+        s.isFixed ? (
+          <ContractRow
+            key={idx} s={s} idx={idx} scenarios={scenarios} usedScenarios={usedScenarios}
+            onChange={handleFlowChange} onDelete={handleFlowDelete}
+            onDragStart={handleDragStart} onDragOver={handleDragOver} onDrop={handleDrop}
+            onPromptAdd={handlePromptAdd} onPromptRemove={handlePromptRemove}
+          />
+        ) : (
+          <StatusRow
+            key={idx} s={s} idx={idx} scenarios={scenarios} usedScenarios={usedScenarios}
+            onChange={handleFlowChange} onDelete={handleFlowDelete}
+            onDragStart={handleDragStart} onDragOver={handleDragOver} onDrop={handleDrop}
+            onPromptAdd={handlePromptAdd} onPromptRemove={handlePromptRemove}
+          />
+        )
+      )}
+
+      {/* ── 追加ボタン群 ── */}
+      <div style={{ display: "flex", gap: 10, marginTop: 6 }}>
+        <button onClick={handleFlowAdd}
+          style={{ flex: 1, display: "flex", alignItems: "center", gap: 8, padding: "13px", border: `2px dashed ${THEME.border}`, borderRadius: 12, backgroundColor: "transparent", color: THEME.textMuted, fontWeight: 800, fontSize: 13, cursor: "pointer", justifyContent: "center" }}>
+          <Plus size={15} /> ステータスを追加
+        </button>
+        <button
+          onClick={() => setFlowRows(prev => [...prev, { name: "契約", terminalType: "", scenarioId: "", reportArrival: true, reportCount: true, isFixed: true, _originalName: "" }])}
+          style={{ flex: 1, display: "flex", alignItems: "center", gap: 8, padding: "13px", border: `2px dashed ${CONTRACT_COLOR}80`, borderRadius: 12, backgroundColor: "#F0F9FF", color: CONTRACT_COLOR, fontWeight: 800, fontSize: 13, cursor: "pointer", justifyContent: "center" }}>
+          <Plus size={15} /> 📋 契約ステータスを追加
+        </button>
+      </div>
 
       {/* 区切り */}
       <div style={{ margin: "36px 0 20px", borderTop: `2px dashed ${THEME.border}`, position: "relative" }}>
