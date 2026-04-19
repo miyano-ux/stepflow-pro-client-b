@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate, useParams, useLocation } from "react-router-dom";
-import { Loader2, UserCheck, Zap, Send, Calendar, MessageSquare, X, CheckCircle2 } from "lucide-react";
+import { ArrowLeft, Loader2, UserCheck, Zap, Send, Calendar, MessageSquare, X, CheckCircle2 } from "lucide-react";
 import axios from "axios";
 import { THEME, CLIENT_COMPANY_NAME, GAS_URL } from "../lib/constants";
 import { styles } from "../lib/styles";
 import { apiCall, replaceVariables } from "../lib/utils";
 import Page from "../components/Page";
 import SmartDateTimePicker from "../components/SmartDateTimePicker";
+import { useToast } from "../ToastContext";
 
 // ==========================================
 // 💬 DirectSms - 個別メッセージ送信ページ
@@ -22,6 +23,7 @@ const formatScheduledTime = (iso) => {
 };
 
 function DirectSms({ customers = [], templates = [], onRefresh, masterUrl, currentUserEmail }) {
+  const showToast = useToast();
   const { id } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
@@ -32,9 +34,13 @@ function DirectSms({ customers = [], templates = [], onRefresh, masterUrl, curre
   const [isConverting, setIsConverting] = useState(false);
   const [staffList, setStaffList] = useState([]);
   const [selectedStaff, setSelectedStaff] = useState(null);
-  const [time, setTime] = useState(
-    new Date(new Date().getTime() + 10 * 60000).toISOString().slice(0, 16)
-  );
+  const [time, setTime] = useState(() => {
+    const d = new Date(Date.now() + 30 * 60000);
+    // toISOString() は UTC を返すため、タイムゾーンオフセット分を補正してローカル時刻の文字列を得る
+    return new Date(d.getTime() - d.getTimezoneOffset() * 60000)
+      .toISOString()
+      .slice(0, 16);
+  });
   // 確認モーダル
   const [showConfirm, setShowConfirm] = useState(false);
   const [isSending, setIsSending] = useState(false);
@@ -91,7 +97,7 @@ function DirectSms({ customers = [], templates = [], onRefresh, masterUrl, curre
       setMsg(updatedMsg);
     } catch (e) {
       console.error(e);
-      alert("トラッキングURLへの変換に失敗しました。Vercelの環境変数BASE_URLが正しく設定されているか確認してください。");
+      showToast("トラッキングURLへの変換に失敗しました。Vercelの環境変数BASE_URLが正しく設定されているか確認してください。", "error");
     } finally {
       setIsConverting(false);
     }
@@ -99,7 +105,7 @@ function DirectSms({ customers = [], templates = [], onRefresh, masterUrl, curre
 
   // 確認ボタン押下 → モーダル表示
   const handleConfirmOpen = () => {
-    if (!msg) return alert("本文を入力してください");
+    if (!msg) return showToast("本文を入力してください", "warning");
     setShowConfirm(true);
   };
 
@@ -122,7 +128,7 @@ function DirectSms({ customers = [], templates = [], onRefresh, masterUrl, curre
       navigate(`/schedule/${id}`, { state: { justScheduled: true } });
     } catch (e) {
       console.error(e);
-      alert("配信予約に失敗しました");
+      showToast("配信予約に失敗しました", "error");
     } finally {
       setIsSending(false);
     }
@@ -139,6 +145,17 @@ function DirectSms({ customers = [], templates = [], onRefresh, masterUrl, curre
   return (
     <>
       <Page title="個別メッセージ送信" subtitle={`${c["姓"]} ${c["名"]} 様`}>
+        <button
+          onClick={() => navigate(`/detail/${id}`)}
+          style={{
+            display: "inline-flex", alignItems: "center", gap: 6,
+            marginBottom: "24px", background: "none", border: "none",
+            color: THEME.textMuted, cursor: "pointer",
+            fontWeight: "700", fontSize: "14px", padding: 0,
+          }}
+        >
+          <ArrowLeft size={16} /> {c["姓"]} {c["名"]} 様の詳細に戻る
+        </button>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 350px", gap: "32px" }}>
 
           {/* ── 左カラム：送信設定 */}
@@ -309,16 +326,21 @@ function DirectSms({ customers = [], templates = [], onRefresh, masterUrl, curre
               border: `1px solid ${THEME.border}`, borderRadius: 12, padding: "14px 16px", marginBottom: 24,
             }}>
               <MessageSquare size={18} color={THEME.textMuted} style={{ marginTop: 1, flexShrink: 0 }} />
-              <div style={{ minWidth: 0 }}>
-                <p style={{ margin: 0, fontSize: 11, fontWeight: 800, color: THEME.textMuted, marginBottom: 6 }}>メッセージ</p>
-                <p style={{
-                  margin: 0, fontSize: 13, color: THEME.textMain,
-                  whiteSpace: "pre-wrap", wordBreak: "break-all",
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <p style={{ margin: "0 0 6px 0", fontSize: 11, fontWeight: 800, color: THEME.textMuted }}>メッセージ</p>
+                {/* スクロール領域を div で独立させてバーを右端に固定 */}
+                <div style={{
                   maxHeight: 160, overflowY: "auto",
-                  lineHeight: 1.7,
+                  overflowX: "hidden",
                 }}>
-                  {msg}
-                </p>
+                  <p style={{
+                    margin: 0, fontSize: 13, color: THEME.textMain,
+                    whiteSpace: "pre-wrap", wordBreak: "break-all",
+                    lineHeight: 1.7,
+                  }}>
+                    {msg}
+                  </p>
+                </div>
               </div>
             </div>
 

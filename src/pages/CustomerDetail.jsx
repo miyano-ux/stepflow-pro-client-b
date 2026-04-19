@@ -1,18 +1,21 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
 import axios from "axios";
 import {
   ArrowLeft, Save, MessageSquare, History, Loader2,
-  Edit3, X, Clock, LayoutGrid, ChevronDown, ExternalLink,
-  Phone, User, Building2, Plus, Trash2, Check,
+  Edit3, X, Clock, LayoutGrid, ExternalLink,
+  Phone, User, Building2, Plus, Trash2, Check, RefreshCw, Lock,
 } from "lucide-react";
 import { THEME, GAS_URL } from "../lib/constants";
 import { styles } from "../lib/styles";
 import { formatDate } from "../lib/utils";
 import DatePicker from "../components/DatePicker";
+import CustomSelect from "../components/CustomSelect";
 import StatusTimeline from "../components/StatusTimeline";
 import PromptFieldsModal from "../components/PromptFieldsModal";
 import StaffGroupSelect from "../components/StaffGroupSelect";
+import ConfirmModal from "../components/ConfirmModal";
+import { useToast } from "../ToastContext";
 
 // ==========================================
 // 👤 CustomerDetail - 顧客詳細ページ
@@ -30,6 +33,174 @@ const formatDateJP = (v) => {
 // ※ 関数コンポーネント内で定義すると再レンダーのたびに関数が再生成され
 //   Reactが別コンポーネントと判断してアンマウント→フォーカス消失する
 //   そのため必ずモジュールトップレベルで定義する
+
+// ── 成功モーダル ──────────────────────────────────────────────
+function PropertySuccessModal({ open, message, onClose }) {
+  useEffect(() => {
+    if (!open) return;
+    const timer = setTimeout(onClose, 2200);
+    return () => clearTimeout(timer);
+  }, [open, onClose]);
+
+  if (!open) return null;
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: "fixed", inset: 0,
+        backgroundColor: "rgba(15,23,42,0.45)",
+        backdropFilter: "blur(3px)",
+        display: "flex", justifyContent: "center", alignItems: "center",
+        zIndex: 4000,
+        animation: "fadeIn 0.15s ease",
+      }}
+    >
+      <style>{`
+        @keyframes fadeIn  { from { opacity: 0 } to { opacity: 1 } }
+        @keyframes popIn   { from { opacity: 0; transform: scale(0.85) } to { opacity: 1; transform: scale(1) } }
+        @keyframes drawCheck { from { stroke-dashoffset: 60 } to { stroke-dashoffset: 0 } }
+        @keyframes progressBar { from { width: 100% } to { width: 0% } }
+      `}</style>
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{
+          backgroundColor: "white", borderRadius: 24,
+          padding: "44px 48px 36px", maxWidth: 360, width: "90%",
+          textAlign: "center", boxShadow: "0 32px 64px rgba(0,0,0,0.18)",
+          animation: "popIn 0.2s cubic-bezier(0.34,1.56,0.64,1)",
+        }}
+      >
+        <div style={{ width: 72, height: 72, borderRadius: "50%", backgroundColor: "#F0FDF4", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 20px" }}>
+          <svg width="40" height="40" viewBox="0 0 40 40" fill="none">
+            <circle cx="20" cy="20" r="18" stroke="#22C55E" strokeWidth="2.5" fill="none" />
+            <path d="M12 20.5 L17.5 26 L28 14" stroke="#22C55E" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" strokeDasharray="60" strokeDashoffset="0" style={{ animation: "drawCheck 0.35s ease 0.1s both" }} />
+          </svg>
+        </div>
+        <h3 style={{ margin: "0 0 8px", fontSize: 22, fontWeight: 900, color: "#111827" }}>完了しました</h3>
+        <p style={{ margin: "0 0 28px", fontSize: 14, color: "#6B7280", lineHeight: 1.6 }}>{message}</p>
+        <button onClick={onClose} style={{ width: "100%", padding: "13px", backgroundColor: "#22C55E", color: "white", border: "none", borderRadius: 12, fontSize: 15, fontWeight: 800, cursor: "pointer" }}>
+          OK
+        </button>
+        <div style={{ marginTop: 16, height: 3, borderRadius: 99, backgroundColor: "#F3F4F6", overflow: "hidden" }}>
+          <div style={{ height: "100%", backgroundColor: "#22C55E", borderRadius: 99, animation: "progressBar 2.2s linear", transformOrigin: "left" }} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── バックグラウンド同期バッジ ─────────────────────────────────
+function PropSyncingBadge({ syncing }) {
+  if (!syncing) return null;
+  return (
+    <div style={{
+      position: "fixed", bottom: 28, right: 28,
+      backgroundColor: "rgba(15,23,42,0.85)", color: "white",
+      borderRadius: 999, padding: "10px 18px",
+      display: "flex", alignItems: "center", gap: 10,
+      fontSize: 13, fontWeight: 700,
+      boxShadow: "0 8px 24px rgba(0,0,0,0.25)", zIndex: 3500,
+      backdropFilter: "blur(8px)",
+    }}>
+      <RefreshCw size={15} style={{ animation: "spin 1s linear infinite" }} />
+      サーバーと同期中...
+      <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
+    </div>
+  );
+}
+
+// ── 物件追加・編集モーダル ────────────────────────────────────
+function PropFormModal({ open, mode, data, propTypes, propStatuses, onSave, onClose }) {
+  const [form, setForm] = useState(data);
+  useEffect(() => { setForm(data); }, [data]);
+  if (!open) return null;
+
+  const isEdit = mode === "edit";
+  const set = (k, v) => setForm(p => ({ ...p, [k]: v }));
+
+  return (
+    <div
+      style={{ position: "fixed", inset: 0, backgroundColor: "rgba(15,23,42,0.6)", backdropFilter: "blur(4px)", display: "flex", justifyContent: "center", alignItems: "center", zIndex: 2000 }}
+      onClick={onClose}
+    >
+      <div
+        style={{ backgroundColor: "white", borderRadius: 20, padding: 32, width: 520, maxHeight: "92vh", overflowY: "auto", boxShadow: "0 24px 48px rgba(0,0,0,0.15)" }}
+        onClick={e => e.stopPropagation()}
+      >
+        {/* ヘッダー */}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
+          <h2 style={{ margin: 0, fontSize: 18, fontWeight: 900, color: "#1E293B" }}>
+            {isEdit ? "物件を編集" : "物件を追加"}
+          </h2>
+          <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", color: "#64748B" }}>
+            <X size={20} />
+          </button>
+        </div>
+
+        {/* フォーム */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 14 }}>
+          <div>
+            <label style={{ fontSize: 11, fontWeight: 800, color: "#64748B", display: "block", marginBottom: 5 }}>物件名 *</label>
+            <input style={{ width: "100%", padding: "10px 14px", borderRadius: 8, border: "1px solid #E2E8F0", fontSize: 14, outline: "none", boxSizing: "border-box" }}
+              placeholder="例: 渋谷区代々木 Bマンション" value={form.name || ""} onChange={e => set("name", e.target.value)} autoFocus />
+          </div>
+          <div>
+            <label style={{ fontSize: 11, fontWeight: 800, color: "#64748B", display: "block", marginBottom: 5 }}>物件種別</label>
+            <select style={{ width: "100%", padding: "10px 14px", borderRadius: 8, border: "1px solid #E2E8F0", fontSize: 14, outline: "none", boxSizing: "border-box", appearance: "none" }}
+              value={form.propertyType || "マンション"} onChange={e => set("propertyType", e.target.value)}>
+              {propTypes.map(t => <option key={t} value={t}>{t}</option>)}
+            </select>
+          </div>
+          <div>
+            <label style={{ fontSize: 11, fontWeight: 800, color: "#64748B", display: "block", marginBottom: 5 }}>査定金額（万円）</label>
+            <input style={{ width: "100%", padding: "10px 14px", borderRadius: 8, border: "1px solid #E2E8F0", fontSize: 14, outline: "none", boxSizing: "border-box" }}
+              placeholder="例: 8500" value={form.assessmentPrice || ""} onChange={e => set("assessmentPrice", e.target.value)} />
+          </div>
+          <div>
+            <label style={{ fontSize: 11, fontWeight: 800, color: "#64748B", display: "block", marginBottom: 5 }}>成約金額（万円）</label>
+            <input style={{ width: "100%", padding: "10px 14px", borderRadius: 8, border: "1px solid #E2E8F0", fontSize: 14, outline: "none", boxSizing: "border-box" }}
+              placeholder="例: 8200" value={form.contractPrice || ""} onChange={e => set("contractPrice", e.target.value)} />
+          </div>
+          <div style={{ gridColumn: "1 / -1" }}>
+            <label style={{ fontSize: 11, fontWeight: 800, color: "#64748B", display: "block", marginBottom: 5 }}>住所</label>
+            <input style={{ width: "100%", padding: "10px 14px", borderRadius: 8, border: "1px solid #E2E8F0", fontSize: 14, outline: "none", boxSizing: "border-box" }}
+              placeholder="例: 東京都渋谷区代々木2丁目" value={form.address || ""} onChange={e => set("address", e.target.value)} />
+          </div>
+          {isEdit && (
+            <div>
+              <label style={{ fontSize: 11, fontWeight: 800, color: "#64748B", display: "block", marginBottom: 5 }}>ステータス</label>
+              <select style={{ width: "100%", padding: "10px 14px", borderRadius: 8, border: "1px solid #E2E8F0", fontSize: 14, outline: "none", boxSizing: "border-box", appearance: "none" }}
+                value={form.status || "検討中"} onChange={e => set("status", e.target.value)}>
+                {propStatuses.map(s => <option key={s} value={s}>{s}</option>)}
+              </select>
+            </div>
+          )}
+          <div style={{ gridColumn: "1 / -1" }}>
+            <label style={{ fontSize: 11, fontWeight: 800, color: "#64748B", display: "block", marginBottom: 5 }}>備考</label>
+            <textarea style={{ width: "100%", padding: "10px 14px", borderRadius: 8, border: "1px solid #E2E8F0", fontSize: 14, outline: "none", boxSizing: "border-box", resize: "vertical", minHeight: 80, fontFamily: "inherit" }}
+              placeholder="メモ・特記事項など" value={form.note || ""} onChange={e => set("note", e.target.value)} />
+          </div>
+        </div>
+
+        {/* ボタン */}
+        <div style={{ display: "flex", gap: 10 }}>
+          <button
+            onClick={() => { if (!form.name) return; onSave(form); }}
+            style={{ flex: 2, padding: "12px", borderRadius: 10, border: "none", backgroundColor: "#4F46E5", color: "white", fontWeight: 800, fontSize: 14, cursor: "pointer" }}
+          >
+            {isEdit ? "更新する" : "登録する"}
+          </button>
+          <button
+            onClick={onClose}
+            style={{ flex: 1, padding: "12px", borderRadius: 10, border: "1px solid #E2E8F0", backgroundColor: "white", color: "#64748B", fontWeight: 700, fontSize: 14, cursor: "pointer" }}
+          >
+            キャンセル
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 const ViewField = ({ label, value, icon }) => (
   <div style={{ marginBottom: 20 }}>
@@ -59,26 +230,23 @@ const EditText = ({ label, fieldName, type = "text", value, onChange }) => {
 };
 
 const EditSelect = ({ label, fieldName, options = [], value, onChange }) => {
-  const selectId = `detail-${fieldName}`;
+  // options は string[] または {value,label}[] のどちらでも受け付ける
+  const normalized = options.map(o =>
+    typeof o === "string" ? { value: o, label: o } : { value: o.value ?? "", label: o.label ?? o.value ?? "" }
+  );
+  // 先頭に "未選択" が含まれていない場合のみ追加
+  const hasEmpty = normalized.some(o => o.value === "");
+  const selectOptions = hasEmpty ? normalized : [{ value: "", label: "未選択" }, ...normalized];
+
   return (
     <div style={styles.inputGroup}>
-      <label htmlFor={selectId} style={{ ...styles.label, userSelect: "none" }}>{label}</label>
-      <div style={{ position: "relative" }}>
-        <select
-          id={selectId}
-          style={{ ...styles.input, appearance: "none", paddingRight: 36 }}
-          value={value || ""}
-          onChange={(e) => onChange(fieldName, e.target.value)}
-        >
-          <option value="">未選択</option>
-          {options.map((o) => (
-            <option key={o.value ?? o} value={o.value ?? o}>
-              {o.label ?? o}
-            </option>
-          ))}
-        </select>
-        <ChevronDown size={15} style={{ position: "absolute", right: 12, top: 14, pointerEvents: "none", color: THEME.textMuted }} />
-      </div>
+      <label style={{ ...styles.label, userSelect: "none" }}>{label}</label>
+      <CustomSelect
+        value={value || ""}
+        options={selectOptions}
+        onChange={(v) => onChange(fieldName, v)}
+        placeholder="未選択"
+      />
     </div>
   );
 };
@@ -115,8 +283,9 @@ const CustomField = ({ field, isEditing, value, onChange }) => {
 export default function CustomerDetail({
   customers = [], formSettings = [], statuses = [], sources = [],
   contractTypes = [], trackingLogs = [], staffList = [], groups = [],
-  statusHistory = [], properties: allProperties = [], gasUrl, onRefresh,
+  statusHistory = [], properties: allProperties = [], scenarios = [], gasUrl, onRefresh,
 }) {
+  const showToast = useToast();
   const { id } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
@@ -126,16 +295,25 @@ export default function CustomerDetail({
   const [promptModal, setPromptModal]         = useState(null); // { promptFields }
   const [syncingCount, setSyncingCount] = useState(0);
   const [formData, setFormData] = useState(null);
+  const [pendingHistoryEntry, setPendingHistoryEntry] = useState(null); // 楽観的更新用
 
-  // 物件管理ステート
-  const [properties, setProperties] = useState([]);
-  const [propSaving, setPropSaving]  = useState(false);
-  const [newProp, setNewProp]        = useState(null); // null or {} でフォーム表示切替
-  const [editingPropId, setEditingPropId] = useState(null);
-  const [editingPropData, setEditingPropData] = useState({});
-  const PROP_STATUSES   = ["検討中", "成約", "見送り"];
-  const PROP_TYPES      = ["マンション", "戸建", "土地", "事務所", "その他"];
-  const STATUS_STYLE    = {
+  // ステータスに紐づいていないシナリオのみ（CustomerFormと同じフィルタ）
+  const availableScenarios = useMemo(() => {
+    const linked = new Set((statuses || []).map(s => s.scenarioId).filter(Boolean));
+    return [...new Set((scenarios || []).map(x => x["シナリオID"]).filter(Boolean))]
+      .filter(sid => !linked.has(sid));
+  }, [scenarios, statuses]);
+
+  // ── 物件管理ステート（楽観的UI） ──────────────────────────
+  const [localProperties, setLocalProperties] = useState([]);
+  const deletedIdsRef = useRef(new Set());
+  const [propModal,   setPropModal]   = useState({ open: false, mode: "add", data: {} });
+  const [propSyncing, setPropSyncing] = useState(false);
+  const [propSuccess, setPropSuccess] = useState({ open: false, message: "" });
+  const [confirmModal, setConfirmModal] = useState(null);
+  const PROP_STATUSES = ["検討中", "成約", "見送り"];
+  const PROP_TYPES    = ["マンション", "戸建", "土地", "事務所", "その他"];
+  const STATUS_STYLE  = {
     "成約":   { bg: "#DCFCE7", color: "#166534", border: "#1D9E75" },
     "検討中": { bg: "#EEF2FF", color: "#3730A3", border: "#378ADD" },
     "見送り": { bg: "#F3F4F6", color: "#6B7280", border: "#9CA3AF" },
@@ -147,9 +325,17 @@ export default function CustomerDetail({
     return `¥${n.toLocaleString()}万`;
   };
 
-  // allProperties から自分の分だけ抽出（外部変更で同期）
+  // allProperties から自分の分だけ抽出（削除済みIDを除外・仮エントリを引き継ぐ）
   useEffect(() => {
-    setProperties((allProperties || []).filter(p => String(p.customerId) === String(id)));
+    setLocalProperties(prev => {
+      const filtered = (allProperties || [])
+        .filter(p => String(p.customerId) === String(id))
+        .filter(p => !deletedIdsRef.current.has(p.id));
+      const pendingTemps = prev.filter(
+        p => p._isTemp && !filtered.some(f => f.name === p.name)
+      );
+      return [...pendingTemps, ...filtered];
+    });
   }, [allProperties, id]);
 
   const customer = useMemo(
@@ -164,15 +350,22 @@ export default function CustomerDetail({
       window.history.replaceState({}, "");
       return;
     }
-    if (customer && syncingCount === 0) setFormData({ ...customer });
-  }, [customer, syncingCount, location.state, id]);
+    if (customer && syncingCount === 0 && !isEditing) setFormData({ ...customer });
+  }, [customer, syncingCount, location.state, id, isEditing]);
 
-  // ステータス履歴（この顧客のものだけ、古い順）
+  // ステータス履歴（この顧客のものだけ）＋楽観的更新エントリをマージ
   const customerStatusHistory = useMemo(() => {
-    return (statusHistory || [])
+    const base = (statusHistory || [])
       .filter(h => String(h["顧客ID"]) === String(id))
       .sort((a, b) => new Date(a["変更日時"]) - new Date(b["変更日時"]));
-  }, [statusHistory, id]);
+    if (!pendingHistoryEntry) return base;
+    // すでに同じステータス・日時が存在する場合は重複追加しない
+    const alreadySynced = base.some(
+      h => h["ステータス"] === pendingHistoryEntry["ステータス"] &&
+           Math.abs(new Date(h["変更日時"]) - new Date(pendingHistoryEntry["変更日時"])) < 5000
+    );
+    return alreadySynced ? base : [...base, pendingHistoryEntry];
+  }, [statusHistory, id, pendingHistoryEntry]);
 
   const customerLogs = useMemo(
     () =>
@@ -198,24 +391,34 @@ export default function CustomerDetail({
           snapshot = { ...snapshot, "担当者メール": res.data.email };
           setFormData(snapshot);
         } else {
-          alert("グループ割り当てに失敗しました: " + (res.data?.message || ""));
+          showToast("グループ割り当てに失敗しました: " + (res.data?.message || "", "error"));
           setSyncingCount(0);
           return;
         }
       }
+
+      // ステータス変更を検知して楽観的にタイムラインへ即時反映
+      // ※ applyOptimisticStatusHistory は同じステータスのときは何もしないので安全に呼べる
+      const prevStatus = customer?.["対応ステータス"] || "";
+      const nextStatus = snapshot["対応ステータス"] || "";
+      applyOptimisticStatusHistory(prevStatus, nextStatus);
+
       await axios.post(
         gasUrl,
         JSON.stringify({ action: "update", id, data: snapshot }),
         { headers: { "Content-Type": "text/plain;charset=utf-8" } }
       );
-      setIsEditing(false);
       setFormData(snapshot);
-      onRefresh().finally(() => {
+      // 成功モーダルを表示（OK押下後に編集モードを終了）
+      setPropSuccess({ open: true, message: "顧客情報を保存しました。", _onClose: () => setIsEditing(false) });
+      Promise.resolve(onRefresh()).finally(() => {
         setSyncingCount((p) => Math.max(0, p - 1));
+        setPendingHistoryEntry(null);
       });
     } catch {
-      alert("更新に失敗しました");
+      showToast("更新に失敗しました", "error");
       setSyncingCount(0);
+      setPendingHistoryEntry(null); // 失敗時はエントリを取り消し
     }
   };
 
@@ -233,8 +436,18 @@ export default function CustomerDetail({
         setScenarioConfirm({ newStatus: val, scenarioId: statusDef.scenarioId, promptFields: pf });
         return;
       }
-      // シナリオなしでもpromptFieldsがあればformData更新後にprompt表示
-      setFormData(prev => ({ ...prev, [key]: val }));
+      // 新ステータスにシナリオが紐づいていない場合:
+      // 現在のシナリオIDが「ステータス連動」のもの（availableScenariosに存在しない）なら
+      // 自動的にクリアする。
+      // ※ CustomSelectはoptions外の値を「未選択」と表示するため、ユーザーには
+      //   未選択に見えているのにformData上は旧IDが残るという不一致が起きるのを防ぐ。
+      const currentScenarioId = formData["シナリオID"] || "";
+      const isStatusLinked = currentScenarioId && !availableScenarios.includes(currentScenarioId);
+      setFormData(prev => ({
+        ...prev,
+        [key]: val,
+        ...(isStatusLinked ? { "シナリオID": "" } : {}),
+      }));
       if (pf.length > 0) setPromptModal({ promptFields: pf });
       return;
     }
@@ -260,61 +473,102 @@ export default function CustomerDetail({
     setPromptModal(null);
   };
 
-  // ── 物件 CRUD ────────────────────────────────────────
-  const handleAddProperty = async () => {
-    if (!newProp?.name) { alert("物件名を入力してください"); return; }
-    setPropSaving(true);
-    try {
-      const res = await axios.post(gasUrl,
-        JSON.stringify({ action: "addProperty", customerId: id, ...newProp }),
-        { headers: { "Content-Type": "text/plain;charset=utf-8" } }
-      );
-      if (res.data?.id) {
-        setProperties(prev => [...prev, { id: res.data.id, customerId: id, status: "検討中", ...newProp, createdAt: new Date().toISOString() }]);
-      }
-      setNewProp(null);
-      onRefresh();
-    } catch { alert("物件の登録に失敗しました"); }
-    finally { setPropSaving(false); }
+  // ステータス変更を検知して楽観的タイムラインを更新するヘルパー
+  // handleSave・handleFieldChange のどちらから呼ばれた場合も確実に記録する
+  const applyOptimisticStatusHistory = (prevStatus, nextStatus) => {
+    if (!prevStatus || !nextStatus || prevStatus === nextStatus) return;
+    setPendingHistoryEntry({
+      "顧客ID": id,
+      "ステータス": nextStatus,
+      "変更日時": new Date().toISOString(),
+      _pending: true,
+    });
   };
 
-  const handleUpdateProperty = async (propId) => {
-    setPropSaving(true);
-    try {
-      await axios.post(gasUrl,
-        JSON.stringify({ action: "updateProperty", id: propId, ...editingPropData }),
-        { headers: { "Content-Type": "text/plain;charset=utf-8" } }
-      );
-      setProperties(prev => prev.map(p => p.id === propId ? { ...p, ...editingPropData } : p));
-      setEditingPropId(null);
-      onRefresh();
-    } catch { alert("物件の更新に失敗しました"); }
-    finally { setPropSaving(false); }
-  };
+  // ── 物件 CRUD（楽観的UI） ────────────────────────────────
+  const handleAddProperty = async (formData) => {
+    if (!formData.name) return;
+    const tempId  = `temp_${Date.now()}`;
+    const tempEntry = { ...formData, id: tempId, customerId: id, status: "検討中", _isTemp: true };
 
-  const handleDeleteProperty = async (propId) => {
-    if (!window.confirm("この物件を削除しますか？")) return;
+    // 1) 楽観的追加 & モーダルを即座に閉じる
+    setLocalProperties(prev => [...prev, tempEntry]);
+    setPropModal({ open: false, mode: "add", data: {} });
+    setPropSuccess({ open: true, message: `「${formData.name}」を登録しました。` });
+
+    // 2) バックグラウンドAPI
+    setPropSyncing(true);
     try {
       await axios.post(gasUrl,
-        JSON.stringify({ action: "deleteProperty", id: propId }),
+        JSON.stringify({ action: "addProperty", customerId: id, ...formData }),
         { headers: { "Content-Type": "text/plain;charset=utf-8" } }
       );
-      setProperties(prev => prev.filter(p => p.id !== propId));
       onRefresh();
-    } catch { alert("物件の削除に失敗しました"); }
+    } catch {
+      // 失敗時：仮エントリを除去して差し戻す
+      setLocalProperties(prev => prev.filter(p => p.id !== tempId));
+      showToast("物件の登録に失敗しました", "error");
+    } finally {
+      setPropSyncing(false);
+    }
   };
 
-  // 顧客データ取得済みだが該当IDが見つからない場合（楽観的IDで来た場合など）
-  if (!customer && customers.length > 0) {
-    return (
-      <div style={{ display: "flex", flexDirection: "column", justifyContent: "center", alignItems: "center", height: "60vh", gap: 16 }}>
-        <p style={{ color: THEME.textMuted, fontSize: 16 }}>顧客情報が見つかりません</p>
-        <button onClick={() => navigate("/")} style={{ padding: "10px 24px", backgroundColor: THEME.primary, color: "white", border: "none", borderRadius: 10, fontWeight: 800, fontSize: 14, cursor: "pointer" }}>
-          一覧に戻る
-        </button>
-      </div>
-    );
-  }
+  const handleUpdateProperty = async (propId, formData) => {
+    const prevProperties = localProperties;
+
+    // 1) 楽観的更新 & モーダルを即座に閉じる
+    setLocalProperties(prev => prev.map(p => p.id === propId ? { ...p, ...formData } : p));
+    setPropModal({ open: false, mode: "edit", data: {} });
+    setPropSuccess({ open: true, message: `「${formData.name}」を更新しました。` });
+
+    // 2) バックグラウンドAPI
+    setPropSyncing(true);
+    try {
+      await axios.post(gasUrl,
+        JSON.stringify({ action: "updateProperty", id: propId, ...formData }),
+        { headers: { "Content-Type": "text/plain;charset=utf-8" } }
+      );
+      onRefresh();
+    } catch {
+      setLocalProperties(prevProperties);
+      showToast("物件の更新に失敗しました", "error");
+    } finally {
+      setPropSyncing(false);
+    }
+  };
+
+  const handleDeleteProperty = (propId, propName) => {
+    setConfirmModal({
+      title: "この物件を削除しますか？",
+      message: `「${propName}」を削除します。`,
+      note: "この操作は取り消せません。",
+      onConfirm: async () => {
+        setConfirmModal(null);
+
+        // 1) 削除済み記録 & 楽観的除去
+        deletedIdsRef.current.add(propId);
+        const prevProperties = localProperties;
+        setLocalProperties(prev => prev.filter(p => p.id !== propId));
+        setPropSuccess({ open: true, message: `「${propName}」を削除しました。` });
+
+        // 2) バックグラウンドAPI
+        setPropSyncing(true);
+        try {
+          await axios.post(gasUrl,
+            JSON.stringify({ action: "deleteProperty", id: propId }),
+            { headers: { "Content-Type": "text/plain;charset=utf-8" } }
+          );
+          onRefresh();
+        } catch {
+          deletedIdsRef.current.delete(propId);
+          setLocalProperties(prevProperties);
+          showToast("物件の削除に失敗しました", "error");
+        } finally {
+          setPropSyncing(false);
+        }
+      },
+    });
+  };
 
   if (!formData) {
     return (
@@ -328,63 +582,49 @@ export default function CustomerDetail({
   const assignedName = assignedStaff ? `${assignedStaff.lastName} ${assignedStaff.firstName}` : null;
 
   return (
+    <>
+      <ConfirmModal
+        open={!!confirmModal}
+        title={confirmModal?.title || ""}
+        message={confirmModal?.message}
+        note={confirmModal?.note}
+        onConfirm={confirmModal?.onConfirm}
+        onCancel={() => setConfirmModal(null)}
+      />
+      <PropertySuccessModal
+        open={propSuccess.open}
+        message={propSuccess.message}
+        onClose={() => {
+          const cb = propSuccess._onClose;
+          setPropSuccess({ open: false, message: "" });
+          if (cb) cb();
+        }}
+      />
+      <PropSyncingBadge syncing={propSyncing} />
+      <PropFormModal
+        open={propModal.open}
+        mode={propModal.mode}
+        data={propModal.data}
+        propTypes={PROP_TYPES}
+        propStatuses={PROP_STATUSES}
+        onSave={(formData) => {
+          if (propModal.mode === "add") {
+            handleAddProperty(formData);
+          } else {
+            handleUpdateProperty(propModal.data._id, formData);
+          }
+        }}
+        onClose={() => setPropModal(prev => ({ ...prev, open: false }))}
+      />
     <div style={{ minHeight: "100vh", backgroundColor: THEME.bg, padding: "40px 48px" }}>
-
-      {/* ステータス変更シナリオ確認モーダル */}
-      {promptModal && (
-        <PromptFieldsModal
-          newStatus={formData["対応ステータス"] || ""}
-          promptFields={promptModal.promptFields}
-          sources={sources}
-          contractTypes={contractTypes}
-          staffList={staffList}
-          onConfirm={handlePromptConfirm}
-          onSkip={() => setPromptModal(null)}
-        />
-      )}
-      {scenarioConfirm && (
-        <div style={{ position: "fixed", inset: 0, backgroundColor: "rgba(15,23,42,0.6)", display: "flex", justifyContent: "center", alignItems: "center", zIndex: 3000, backdropFilter: "blur(4px)" }}>
-          <div style={{ backgroundColor: "white", borderRadius: 20, padding: 36, width: 440, boxShadow: "0 24px 48px rgba(0,0,0,0.15)" }}>
-            <div style={{ textAlign: "center", marginBottom: 24 }}>
-              <div style={{ fontSize: 44, marginBottom: 8 }}>🔄</div>
-              <h3 style={{ fontSize: 18, fontWeight: 900, color: "#0F172A", margin: "0 0 10px" }}>
-                ステータスを変更しますか？
-              </h3>
-              <p style={{ fontSize: 14, color: "#64748B", lineHeight: 1.8, margin: 0 }}>
-                <strong style={{ color: "#6366F1" }}>「{scenarioConfirm.newStatus}」</strong> に変更します。<br />
-                シナリオ <strong>「{scenarioConfirm.scenarioId}」</strong> が自動で適用されます。
-              </p>
-            </div>
-            <div style={{ display: "flex", gap: 12 }}>
-              <button
-                onClick={() => {
-                  const pf = scenarioConfirm.promptFields || [];
-                  setFormData(prev => ({ ...prev, "対応ステータス": scenarioConfirm.newStatus }));
-                  setScenarioConfirm(null);
-                  if (pf.length > 0) setPromptModal({ promptFields: pf });
-                }}
-                style={{ flex: 1, padding: 13, borderRadius: 10, border: "none", backgroundColor: "#6366F1", color: "white", fontWeight: 900, fontSize: 14, cursor: "pointer" }}
-              >
-                変更する
-              </button>
-              <button
-                onClick={() => setScenarioConfirm(null)}
-                style={{ flex: 1, padding: 13, borderRadius: 10, border: "1px solid #E2E8F0", backgroundColor: "white", color: "#64748B", fontWeight: 800, fontSize: 14, cursor: "pointer" }}
-              >
-                キャンセル
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* ── ヘッダー ── */}
       <div style={{ marginBottom: 32 }}>
         <button
-          onClick={() => navigate("/customers")}
+          onClick={() => navigate(location.state?.from ?? "/customers")}
           style={{ background: "none", border: "none", color: THEME.textMuted, cursor: "pointer", display: "flex", alignItems: "center", gap: 6, fontWeight: 700, marginBottom: 16, fontSize: 14 }}
         >
-          <ArrowLeft size={16} /> 顧客一覧に戻る
+          <ArrowLeft size={16} /> {location.state?.from ? "リストに戻る" : "顧客一覧に戻る"}
         </button>
 
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
@@ -484,6 +724,54 @@ export default function CustomerDetail({
               )}
             </div>
 
+            {/* 適用シナリオ */}
+            <div style={{ marginBottom: 20 }}>
+              {isEditing ? (
+                <div style={styles.inputGroup}>
+                  <label style={{ ...styles.label, userSelect: "none" }}>適用シナリオ</label>
+                  {(() => {
+                    const currentStatusDef = (statuses || []).find(s => s.name === formData["対応ステータス"]);
+                    const linkedId = currentStatusDef?.scenarioId;
+                    if (linkedId) {
+                      // ステータスに紐づいたシナリオ → CustomSelectと同形のロック表示
+                      return (
+                        <div style={{
+                          display: "flex", alignItems: "center", justifyContent: "space-between",
+                          width: "100%", padding: "11px 14px", boxSizing: "border-box",
+                          border: "1px solid #E2E8F0", borderRadius: 12,
+                          backgroundColor: "#F8FAFC", cursor: "default",
+                        }}>
+                          <span style={{ display: "flex", alignItems: "center", gap: 8, overflow: "hidden" }}>
+                            <Lock size={14} color="#94A3B8" style={{ flexShrink: 0 }} />
+                            <span style={{ fontSize: 14, fontWeight: 700, color: "#1E293B", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{linkedId}</span>
+                            <span style={{ fontSize: 11, fontWeight: 700, backgroundColor: "#EEF2FF", color: "#6366F1", padding: "2px 8px", borderRadius: 99, whiteSpace: "nowrap", flexShrink: 0 }}>
+                              ステータスに連動
+                            </span>
+                          </span>
+                        </div>
+                      );
+                    }
+                    // 紐づきなし → 通常のプルダウン
+                    return (
+                      <CustomSelect
+                        value={formData["シナリオID"] || ""}
+                        onChange={v => handleFieldChange("シナリオID", v)}
+                        placeholder="未選択"
+                        options={[
+                          { value: "", label: "未選択" },
+                          ...availableScenarios.map(sid => ({ value: sid, label: sid })),
+                        ]}
+                      />
+                    );
+                  })()}
+                </div>
+              ) : (
+                formData["シナリオID"]
+                  ? <ViewField label="適用シナリオ" value={formData["シナリオID"]} />
+                  : null
+              )}
+            </div>
+
             {/* 姓・名・電話番号 */}
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 20 }}>
               {isEditing ? (
@@ -500,6 +788,22 @@ export default function CustomerDetail({
                 </>
               )}
             </div>
+
+            {/* 失注理由（失注ステータスかつ理由が記録されている場合のみ表示） */}
+            {(() => {
+              const lostStatus = (statuses || []).find(s => s.terminalType === "lost");
+              const isLost = lostStatus && formData["対応ステータス"] === lostStatus.name;
+              if (!isLost || !formData["失注理由"]) return null;
+              return (
+                <div style={{ marginTop: 16, padding: "14px 16px", backgroundColor: "#FEF2F2", borderRadius: 10, border: "1px solid #FCA5A540", display: "flex", alignItems: "center", gap: 10 }}>
+                  <span style={{ fontSize: 18, flexShrink: 0 }}>🗑</span>
+                  <div>
+                    <div style={{ fontSize: 11, fontWeight: 800, color: "#DC2626", marginBottom: 3 }}>失注理由</div>
+                    <div style={{ fontSize: 14, fontWeight: 700, color: "#991B1B" }}>{formData["失注理由"]}</div>
+                  </div>
+                </div>
+              );
+            })()}
           </div>
 
           {/* カスタム項目カード */}
@@ -528,18 +832,18 @@ export default function CustomerDetail({
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
               <h3 style={{ fontSize: 14, fontWeight: 800, color: THEME.textMuted, margin: 0, display: "flex", alignItems: "center", gap: 8 }}>
                 <Building2 size={15} /> 検討物件
-                {properties.length > 0 && (
+                {localProperties.length > 0 && (
                   <span style={{ background: "#EEF2FF", color: THEME.primary, fontSize: 11, fontWeight: 700, padding: "1px 8px", borderRadius: 99 }}>
-                    {properties.length}件
+                    {localProperties.length}件
                   </span>
                 )}
               </h3>
               <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                 {/* 合計サマリー */}
-                {properties.length > 0 && (() => {
-                  const wonTotal = properties.filter(p => p.status === "成約")
+                {localProperties.length > 0 && (() => {
+                  const wonTotal = localProperties.filter(p => p.status === "成約")
                     .reduce((s, p) => s + (Number(String(p.contractPrice || "").replace(/[^0-9.]/g, "")) || 0), 0);
-                  const maxActive = Math.max(0, ...properties.filter(p => p.status === "検討中")
+                  const maxActive = Math.max(0, ...localProperties.filter(p => p.status === "検討中")
                     .map(p => Number(String(p.assessmentPrice || "").replace(/[^0-9.]/g, "")) || 0));
                   return (
                     <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12 }}>
@@ -550,7 +854,7 @@ export default function CustomerDetail({
                   );
                 })()}
                 <button
-                  onClick={() => setNewProp(newProp ? null : { name: "", address: "", assessmentPrice: "", contractPrice: "", propertyType: "マンション", area: "", status: "検討中", note: "" })}
+                  onClick={() => setPropModal({ open: true, mode: "add", data: { name: "", address: "", assessmentPrice: "", contractPrice: "", propertyType: "マンション", note: "" } })}
                   style={{ display: "flex", alignItems: "center", gap: 5, padding: "6px 12px", border: `1px solid ${THEME.border}`, borderRadius: 8, background: "white", cursor: "pointer", fontSize: 12, fontWeight: 700, color: THEME.textMain }}
                 >
                   <Plus size={13} /> 物件を追加
@@ -560,165 +864,78 @@ export default function CustomerDetail({
 
             {/* 物件カード一覧 */}
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {properties.length === 0 && !newProp && (
+              {localProperties.length === 0 && (
                 <div style={{ textAlign: "center", padding: "28px 0", color: THEME.textMuted, fontSize: 13 }}>
                   検討物件がまだ登録されていません
                 </div>
               )}
-
-              {properties.map((prop) => {
-                const ss    = STATUS_STYLE[prop.status] || STATUS_STYLE["見送り"];
-                const isEdit = editingPropId === prop.id;
+              {localProperties.map((prop) => {
+                const ss = STATUS_STYLE[prop.status] || STATUS_STYLE["見送り"];
                 return (
-                  <div key={prop.id} style={{ border: `1px solid ${THEME.border}`, borderRadius: 10, padding: "12px 14px", borderLeft: `3px solid ${ss.border}`, opacity: prop.status === "見送り" ? 0.65 : 1 }}>
-                    {!isEdit ? (
-                      /* 表示モード */
-                      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8 }}>
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4, flexWrap: "wrap" }}>
-                            <span style={{ fontWeight: 700, fontSize: 14, color: THEME.textMain }}>{prop.name || "（物件名未設定）"}</span>
-                            <span style={{ fontSize: 10, fontWeight: 700, backgroundColor: ss.bg, color: ss.color, padding: "1px 8px", borderRadius: 99 }}>{prop.status}</span>
-                          </div>
-                          <div style={{ display: "flex", gap: 12, fontSize: 12, color: THEME.textMuted, flexWrap: "wrap" }}>
-                            {prop.propertyType && <span>{prop.propertyType}</span>}
-                            {prop.area         && <span>{prop.area}㎡</span>}
-                            {prop.address      && <span>{prop.address}</span>}
-                            {prop.note         && <span style={{ fontStyle: "italic" }}>{prop.note}</span>}
-                          </div>
+                  <div
+                    key={prop.id}
+                    style={{
+                      border: `1px solid ${THEME.border}`, borderRadius: 10, padding: "12px 14px",
+                      borderLeft: `3px solid ${ss.border}`,
+                      opacity: prop._isTemp ? 0.7 : prop.status === "見送り" ? 0.65 : 1,
+                      transition: "opacity 0.3s",
+                    }}
+                  >
+                    <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8 }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4, flexWrap: "wrap" }}>
+                          <span style={{ fontWeight: 700, fontSize: 14, color: THEME.textMain }}>{prop.name || "（物件名未設定）"}</span>
+                          {prop._isTemp
+                            ? <RefreshCw size={12} color={THEME.textMuted} style={{ animation: "spin 1.2s linear infinite" }} />
+                            : <span style={{ fontSize: 10, fontWeight: 700, backgroundColor: ss.bg, color: ss.color, padding: "1px 8px", borderRadius: 99 }}>{prop.status}</span>
+                          }
                         </div>
-                        <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
-                          <div style={{ textAlign: "right" }}>
-                            {prop.assessmentPrice && (
-                              <div style={{ fontSize: 12, color: THEME.textMuted, fontWeight: 600 }}>
-                                査定 {formatPrice(prop.assessmentPrice)}
-                              </div>
-                            )}
-                            {prop.contractPrice && (
-                              <div style={{ fontSize: 15, fontWeight: 900, color: "#166534" }}>
-                                成約 {formatPrice(prop.contractPrice)}
-                              </div>
-                            )}
-                            {!prop.assessmentPrice && !prop.contractPrice && (
-                              <div style={{ fontSize: 14, fontWeight: 700, color: THEME.textMuted }}>－</div>
-                            )}
-                          </div>
-                          <button onClick={() => { setEditingPropId(prop.id); setEditingPropData({ name: prop.name, address: prop.address, assessmentPrice: prop.assessmentPrice, contractPrice: prop.contractPrice, propertyType: prop.propertyType, area: prop.area, status: prop.status, note: prop.note }); }}
-                            style={{ padding: "4px 8px", border: `1px solid ${THEME.border}`, borderRadius: 6, background: "white", cursor: "pointer", color: THEME.textMuted, fontSize: 11 }}>編集</button>
-                          <button onClick={() => handleDeleteProperty(prop.id)}
-                            style={{ padding: "4px 6px", border: "none", borderRadius: 6, background: "#FEF2F2", cursor: "pointer", color: THEME.danger, display: "flex" }}>
-                            <Trash2 size={13} />
-                          </button>
+                        <div style={{ display: "flex", gap: 12, fontSize: 12, color: THEME.textMuted, flexWrap: "wrap" }}>
+                          {prop.propertyType && <span>{prop.propertyType}</span>}
+                          {prop.address      && <span>{prop.address}</span>}
+                          {prop.note         && <span style={{ fontStyle: "italic" }}>{prop.note}</span>}
                         </div>
                       </div>
-                    ) : (
-                      /* 編集モード */
-                      <div>
-                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
-                          <div>
-                            <label style={{ ...styles.label }}>物件名</label>
-                            <input style={styles.input} value={editingPropData.name || ""} onChange={e => setEditingPropData(p => ({ ...p, name: e.target.value }))} />
-                          </div>
-                          <div>
-                            <label style={{ ...styles.label }}>物件種別</label>
-                            <select style={{ ...styles.input, appearance: "none" }} value={editingPropData.propertyType || ""} onChange={e => setEditingPropData(p => ({ ...p, propertyType: e.target.value }))}>
-                              {PROP_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-                            </select>
-                          </div>
-                          <div>
-                            <label style={{ ...styles.label }}>査定金額（万円）</label>
-                            <input style={styles.input} placeholder="例: 8500 → 8,500万円" value={editingPropData.assessmentPrice || ""} onChange={e => setEditingPropData(p => ({ ...p, assessmentPrice: e.target.value }))} />
-                          </div>
-                          <div>
-                            <label style={{ ...styles.label }}>成約金額（万円）</label>
-                            <input style={styles.input} placeholder="例: 8200 → 8,200万円" value={editingPropData.contractPrice || ""} onChange={e => setEditingPropData(p => ({ ...p, contractPrice: e.target.value }))} />
-                          </div>
-                          <div>
-                            <label style={{ ...styles.label }}>面積（㎡）</label>
-                            <input style={styles.input} value={editingPropData.area || ""} onChange={e => setEditingPropData(p => ({ ...p, area: e.target.value }))} />
-                          </div>
-                          <div>
-                            <label style={{ ...styles.label }}>住所</label>
-                            <input style={styles.input} value={editingPropData.address || ""} onChange={e => setEditingPropData(p => ({ ...p, address: e.target.value }))} />
-                          </div>
-                          <div>
-                            <label style={{ ...styles.label }}>ステータス</label>
-                            <select style={{ ...styles.input, appearance: "none" }} value={editingPropData.status || "検討中"} onChange={e => setEditingPropData(p => ({ ...p, status: e.target.value }))}>
-                              {PROP_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
-                            </select>
-                          </div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+                        <div style={{ textAlign: "right" }}>
+                          {prop.assessmentPrice && (
+                            <div style={{ fontSize: 12, color: THEME.textMuted, fontWeight: 600 }}>査定 {formatPrice(prop.assessmentPrice)}</div>
+                          )}
+                          {prop.contractPrice && (
+                            <div style={{ fontSize: 15, fontWeight: 900, color: "#166534" }}>成約 {formatPrice(prop.contractPrice)}</div>
+                          )}
+                          {!prop.assessmentPrice && !prop.contractPrice && (
+                            <div style={{ fontSize: 14, fontWeight: 700, color: THEME.textMuted }}>－</div>
+                          )}
                         </div>
-                        <div style={{ marginBottom: 10 }}>
-                          <label style={{ ...styles.label }}>備考</label>
-                          <input style={styles.input} value={editingPropData.note || ""} onChange={e => setEditingPropData(p => ({ ...p, note: e.target.value }))} />
-                        </div>
-                        <div style={{ display: "flex", gap: 8 }}>
-                          <button onClick={() => handleUpdateProperty(prop.id)} disabled={propSaving}
-                            style={{ display: "flex", alignItems: "center", gap: 5, padding: "7px 14px", borderRadius: 8, border: "none", background: THEME.primary, color: "white", fontWeight: 700, fontSize: 13, cursor: "pointer", opacity: propSaving ? 0.6 : 1 }}>
-                            <Check size={13} /> 保存
-                          </button>
-                          <button onClick={() => setEditingPropId(null)}
-                            style={{ padding: "7px 14px", borderRadius: 8, border: `1px solid ${THEME.border}`, background: "white", color: THEME.textMuted, fontWeight: 700, fontSize: 13, cursor: "pointer" }}>
-                            キャンセル
-                          </button>
-                        </div>
+                        {!prop._isTemp && (
+                          <>
+                            <button
+                              onClick={() => setPropModal({ open: true, mode: "edit", data: { name: prop.name, address: prop.address, assessmentPrice: prop.assessmentPrice, contractPrice: prop.contractPrice, propertyType: prop.propertyType, status: prop.status, note: prop.note, _id: prop.id } })}
+                              style={{ padding: "4px 8px", border: `1px solid ${THEME.border}`, borderRadius: 6, background: "white", cursor: "pointer", color: THEME.textMuted, fontSize: 11 }}
+                            >編集</button>
+                            <button
+                              onClick={() => handleDeleteProperty(prop.id, prop.name || "この物件")}
+                              style={{ padding: "4px 6px", border: "none", borderRadius: 6, background: "#FEF2F2", cursor: "pointer", color: THEME.danger, display: "flex" }}
+                            ><Trash2 size={13} /></button>
+                          </>
+                        )}
                       </div>
-                    )}
+                    </div>
                   </div>
                 );
               })}
-
-              {/* 新規追加フォーム */}
-              {newProp && (
-                <div style={{ border: `1.5px dashed ${THEME.primary}50`, borderRadius: 10, padding: "14px", background: "#FAFBFF" }}>
-                  <div style={{ fontSize: 12, fontWeight: 700, color: THEME.primary, marginBottom: 10 }}>新しい物件</div>
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
-                    <div>
-                      <label style={{ ...styles.label }}>物件名 *</label>
-                      <input style={styles.input} placeholder="例: 渋谷区代々木 Bマンション" value={newProp.name || ""} onChange={e => setNewProp(p => ({ ...p, name: e.target.value }))} autoFocus />
-                    </div>
-                    <div>
-                      <label style={{ ...styles.label }}>物件種別</label>
-                      <select style={{ ...styles.input, appearance: "none" }} value={newProp.propertyType || "マンション"} onChange={e => setNewProp(p => ({ ...p, propertyType: e.target.value }))}>
-                        {PROP_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-                      </select>
-                    </div>
-                    <div>
-                      <label style={{ ...styles.label }}>査定金額（万円）</label>
-                      <input style={styles.input} placeholder="例: 8500 → 8,500万円" value={newProp.assessmentPrice || ""} onChange={e => setNewProp(p => ({ ...p, assessmentPrice: e.target.value }))} />
-                    </div>
-                    <div>
-                      <label style={{ ...styles.label }}>成約金額（万円）</label>
-                      <input style={styles.input} placeholder="例: 8200 → 8,200万円" value={newProp.contractPrice || ""} onChange={e => setNewProp(p => ({ ...p, contractPrice: e.target.value }))} />
-                    </div>
-                    <div>
-                      <label style={{ ...styles.label }}>面積（㎡）</label>
-                      <input style={styles.input} placeholder="例: 72.4" value={newProp.area || ""} onChange={e => setNewProp(p => ({ ...p, area: e.target.value }))} />
-                    </div>
-                    <div style={{ gridColumn: "1 / -1" }}>
-                      <label style={{ ...styles.label }}>住所</label>
-                      <input style={styles.input} placeholder="例: 東京都渋谷区代々木2丁目" value={newProp.address || ""} onChange={e => setNewProp(p => ({ ...p, address: e.target.value }))} />
-                    </div>
-                  </div>
-                  <div style={{ display: "flex", gap: 8 }}>
-                    <button onClick={handleAddProperty} disabled={propSaving}
-                      style={{ display: "flex", alignItems: "center", gap: 5, padding: "7px 14px", borderRadius: 8, border: "none", background: THEME.primary, color: "white", fontWeight: 700, fontSize: 13, cursor: "pointer", opacity: propSaving ? 0.6 : 1 }}>
-                      {propSaving ? <Loader2 size={13} className="animate-spin" /> : <Plus size={13} />} 登録する
-                    </button>
-                    <button onClick={() => setNewProp(null)}
-                      style={{ padding: "7px 14px", borderRadius: 8, border: `1px solid ${THEME.border}`, background: "white", color: THEME.textMuted, fontWeight: 700, fontSize: 13, cursor: "pointer" }}>
-                      キャンセル
-                    </button>
-                  </div>
-                </div>
-              )}
             </div>
           </div>
         </div>
 
+        {/* 右列：ステータス遷移 ＋ アクティビティ */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
+
         {/* ステータス遷移タイムライン */}
         <StatusTimeline history={customerStatusHistory} />
 
-        {/* 右：アクティビティログ */}
+        {/* アクティビティログ */}
         <div style={styles.card}>
           <h3 style={{ fontSize: 14, fontWeight: 800, color: THEME.textMuted, marginTop: 0, marginBottom: 20, display: "flex", alignItems: "center", gap: 8 }}>
             <History size={15} /> アクティビティ
@@ -756,7 +973,67 @@ export default function CustomerDetail({
           )}
         </div>
 
+        </div>{/* end 右列 */}
+
       </div>
+
+      {/* ── モーダル群（return の中に配置することで正しくレンダリングされる） ── */}
+      {promptModal && (
+        <PromptFieldsModal
+          newStatus={formData["対応ステータス"] || ""}
+          promptFields={promptModal.promptFields}
+          sources={sources}
+          contractTypes={contractTypes}
+          staffList={staffList}
+          currentValues={{
+            "契約種別":     formData["契約種別"]     || "",
+            "流入元":       formData["流入元"]       || "",
+            "担当者メール": formData["担当者メール"] || "",
+          }}
+          onConfirm={handlePromptConfirm}
+          onSkip={() => setPromptModal(null)}
+        />
+      )}
+      {scenarioConfirm && (
+        <div style={{ position: "fixed", inset: 0, backgroundColor: "rgba(15,23,42,0.6)", display: "flex", justifyContent: "center", alignItems: "center", zIndex: 3000, backdropFilter: "blur(4px)" }}>
+          <div style={{ backgroundColor: "white", borderRadius: 20, padding: 36, width: 440, boxShadow: "0 24px 48px rgba(0,0,0,0.15)" }}>
+            <div style={{ textAlign: "center", marginBottom: 24 }}>
+              <div style={{ fontSize: 44, marginBottom: 8 }}>🔄</div>
+              <h3 style={{ fontSize: 18, fontWeight: 900, color: "#0F172A", margin: "0 0 10px" }}>
+                ステータスを変更しますか？
+              </h3>
+              <p style={{ fontSize: 14, color: "#64748B", lineHeight: 1.8, margin: 0 }}>
+                <strong style={{ color: "#6366F1" }}>「{scenarioConfirm.newStatus}」</strong> に変更します。<br />
+                シナリオ <strong>「{scenarioConfirm.scenarioId}」</strong> が自動で適用されます。
+              </p>
+            </div>
+            <div style={{ display: "flex", gap: 12 }}>
+              <button
+                onClick={() => {
+                  const pf = scenarioConfirm.promptFields || [];
+                  setFormData(prev => ({
+                    ...prev,
+                    "対応ステータス": scenarioConfirm.newStatus,
+                    "シナリオID":     scenarioConfirm.scenarioId,
+                  }));
+                  setScenarioConfirm(null);
+                  if (pf.length > 0) setPromptModal({ promptFields: pf });
+                }}
+                style={{ flex: 1, padding: 13, borderRadius: 10, border: "none", backgroundColor: "#6366F1", color: "white", fontWeight: 900, fontSize: 14, cursor: "pointer" }}
+              >
+                変更する
+              </button>
+              <button
+                onClick={() => setScenarioConfirm(null)}
+                style={{ flex: 1, padding: 13, borderRadius: 10, border: "1px solid #E2E8F0", backgroundColor: "white", color: "#64748B", fontWeight: 800, fontSize: 14, cursor: "pointer" }}
+              >
+                キャンセル
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
+    </>
   );
 }

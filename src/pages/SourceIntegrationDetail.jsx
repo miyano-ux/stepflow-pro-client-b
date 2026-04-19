@@ -4,7 +4,7 @@ import axios from "axios";
 import {
   CheckCircle2, XCircle, Loader2, Globe, KeyRound,
   Zap, AlertCircle, ChevronLeft, Copy, Check, Mail,
-  Bell, Phone, X, Plus, MessageSquare, UserCircle,
+  Bell, Phone, X, Plus, MessageSquare, UserCircle, Lock,
 } from "lucide-react";
 import { THEME, GAS_URL } from "../lib/constants";
 import { styles } from "../lib/styles";
@@ -12,6 +12,7 @@ import CustomSelect from "../components/CustomSelect";
 import Page from "../components/Page";
 import StaffGroupSelect from "../components/StaffGroupSelect";
 import { SUPPORTED_SOURCES } from "./SourceIntegrationIndex";
+import { useToast } from "../ToastContext";
 
 // ============================================================
 // 🔗 SourceIntegrationDetail - 媒体連携 個別設定
@@ -130,6 +131,7 @@ export default function SourceIntegrationDetail({
   gasUrl             = GAS_URL,
   onRefresh,
 }) {
+  const showToast = useToast();
   const { sourceKey } = useParams();
   const navigate      = useNavigate();
 
@@ -203,7 +205,11 @@ export default function SourceIntegrationDetail({
   const [mappingSaving, setMappingSaving] = useState(false);
   const [mappingSaved,  setMappingSaved]  = useState(false);
 
-  const scenarioIds = [...new Set((scenarios || []).map(s => s["シナリオID"]).filter(Boolean))];
+  const scenarioIds             = [...new Set((scenarios || []).map(s => s["シナリオID"]).filter(Boolean))];
+  const statusLinkedScenarioIds = new Set((statuses || []).map(st => st.scenarioId).filter(Boolean));
+  const unlinkedScenarioIds     = scenarioIds.filter(sid => !statusLinkedScenarioIds.has(sid));
+  const selectedStatusDef       = (statuses || []).find(st => st.name === ruleForm.status);
+  const linkedScenarioId        = selectedStatusDef?.scenarioId || null;
 
   const api = (payload) =>
     axios.post(gasUrl, JSON.stringify(payload), {
@@ -213,7 +219,7 @@ export default function SourceIntegrationDetail({
   // ── 認証情報の保存 ───────────────────────────────────────────
   const handleSaveCreds = async () => {
     if (!loginForm.loginId || !loginForm.password) {
-      alert("ログインIDとパスワードを入力してください");
+      showToast("ログインIDとパスワードを入力してください", "warning");
       return;
     }
     setCredsSaving(true);
@@ -223,7 +229,7 @@ export default function SourceIntegrationDetail({
       setTimeout(() => setCredsSaved(false), 2000);
       onRefresh?.();
     } catch (e) {
-      alert("保存に失敗しました: " + (e?.message || e));
+      showToast("保存に失敗しました: " + (e?.message || e, "error"));
     } finally {
       setCredsSaving(false);
     }
@@ -261,7 +267,7 @@ export default function SourceIntegrationDetail({
       setTimeout(() => setRuleSaved(false), 2000);
       onRefresh?.();
     } catch (e) {
-      alert("保存に失敗しました: " + (e?.message || e));
+      showToast("保存に失敗しました: " + (e?.message || e, "error"));
     } finally {
       setRuleSaving(false);
     }
@@ -285,7 +291,7 @@ export default function SourceIntegrationDetail({
       setTimeout(() => setNotifySaved(false), 2000);
       onRefresh?.();
     } catch (e) {
-      alert("保存に失敗しました: " + (e?.message || e));
+      showToast("保存に失敗しました: " + (e?.message || e, "error"));
     } finally {
       setNotifySaving(false);
     }
@@ -304,7 +310,7 @@ export default function SourceIntegrationDetail({
       setTimeout(() => setMappingSaved(false), 2000);
       onRefresh?.();
     } catch (e) {
-      alert("保存に失敗しました: " + (e?.message || e));
+      showToast("保存に失敗しました: " + (e?.message || e, "error"));
     } finally {
       setMappingSaving(false);
     }
@@ -336,6 +342,12 @@ export default function SourceIntegrationDetail({
       ...customDestCols.map(c => ({ value: c, label: c })),
     ] : []),
   ];
+
+  // ── ステータス変更（シナリオ連動制御）──────────────────────────
+  const handleStatusChange = (v) => {
+    // ステータスが変わったらシナリオIDはクリア（連動シナリオはUI上で表示のみ）
+    setRuleForm(p => ({ ...p, status: v, scenarioId: "" }));
+  };
 
   const isConfigured = src.requiresLogin ? !!sourceCredsStatus?.[sourceKey] : true;
 
@@ -458,7 +470,7 @@ export default function SourceIntegrationDetail({
             <LabelText>初期ステータス</LabelText>
             <CustomSelect
               value={ruleForm.status}
-              onChange={v => setRuleForm(p => ({ ...p, status: v }))}
+              onChange={handleStatusChange}
               options={[
                 { value: "", label: "未設定（デフォルト）" },
                 ...(statuses || []).map(s => ({ value: s.name, label: s.name })),
@@ -479,14 +491,28 @@ export default function SourceIntegrationDetail({
           </div>
           <div>
             <LabelText>適用シナリオ</LabelText>
-            <CustomSelect
-              value={ruleForm.scenarioId}
-              onChange={v => setRuleForm(p => ({ ...p, scenarioId: v }))}
-              options={[
-                { value: "", label: "未設定" },
-                ...scenarioIds.map(id => ({ value: id, label: id })),
-              ]}
-            />
+            {linkedScenarioId ? (
+              <div style={{
+                ...S.input,
+                display: "flex", alignItems: "center", gap: 8,
+                backgroundColor: "#F8FAFC", cursor: "not-allowed", userSelect: "none",
+              }}>
+                <Lock size={13} color="#94A3B8" style={{ flexShrink: 0 }} />
+                <span style={{ fontWeight: 700, color: THEME.textMain, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{linkedScenarioId}</span>
+                <span style={{ fontSize: 11, fontWeight: 700, backgroundColor: "#EEF2FF", color: "#6366F1", padding: "2px 8px", borderRadius: 99, whiteSpace: "nowrap", flexShrink: 0 }}>
+                  ステータスに連動
+                </span>
+              </div>
+            ) : (
+              <CustomSelect
+                value={ruleForm.scenarioId}
+                onChange={v => setRuleForm(p => ({ ...p, scenarioId: v }))}
+                options={[
+                  { value: "", label: "未設定" },
+                  ...unlinkedScenarioIds.map(id => ({ value: id, label: id })),
+                ]}
+              />
+            )}
           </div>
         </div>
         <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 8 }}>

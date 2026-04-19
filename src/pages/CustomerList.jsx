@@ -9,6 +9,7 @@ import {
 import { THEME } from "../lib/constants";
 import { parseLocalDate, downloadCSV, customerStore } from "../lib/utils";
 import DateRangePicker from "../components/DateRangePicker";
+import { useToast } from "../ToastContext";
 
 // ==========================================
 // 📋 CustomerList - 顧客ダッシュボード
@@ -129,6 +130,7 @@ export default function CustomerList({
   scenarios = [], statuses = [], staffList = [], scenarioSettings = {}, sources = [],
   properties = [], gasUrl, onRefresh, onLightRefresh,
 }) {
+  const showToast = useToast();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -137,6 +139,8 @@ export default function CustomerList({
   const [sort, setSort] = useState({ key: "登録日", dir: "desc" });
 
   const [confirmModal, setConfirmModal] = useState({ open: false, customer: null, field: "", newValue: "", oldValue: "" });
+  const [deleteModal, setDeleteModal] = useState({ open: false, customer: null });
+  const [deletingIds, setDeletingIds] = useState(new Set());
   const [localCustomers, setLocalCustomers] = useState(customers);
   const [syncing, setSyncing] = useState(false);
   const [expandedRows, setExpandedRows] = useState(new Set()); // 物件展開中の顧客IDセット
@@ -312,12 +316,32 @@ export default function CustomerList({
     downloadCSV([header, ...rows], filename);
   };
 
-  const handleDelete = async (c) => {
-    if (!window.confirm(`${c["姓"]} ${c["名"]}様を削除しますか？\nこの操作は取り消せません。`)) return;
+  const handleDelete = (c) => {
+    setDeleteModal({ open: true, customer: c });
+  };
+
+  const handleExecuteDelete = async () => {
+    const { customer: c } = deleteModal;
+    setDeleteModal({ open: false, customer: null });
+
+    // 楽観的UI：即座にリストから除去
+    setDeletingIds((prev) => new Set([...prev, String(c.id)]));
+    setLocalCustomers((prev) => prev.filter((r) => String(r.id) !== String(c.id)));
+
     try {
       await axios.post(gasUrl, JSON.stringify({ action: "delete", id: c.id }), { headers: { "Content-Type": "text/plain;charset=utf-8" } });
-      onRefresh();
-    } catch { alert("削除に失敗しました"); }
+      // バックグラウンドでリフレッシュ（UIには影響なし）
+      if (onLightRefresh) onLightRefresh(); else onRefresh();
+    } catch {
+      // ロールバック：削除した顧客を復元
+      setLocalCustomers((prev) => {
+        const already = prev.some((r) => String(r.id) === String(c.id));
+        return already ? prev : [c, ...prev];
+      });
+      showToast("削除に失敗しました。もう一度お試しください。", "error");
+    } finally {
+      setDeletingIds((prev) => { const next = new Set(prev); next.delete(String(c.id)); return next; });
+    }
   };
 
   const handleExecuteChange = async () => {
@@ -325,26 +349,37 @@ export default function CustomerList({
     const cid = String(customer.id);
     setConfirmModal({ open: false, customer: null, field: "", newValue: "", oldValue: "" });
 
+    // ステータス変更の場合、紐づくシナリオIDも一緒にセットする
+    // → GAS の update アクションがシナリオIDの変化を検知して配信スケジューリングを実行する
+    const extraPatch = {};
+    if (field === "対応ステータス") {
+      const statusDef = (statuses || []).find(s => s.name === newValue);
+      if (statusDef?.scenarioId) {
+        extraPatch["シナリオID"] = statusDef.scenarioId;
+      }
+    }
+
     // ① ストアとローカル状態を同時に即時更新
     //    → KanbanBoard がマウント済みなら subscribe 経由で即反映
     //    → KanbanBoard が未マウントでもストアにパッチが残るため
     //      次回マウント時に applyTo() で正しい状態で表示される
-    customerStore.patch(cid, { [field]: newValue });
+    customerStore.patch(cid, { [field]: newValue, ...extraPatch });
     pendingMap.current.set(cid, { field, value: newValue });
     setSyncing(true);
-    setLocalCustomers((prev) => prev.map((c) => String(c.id) === cid ? { ...c, [field]: newValue } : c));
+    setLocalCustomers((prev) => prev.map((c) => String(c.id) === cid ? { ...c, [field]: newValue, ...extraPatch } : c));
 
+    const dataToSend = { ...customer, [field]: newValue, ...extraPatch };
     try {
-      await axios.post(gasUrl, JSON.stringify({ action: "update", id: customer.id, data: { ...customer, [field]: newValue } }), { headers: { "Content-Type": "text/plain;charset=utf-8" } });
+      await axios.post(gasUrl, JSON.stringify({ action: "update", id: customer.id, data: dataToSend }), { headers: { "Content-Type": "text/plain;charset=utf-8" } });
       // サーバー確定後にパッチをクリア（以降はサーバーデータを使用）
       customerStore.clear(cid);
       if (onLightRefresh) onLightRefresh(); else onRefresh();
     } catch {
       // ロールバック
-      customerStore.patch(cid, { [field]: customer[field] });
+      customerStore.patch(cid, { [field]: customer[field], ...Object.fromEntries(Object.keys(extraPatch).map(k => [k, customer[k]])) });
       pendingMap.current.delete(cid);
-      setLocalCustomers((prev) => prev.map((c) => String(c.id) === cid ? { ...c, [field]: customer[field] } : c));
-      alert("更新に失敗しました");
+      setLocalCustomers((prev) => prev.map((c) => String(c.id) === cid ? { ...c, [field]: customer[field], ...Object.fromEntries(Object.keys(extraPatch).map(k => [k, customer[k]])) } : c));
+      showToast("更新に失敗しました", "error");
     } finally {
       pendingMap.current.delete(cid);
       setSyncing(false);
@@ -461,20 +496,6 @@ export default function CustomerList({
     // 氏名 → 姓・名を結合してテキストリンク
     if (col === "氏名") {
       const name = `${c["姓"] || ""} ${c["名"] || ""}`.trim() || "-";
-      // 楽観的顧客（登録直後・実IDが未確定）はリンク無効にしてホワイトアウトを防ぐ
-      if (c._optimistic) {
-        return (
-          <span
-            style={{
-              color: THEME.primary, fontWeight: 800, fontSize: 14,
-              whiteSpace: "nowrap", opacity: 0.6, cursor: "default",
-            }}
-            title="データ反映中..."
-          >
-            {name}
-          </span>
-        );
-      }
       return (
         <Link
           to={`/detail/${c.id}`}
@@ -670,15 +691,9 @@ export default function CustomerList({
                         ))}
                         <td style={{ ...localStyles.tableTd, position: "sticky", right: 0, backgroundColor: "white", borderLeft: `1px solid ${THEME.border}`, textAlign: "center", minWidth: 148 }}>
                           <div style={{ display: "flex", gap: 6, justifyContent: "center", alignItems: "center" }}>
-                            {c._optimistic ? (
-                              <span title="データ反映中..." style={{ display: "flex", alignItems: "center", gap: 5, padding: "6px 10px", backgroundColor: "#F3F4F6", color: "#9CA3AF", borderRadius: 8, fontWeight: 800, fontSize: 12, whiteSpace: "nowrap", cursor: "default" }}>
-                                <ExternalLink size={14} /> 詳細
-                              </span>
-                            ) : (
-                              <Link to={`/detail/${c.id}`} title="顧客詳細" style={{ display: "flex", alignItems: "center", gap: 5, padding: "6px 10px", backgroundColor: "#EEF2FF", color: THEME.primary, borderRadius: 8, fontWeight: 800, fontSize: 12, textDecoration: "none", whiteSpace: "nowrap" }}>
-                                <ExternalLink size={14} /> 詳細
-                              </Link>
-                            )}
+                            <Link to={`/detail/${c.id}`} title="顧客詳細" style={{ display: "flex", alignItems: "center", gap: 5, padding: "6px 10px", backgroundColor: "#EEF2FF", color: THEME.primary, borderRadius: 8, fontWeight: 800, fontSize: 12, textDecoration: "none", whiteSpace: "nowrap" }}>
+                              <ExternalLink size={14} /> 詳細
+                            </Link>
                             <Link to={`/direct-sms/${c.id}`} title="SMS配信" style={{ display: "flex", alignItems: "center", gap: 5, padding: "6px 10px", backgroundColor: "#F0FDF4", color: "#16A34A", borderRadius: 8, fontWeight: 800, fontSize: 12, textDecoration: "none", whiteSpace: "nowrap" }}>
                               <Send size={14} /> SMS
                             </Link>
@@ -770,6 +785,46 @@ export default function CustomerList({
         </div>
 
       </div>
+
+      {/* 削除確認モーダル */}
+      {deleteModal.open && (() => {
+        const c = deleteModal.customer;
+        return (
+          <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(15,23,42,0.6)", display: "flex", justifyContent: "center", alignItems: "center", zIndex: 1000, backdropFilter: "blur(4px)" }}>
+            <div style={{ ...localStyles.card, width: 420, textAlign: "center", marginBottom: 0, padding: "40px 36px 32px" }}>
+              {/* アイコン */}
+              <div style={{ backgroundColor: "#FEF2F2", width: 64, height: 64, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 20px" }}>
+                <Trash2 size={30} color={THEME.danger} />
+              </div>
+              <h3 style={{ fontSize: 20, fontWeight: 900, marginBottom: 8, color: THEME.textMain }}>顧客を削除しますか？</h3>
+              <p style={{ fontSize: 14, color: THEME.textMuted, marginBottom: 20 }}>
+                <strong style={{ color: THEME.textMain }}>{c?.姓} {c?.名}</strong> 様のデータを削除します
+              </p>
+              {/* 警告ボックス */}
+              <div style={{ backgroundColor: "#FEF2F2", border: "1px solid #FECACA", borderRadius: 12, padding: "12px 16px", marginBottom: 24, textAlign: "left" }}>
+                <p style={{ fontSize: 13, color: "#991B1B", margin: 0, fontWeight: 700 }}>
+                  ⚠️ この操作は取り消せません。削除後はデータを復元できません。
+                </p>
+              </div>
+              {/* ボタン */}
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                <button
+                  onClick={handleExecuteDelete}
+                  style={{ backgroundColor: THEME.danger, color: "white", border: "none", borderRadius: 12, fontWeight: 900, height: 48, cursor: "pointer", fontSize: 15, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}
+                >
+                  <Trash2 size={16} /> 削除する
+                </button>
+                <button
+                  onClick={() => setDeleteModal({ open: false, customer: null })}
+                  style={{ background: "none", border: "none", color: THEME.textMuted, fontWeight: 800, cursor: "pointer", padding: "10px", fontSize: 14 }}
+                >
+                  キャンセル
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* 確認モーダル */}
       {confirmModal.open && (() => {

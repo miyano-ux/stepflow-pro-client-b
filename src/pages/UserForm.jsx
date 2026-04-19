@@ -66,7 +66,12 @@ function UserForm({ masterUrl, onRefreshStaff }) {
   const closeModal = () => {
     const wasSuccess = modal?.type === "success";
     setModal(null);
-    if (wasSuccess) navigate("/users");
+    if (wasSuccess) {
+      // モーダルを閉じてから navigate する直前にリフレッシュ
+      // （モーダル表示中の数秒でGASの書き込みが完了するため、ここで取得すると正確なデータが返る）
+      onRefreshStaff?.();
+      navigate("/users");
+    }
   };
 
   // 初期データの安全なパース（編集時は location.state から取得）
@@ -120,7 +125,7 @@ function UserForm({ masterUrl, onRefreshStaff }) {
       });
 
       if (res.data.status === "success") {
-        await onRefreshStaff?.();
+        // onRefreshStaff は closeModal（OKクリック後）で呼ぶためここでは呼ばない
         showModal("success", isEdit ? "ユーザー情報を更新しました" : "新しいユーザーを登録しました");
       } else {
         showModal("error", "保存失敗: " + (res.data.message || "不明なエラー"));

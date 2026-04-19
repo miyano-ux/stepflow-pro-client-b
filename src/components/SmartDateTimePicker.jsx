@@ -125,6 +125,7 @@ function SmartDateTimePicker({ value, onChange }) {
           type="date"
           value={selectedDate}
           onChange={handleDateChange}
+          onClick={(e) => { try { e.target.showPicker(); } catch (_) {} }}
           style={{
             ...freeInputBase,
             ...(isCustomDate ? freeInputActive : freeInputInactive),

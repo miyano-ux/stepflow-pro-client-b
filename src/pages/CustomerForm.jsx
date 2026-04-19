@@ -12,6 +12,7 @@ import ExcelJS from "exceljs";
 import Page from "../components/Page";
 import StaffGroupSelect from "../components/StaffGroupSelect";
 import DynamicField from "../components/DynamicField";
+import { useToast } from "../ToastContext";
 
 // ==========================================
 // ➕ CustomerForm - 新規顧客登録ページ
@@ -26,6 +27,7 @@ import DynamicField from "../components/DynamicField";
  * @param {function} onRefresh - データ再取得コールバック
  */
 function CustomerForm({ formSettings = [], scenarios = [], statuses = [], staffList = [], sources = [], groups = [], contractTypes = [], onRefresh }) {
+  const showToast = useToast();
   const navigate = useNavigate();
 
   const [ln, setLn] = useState("");
@@ -36,6 +38,8 @@ function CustomerForm({ formSettings = [], scenarios = [], statuses = [], staffL
   const [successModal, setSuccessModal] = useState(null); // 登録完了ポップアップ
   const [submitting, setSubmitting] = useState(false); // 二重送信防止
   const [sc, setSc] = useState("");
+  const [importing, setImporting] = useState(false); // CSVインポート処理中フラグ
+  const [importResultModal, setImportResultModal] = useState(null); // CSVインポート完了モーダル
 
   // 行データ（ヘッダー名→値マップの配列）をAPIに送信する共通処理
   const bulkSubmit = async (rowMaps) => {
@@ -77,10 +81,18 @@ function CustomerForm({ formSettings = [], scenarios = [], statuses = [], staffL
       });
       return obj;
     });
-    await apiCall.post(GAS_URL, { action: "bulkAdd", customers: items });
-    alert("一括登録完了");
+    // レスポンスのエラーを確認してユーザーに通知
+    let res;
+    try {
+      res = await apiCall.post(GAS_URL, { action: "bulkAdd", customers: items });
+    } catch (err) {
+      showToast("登録中にエラーが発生しました: " + err.message, "error");
+      return;
+    }
+    const errs = res?.errors || [];
+    const successCount = items.length - errs.length;
     onRefresh();
-    navigate("/");
+    setImportResultModal({ successCount, errors: errs });
   };
 
   // CSV / xlsx どちらでもインポート可能
@@ -91,6 +103,7 @@ function CustomerForm({ formSettings = [], scenarios = [], statuses = [], staffL
 
     const reader = new FileReader();
     reader.onload = async (ev) => {
+      setImporting(true);
       try {
         let rowMaps = [];
 
@@ -111,7 +124,13 @@ function CustomerForm({ formSettings = [], scenarios = [], statuses = [], staffL
           // ── CSV ───────────────────────────────────────────
           const rows = ev.target.result
             .split("\n")
-            .map((r) => r.split(",").map((c) => c.replace(/^"|"$/g, "").trim()));
+            .map((r) => r.split(",").map((c) => {
+              let val = c.replace(/^"|"$/g, "").trim();
+              // Excel出力の ="090..." 形式（ゼロ落ち対策）をアンラップ
+              const eqMatch = val.match(/^="(.*)"$/);
+              if (eqMatch) val = eqMatch[1];
+              return val;
+            }));
           if (rows.length < 2) return;
           const headers = rows[0];
           rowMaps = rows.slice(1)
@@ -121,7 +140,9 @@ function CustomerForm({ formSettings = [], scenarios = [], statuses = [], staffL
 
         await bulkSubmit(rowMaps);
       } catch (err) {
-        alert(err.message);
+        showToast(err.message, "info");
+      } finally {
+        setImporting(false);
       }
     };
 
@@ -250,6 +271,19 @@ function CustomerForm({ formSettings = [], scenarios = [], statuses = [], staffL
     ws.getColumn(9).width = 18;
     customHeaders.forEach((_, i) => { ws.getColumn(10 + i).width = 18; });
 
+    // ── 電話番号列を文字列書式に設定（先頭ゼロ落ち防止） ──────
+    // 固定の「電話番号」列（3列目）
+    ws.getColumn(3).numFmt = "@";
+    // phone型のカスタム項目列も同様に設定
+    allHeaders.forEach((h, colIdx) => {
+      if (h.field?.type === "phone" || h.key?.includes("電話")) {
+        ws.getColumn(colIdx + 1).numFmt = "@";
+      }
+    });
+    // サンプルデータ行の電話番号セルも明示的に文字列として設定
+    ws.getCell(2, 3).value = "09012345678";
+    ws.getCell(2, 3).numFmt = "@";
+
     // コメント（ノート）
     allHeaders.forEach((h, i) => {
       if (h.note) ws.getCell(1, i + 1).note = h.note;
@@ -324,7 +358,7 @@ function CustomerForm({ formSettings = [], scenarios = [], statuses = [], staffL
           assignedStaffName = staff ? `${staff.lastName} ${staff.firstName}` : res.email;
           resolvedData = { ...resolvedData, "担当者メール": res.email };
         } else {
-          alert("グループ割り当てに失敗しました: " + (res?.message || ""));
+          showToast("グループ割り当てに失敗しました: " + (res?.message || "", "error"));
           return;
         }
       } else if (resolvedData["担当者メール"]) {
@@ -365,7 +399,7 @@ function CustomerForm({ formSettings = [], scenarios = [], statuses = [], staffL
       });
       onRefresh();
     } catch (err) {
-      alert(err.message);
+      showToast(err.message, "info");
       setSubmitting(false); // エラー時はボタンを戻す
     }
   };
@@ -379,8 +413,95 @@ function CustomerForm({ formSettings = [], scenarios = [], statuses = [], staffL
 
   return (
     <>
+      {/* CSVインポート処理中オーバーレイ */}
+      {importing && (
+        <div style={{
+          position: "fixed", inset: 0,
+          backgroundColor: "rgba(0,0,0,0.45)",
+          display: "flex", flexDirection: "column",
+          alignItems: "center", justifyContent: "center",
+          zIndex: 9999,
+        }}>
+          <div style={{
+            background: "#fff", borderRadius: 16, padding: "40px 52px",
+            display: "flex", flexDirection: "column", alignItems: "center", gap: 20,
+            boxShadow: "0 8px 40px rgba(0,0,0,0.18)",
+          }}>
+            <div style={{
+              width: 48, height: 48, border: "5px solid #E5E7EB",
+              borderTop: `5px solid ${THEME.primary}`,
+              borderRadius: "50%",
+              animation: "spin 0.9s linear infinite",
+            }} />
+            <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+            <div style={{ fontWeight: 700, fontSize: 16, color: THEME.textMain }}>
+              インポート処理中...
+            </div>
+            <div style={{ fontSize: 13, color: THEME.textMuted, textAlign: "center" }}>
+              登録件数によって時間がかかる場合があります。<br />
+              このまましばらくお待ちください。
+            </div>
+          </div>
+        </div>
+      )}
     <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     {/* 登録完了モーダル */}
+      {/* CSVインポート完了モーダル */}
+      {importResultModal && (
+        <div style={{ position: "fixed", inset: 0, backgroundColor: "rgba(0,0,0,0.55)", display: "flex", justifyContent: "center", alignItems: "center", zIndex: 3000 }}>
+          <div style={{ backgroundColor: "white", borderRadius: 20, padding: 40, maxWidth: 500, width: "90%", boxShadow: "0 24px 64px rgba(0,0,0,0.2)", textAlign: "center" }}>
+            {/* アイコン */}
+            <div style={{ width: 64, height: 64, borderRadius: "50%", backgroundColor: importResultModal.errors.length > 0 ? "#FEF3C7" : "#DCFCE7", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 20px" }}>
+              <span style={{ fontSize: 28 }}>{importResultModal.errors.length > 0 ? "⚠️" : "✓"}</span>
+            </div>
+            {/* タイトル */}
+            <h3 style={{ margin: "0 0 8px", fontSize: 20, fontWeight: 900, color: importResultModal.errors.length > 0 ? "#92400E" : "#166534" }}>
+              一括登録完了
+            </h3>
+            {/* サマリー */}
+            <div style={{ backgroundColor: "#F8FAFC", borderRadius: 12, padding: "16px 20px", marginBottom: 20, display: "grid", gap: 10, fontSize: 14, textAlign: "left" }}>
+              <div style={{ display: "flex", justifyContent: "space-between" }}>
+                <span style={{ color: "#6B7280" }}>登録成功</span>
+                <strong style={{ color: "#166534" }}>{importResultModal.successCount} 件</strong>
+              </div>
+              {importResultModal.errors.length > 0 && (
+                <div style={{ display: "flex", justifyContent: "space-between" }}>
+                  <span style={{ color: "#6B7280" }}>スキップ</span>
+                  <strong style={{ color: "#B45309" }}>{importResultModal.errors.length} 件</strong>
+                </div>
+              )}
+            </div>
+            {/* スキップ詳細リスト */}
+            {importResultModal.errors.length > 0 && (
+              <div style={{ backgroundColor: "#FFFBEB", border: "1px solid #FDE68A", borderRadius: 10, padding: "12px 16px", marginBottom: 16, textAlign: "left", maxHeight: 160, overflowY: "auto" }}>
+                {importResultModal.errors.map((e, i) => (
+                  <div key={i} style={{ fontSize: 12, color: "#78350F", lineHeight: 1.8 }}>
+                    ・{e.phone || "（番号なし）"} — {e.message}
+                  </div>
+                ))}
+              </div>
+            )}
+            {/* エラーログリンク */}
+            {importResultModal.errors.length > 0 && (
+              <div style={{ marginBottom: 20, fontSize: 13 }}>
+                <button
+                  onClick={() => navigate("/import-errors")}
+                  style={{ background: "none", border: "none", color: THEME.primary, cursor: "pointer", textDecoration: "underline", fontSize: 13, padding: 0 }}
+                >
+                  取り込みエラーログで詳細を確認する →
+                </button>
+              </div>
+            )}
+            {/* 閉じるボタン */}
+            <button
+              onClick={() => { setImportResultModal(null); navigate("/"); }}
+              style={{ width: "100%", padding: "14px", backgroundColor: "#6366F1", color: "white", border: "none", borderRadius: 12, fontSize: 15, fontWeight: 800, cursor: "pointer" }}
+            >
+              顧客一覧へ戻る
+            </button>
+          </div>
+        </div>
+      )}
     {successModal && (
       <div style={{ position: "fixed", inset: 0, backgroundColor: "rgba(0,0,0,0.55)", display: "flex", justifyContent: "center", alignItems: "center", zIndex: 3000 }}>
         <div style={{ backgroundColor: "white", borderRadius: 20, padding: 40, maxWidth: 480, width: "100%", boxShadow: "0 24px 64px rgba(0,0,0,0.2)", textAlign: "center" }}>

@@ -3,12 +3,13 @@ import { Link, useNavigate } from "react-router-dom";
 import axios from "axios";
 import {
   ListTodo, UserCircle, MessageSquare,
-  Loader2, ExternalLink
+  Loader2, ExternalLink, ChevronDown, Check
 } from "lucide-react";
 import { THEME } from "../lib/constants";
 import { StaffDropdown } from "../components/StaffDropdown";
 import { apiCall, customerStore } from "../lib/utils";
 import PromptFieldsModal from "../components/PromptFieldsModal";
+import { useToast } from "../ToastContext";
 
 // ─────────────────────────────────────────────────────────
 // スタイル定数
@@ -109,7 +110,9 @@ function DormantModal({ info, scenarios, gasUrl, onDone, onCancel }) {
   if (!info) return null;
   const handleConfirm = async () => {
     setSaving(true);
-    await axios.post(gasUrl, JSON.stringify({ action: "updateStatus", id: info.customerId, status: info.newStatus, applyScenario: "" }), { headers: { "Content-Type": "text/plain;charset=utf-8" } });
+    // info.scenarioId: ステータス設定で休眠ステータスに紐づけられたシナリオ（即時配信）
+    await axios.post(gasUrl, JSON.stringify({ action: "updateStatus", id: info.customerId, status: info.newStatus, applyScenario: info.scenarioId || "" }), { headers: { "Content-Type": "text/plain;charset=utf-8" } });
+    // scenarioId: モーダル内で選択した「再アプローチ時の」シナリオ（N ヶ月後配信）
     if (selected?.months > 0 && scenarioId) {
       await axios.post(gasUrl, JSON.stringify({ action: "scheduleDormantReapproach", id: info.customerId, months: selected.months, scenarioId }), { headers: { "Content-Type": "text/plain;charset=utf-8" } });
     }
@@ -154,48 +157,169 @@ function DormantModal({ info, scenarios, gasUrl, onDone, onCancel }) {
   );
 }
 
+// 失注モーダル用カスタムセレクト
+function LostReasonSelect({ value, options, onChange }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  const ACCENT = "#DC2626";
+
+  useEffect(() => {
+    const handler = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  const isEmpty = !value;
+
+  return (
+    <div ref={ref} style={{ position: "relative", width: "100%" }}>
+      {/* トリガーボタン */}
+      <button
+        type="button"
+        onClick={() => setOpen(v => !v)}
+        style={{
+          display: "flex", alignItems: "center", justifyContent: "space-between",
+          width: "100%", padding: "12px 16px",
+          border: `2px solid ${open ? ACCENT : isEmpty ? `${ACCENT}60` : THEME.border}`,
+          borderRadius: 12, backgroundColor: "white",
+          color: isEmpty ? THEME.textMuted : THEME.textMain,
+          fontSize: 14, fontWeight: 700,
+          cursor: "pointer", boxSizing: "border-box",
+          outline: "none", transition: "border-color 0.15s",
+          boxShadow: open ? `0 0 0 3px ${ACCENT}18` : "none",
+        }}
+      >
+        <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          {value || "選択してください"}
+        </span>
+        <ChevronDown
+          size={15}
+          color={isEmpty ? THEME.textMuted : ACCENT}
+          style={{ flexShrink: 0, marginLeft: 8, transition: "transform 0.15s", transform: open ? "rotate(180deg)" : "none" }}
+        />
+      </button>
+
+      {/* ドロップダウンリスト */}
+      {open && (
+        <div style={{
+          position: "absolute", top: "calc(100% + 6px)", left: 0, right: 0,
+          backgroundColor: "white", borderRadius: 12,
+          border: `1px solid ${THEME.border}`,
+          boxShadow: "0 12px 32px rgba(0,0,0,0.12)",
+          zIndex: 3500, overflow: "hidden",
+          maxHeight: 260, overflowY: "auto",
+        }}>
+          {options.map((opt) => {
+            const isActive = opt === value;
+            return (
+              <button
+                key={opt}
+                type="button"
+                onClick={() => { onChange(opt); setOpen(false); }}
+                style={{
+                  display: "flex", alignItems: "center", justifyContent: "space-between",
+                  width: "100%", padding: "11px 16px",
+                  border: "none",
+                  backgroundColor: isActive ? `${ACCENT}12` : "transparent",
+                  color: isActive ? ACCENT : THEME.textMain,
+                  fontSize: 14, fontWeight: isActive ? 800 : 600,
+                  cursor: "pointer", textAlign: "left", boxSizing: "border-box",
+                  transition: "background 0.1s",
+                }}
+                onMouseEnter={e => { if (!isActive) e.currentTarget.style.backgroundColor = "#FEF2F2"; }}
+                onMouseLeave={e => { if (!isActive) e.currentTarget.style.backgroundColor = "transparent"; }}
+              >
+                <span>{opt}</span>
+                {isActive && <Check size={14} color={ACCENT} />}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // 失注モーダル
-const LOST_REASONS = ["金額条件が合わなかった", "他社に決まった", "売却を取り止めた", "時期を再検討する", "連絡が取れなくなった", "その他"];
+const DEFAULT_LOST_REASONS = ["金額条件が合わなかった", "他社に決まった", "売却を取り止めた", "時期を再検討する", "連絡が取れなくなった", "その他"];
 function LostModal({ info, gasUrl, onDone, onCancel }) {
   const [reason, setReason]     = useState("");
   const [freeText, setFreeText] = useState("");
   const [saving, setSaving]     = useState(false);
   if (!info) return null;
+
+  const options = (info.lostReasonOptions && info.lostReasonOptions.length > 0)
+    ? [...info.lostReasonOptions, "その他"]
+    : DEFAULT_LOST_REASONS;
+
   const handleConfirm = async () => {
     if (!reason) return;
     setSaving(true);
     const finalReason = reason === "その他" ? freeText || "その他" : reason;
-    await axios.post(gasUrl, JSON.stringify({ action: "updateStatus", id: info.customerId, status: info.newStatus, applyScenario: "" }), { headers: { "Content-Type": "text/plain;charset=utf-8" } });
+    await axios.post(gasUrl, JSON.stringify({ action: "updateStatus", id: info.customerId, status: info.newStatus, applyScenario: info.scenarioId || "" }), { headers: { "Content-Type": "text/plain;charset=utf-8" } });
     await axios.post(gasUrl, JSON.stringify({ action: "saveLostReason", id: info.customerId, reason: finalReason }), { headers: { "Content-Type": "text/plain;charset=utf-8" } });
     setSaving(false);
     onDone();
   };
+
   return (
     <div style={S.overlay}>
       <div style={{ ...S.modal, width: 480 }}>
-        <div style={{ textAlign: "center", marginBottom: 24 }}>
-          <div style={{ fontSize: 48, marginBottom: 8 }}>🗑</div>
-          <h3 style={{ fontSize: 20, fontWeight: 900, color: THEME.textMain, margin: "0 0 8px" }}>失注に変更</h3>
-          <p style={{ fontSize: 13, color: THEME.textMuted, margin: 0 }}>失注の理由を記録しておきましょう</p>
+        {/* ヘッダー */}
+        <div style={{ textAlign: "center", marginBottom: 28 }}>
+          <div style={{ width: 56, height: 56, borderRadius: 16, backgroundColor: "#FEF2F2", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 12px", fontSize: 26 }}>🗑</div>
+          <h3 style={{ fontSize: 20, fontWeight: 900, color: THEME.textMain, margin: "0 0 6px" }}>失注に変更</h3>
+          <p style={{ fontSize: 13, color: THEME.textMuted, margin: 0, lineHeight: 1.6 }}>失注の理由を記録しておきましょう</p>
         </div>
-        <div style={{ marginBottom: 20 }}>
-          <div style={{ fontSize: 13, fontWeight: 800, color: THEME.textMuted, marginBottom: 8 }}>失注理由 <span style={{ color: "#DC2626" }}>*</span></div>
-          <select value={reason} onChange={e => setReason(e.target.value)} style={{ width: "100%", padding: "11px 16px", borderRadius: 10, border: `1px solid ${reason ? THEME.border : "#DC2626"}`, fontSize: 14, fontWeight: 700, appearance: "none", backgroundColor: "white", cursor: "pointer", boxSizing: "border-box" }}>
-            <option value="">選択してください</option>
-            {LOST_REASONS.map(r => <option key={r} value={r}>{r}</option>)}
-          </select>
+
+        {/* 失注理由セレクト */}
+        <div style={{ marginBottom: reason === "その他" ? 16 : 28 }}>
+          <div style={{ fontSize: 12, fontWeight: 800, color: THEME.textMuted, marginBottom: 8, display: "flex", alignItems: "center", gap: 4 }}>
+            失注理由 <span style={{ color: "#DC2626", fontSize: 11 }}>必須</span>
+          </div>
+          <LostReasonSelect value={reason} options={options} onChange={setReason} />
         </div>
+
+        {/* その他：自由記述 */}
         {reason === "その他" && (
-          <div style={{ marginBottom: 20 }}>
-            <div style={{ fontSize: 13, fontWeight: 800, color: THEME.textMuted, marginBottom: 8 }}>詳細を入力</div>
-            <textarea value={freeText} onChange={e => setFreeText(e.target.value)} placeholder="失注の詳細を入力してください" rows={3} style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: `1px solid ${THEME.border}`, fontSize: 14, resize: "vertical", boxSizing: "border-box" }} />
+          <div style={{ marginBottom: 28 }}>
+            <div style={{ fontSize: 12, fontWeight: 800, color: THEME.textMuted, marginBottom: 8 }}>詳細（任意）</div>
+            <textarea
+              value={freeText}
+              onChange={e => setFreeText(e.target.value)}
+              placeholder="失注の詳細を入力してください"
+              rows={3}
+              autoFocus
+              style={{ width: "100%", padding: "11px 14px", borderRadius: 12, border: `1.5px solid ${THEME.border}`, fontSize: 14, fontWeight: 600, resize: "vertical", boxSizing: "border-box", outline: "none", color: THEME.textMain, lineHeight: 1.6, fontFamily: "inherit" }}
+              onFocus={e => e.target.style.borderColor = "#DC2626"}
+              onBlur={e => e.target.style.borderColor = THEME.border}
+            />
           </div>
         )}
-        <div style={{ display: "flex", gap: 12 }}>
-          <button onClick={handleConfirm} disabled={saving || !reason} style={{ flex: 1, padding: 14, borderRadius: 12, border: "none", backgroundColor: reason ? "#DC2626" : "#E5E7EB", color: "white", fontWeight: 900, fontSize: 15, cursor: reason ? "pointer" : "not-allowed" }}>
-            {saving ? "処理中..." : "確定する"}
+
+        {/* アクションボタン */}
+        <div style={{ display: "flex", gap: 10 }}>
+          <button
+            onClick={handleConfirm}
+            disabled={saving || !reason}
+            style={{
+              flex: 2, padding: "14px 0", borderRadius: 12, border: "none",
+              backgroundColor: reason ? "#DC2626" : "#E5E7EB",
+              color: "white", fontWeight: 900, fontSize: 15,
+              cursor: reason ? "pointer" : "not-allowed",
+              transition: "opacity 0.15s, background-color 0.15s",
+              opacity: saving ? 0.75 : 1,
+              display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+            }}
+          >
+            {saving ? <><Loader2 size={15} style={{ animation: "spin 1s linear infinite" }} /> 処理中...</> : "確定する"}
           </button>
-          <button onClick={onCancel} style={{ flex: 1, padding: 14, borderRadius: 12, border: `1px solid ${THEME.border}`, backgroundColor: "white", color: THEME.textMuted, fontWeight: 800, fontSize: 15, cursor: "pointer" }}>キャンセル</button>
+          <button
+            onClick={onCancel}
+            style={{ flex: 1, padding: "14px 0", borderRadius: 12, border: `1.5px solid ${THEME.border}`, backgroundColor: "white", color: THEME.textMuted, fontWeight: 800, fontSize: 15, cursor: "pointer" }}
+          >
+            キャンセル
+          </button>
         </div>
       </div>
     </div>
@@ -296,7 +420,7 @@ function UketsukeModal({ info, gasUrl, contractTypes, staffList, onDone, onCance
       }
       onDone(info.customerId, info.newStatus, info.prevStatus, staffEmail);
     } catch {
-      alert("更新に失敗しました");
+      showToast("更新に失敗しました", "error");
       setSaving(false);
     }
   };
@@ -569,7 +693,7 @@ function WonModal({ info, gasUrl, onDone, onCancel }) {
       }
       onDone(info.customerId, info.newStatus, info.prevStatus);
     } catch {
-      alert("更新に失敗しました");
+      showToast("更新に失敗しました", "error");
       setSaving(false);
     }
   };
@@ -863,6 +987,7 @@ export default function KanbanBoard({
   customers = [], statuses = [], scenarios = [], scenarioSettings = {},
   onRefresh, onLightRefresh, staffList = [], properties = [], gasUrl, sources = [], contractTypes = [],
 }) {
+  const showToast = useToast();
   const navigate = useNavigate();
   const [filterStaff, setFilterStaff]       = useState("");
   // 初期値をストアのパッチ適用済みデータで初期化
@@ -908,7 +1033,13 @@ export default function KanbanBoard({
         const serverC = serverMap.get(cid) || c;
         const base    = customerStore.applyTo([serverC])[0];
         if (pendingUpdates.current.has(cid)) {
-          return { ...base, "対応ステータス": pendingUpdates.current.get(cid) };
+          const pendingStatus = pendingUpdates.current.get(cid);
+          // サーバーがpendingと同じステータスを返してきた = 書き込み確認済み → pendingを解放
+          if ((serverC["対応ステータス"] || "").trim() === pendingStatus.trim()) {
+            pendingUpdates.current.delete(cid);
+          }
+          // 確認済みでも未確認でも、このリフレッシュではpendingStatusを優先して表示
+          return { ...base, "対応ステータス": pendingStatus };
         }
         return base;
       });
@@ -986,7 +1117,7 @@ export default function KanbanBoard({
 
     // 失注
     if (statusDef?.terminalType === "lost") {
-      setLostModal({ customerId: cid, newStatus, prevStatus });
+      setLostModal({ customerId: cid, newStatus, prevStatus, lostReasonOptions: statusDef.lostReasonOptions || [], scenarioId: statusDef?.scenarioId || "" });
       return;
     }
     // 成約 → WonModal（物件ごとの成約金額入力）
@@ -998,7 +1129,7 @@ export default function KanbanBoard({
     }
     // 休眠系（dormant）→ 再アプローチモーダル
     if (statusDef?.terminalType === "dormant") {
-      setDormantModal({ customerId: cid, newStatus, prevStatus });
+      setDormantModal({ customerId: cid, newStatus, prevStatus, scenarioId: statusDef?.scenarioId || "" });
       return;
     }
     // 除外 → シンプル更新（モーダルなし）
@@ -1044,12 +1175,14 @@ export default function KanbanBoard({
         setPromptModal({ customerId: cid, promptFields: pf });
       }
     } catch {
-      // ロールバック
+      // ロールバック（失敗時のみpendingUpdatesから削除）
+      pendingUpdates.current.delete(cid);
       customerStore.patch(cid, { "対応ステータス": prevStatus });
       setLocalCustomers(prev => prev.map(c => String(c.id) === cid ? { ...c, "対応ステータス": prevStatus } : c));
-      alert("更新に失敗しました");
+      showToast("更新に失敗しました", "error");
     } finally {
-      pendingUpdates.current.delete(cid);
+      // ※ pendingUpdates.delete はここでは行わない
+      //    サーバー確認（useEffect内）で削除することで、リフレッシュ後の先祖がえりを防ぐ
       syncCount.current -= 1;
       if (syncCount.current === 0) {
         setSyncing(false);
@@ -1233,7 +1366,14 @@ export default function KanbanBoard({
                               onDragEnd={onDragEnd}
                               style={{ ...S.card, borderColor: dragging ? THEME.primary : "transparent", opacity: dragging ? 0.3 : 1, transform: dragging ? "scale(1.03) rotate(1.5deg)" : "scale(1)", boxShadow: dragging ? "0 16px 32px rgba(91,79,206,0.25)" : S.card.boxShadow }}
                             >
-                              <div style={{ fontWeight: "900", marginBottom: "10px", fontSize: "15px", color: THEME.textMain }}>{c["姓"]} {c["名"]} 様</div>
+                              <Link
+                                to={`/detail/${c.id}`}
+                                onClick={e => e.stopPropagation()}
+                                draggable={false}
+                                style={{ fontWeight: "900", marginBottom: "10px", fontSize: "15px", color: THEME.primary, textDecoration: "none", display: "block", lineHeight: 1.3 }}
+                              >
+                                {c["姓"]} {c["名"]} 様
+                              </Link>
                               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                                 <div style={{ fontSize: "11px", color: THEME.textMuted, display: "flex", alignItems: "center", gap: 5, fontWeight: "700" }}>
                                   <UserCircle size={14} color={THEME.primary} />
