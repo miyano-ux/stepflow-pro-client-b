@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from "react";
-import { Link, useNavigate, useParams, useLocation } from "react-router-dom";
-import { Loader2, Send, CheckCircle2, Trash2, RefreshCw } from "lucide-react";
+import { useNavigate, useParams, useLocation } from "react-router-dom";
+import { ArrowLeft, Loader2, Send, CheckCircle2, Trash2, RefreshCw } from "lucide-react";
 import { THEME, GAS_URL } from "../lib/constants";
 import { styles } from "../lib/styles";
 import { apiCall, formatDate, smartNormalizePhone } from "../lib/utils";
@@ -250,13 +250,17 @@ function CustomerSchedule({ customers = [], deliveryLogs = [], onRefresh }) {
           </div>
         )}
 
-        <Link to="/" style={{
-          display: "inline-flex", alignItems: "center", gap: 8,
-          marginBottom: "24px", color: THEME.primary,
-          textDecoration: "none", fontWeight: "700", fontSize: "14px",
-        }}>
-          ← 戻る
-        </Link>
+        <button
+          onClick={() => navigate(`/detail/${id}`)}
+          style={{
+            display: "inline-flex", alignItems: "center", gap: 6,
+            marginBottom: "24px", background: "none", border: "none",
+            color: THEME.textMuted, cursor: "pointer",
+            fontWeight: "700", fontSize: "14px", padding: 0,
+          }}
+        >
+          <ArrowLeft size={16} /> {c["姓"]} {c["名"]} 様の詳細に戻る
+        </button>
 
         <div style={{ maxWidth: "850px" }}>
           <h3 style={{

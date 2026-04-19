@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate, useParams, useLocation } from "react-router-dom";
-import { Loader2, UserCheck, Zap, Send, Calendar, MessageSquare, X, CheckCircle2 } from "lucide-react";
+import { ArrowLeft, Loader2, UserCheck, Zap, Send, Calendar, MessageSquare, X, CheckCircle2 } from "lucide-react";
 import axios from "axios";
 import { THEME, CLIENT_COMPANY_NAME, GAS_URL } from "../lib/constants";
 import { styles } from "../lib/styles";
@@ -145,6 +145,17 @@ function DirectSms({ customers = [], templates = [], onRefresh, masterUrl, curre
   return (
     <>
       <Page title="個別メッセージ送信" subtitle={`${c["姓"]} ${c["名"]} 様`}>
+        <button
+          onClick={() => navigate(`/detail/${id}`)}
+          style={{
+            display: "inline-flex", alignItems: "center", gap: 6,
+            marginBottom: "24px", background: "none", border: "none",
+            color: THEME.textMuted, cursor: "pointer",
+            fontWeight: "700", fontSize: "14px", padding: 0,
+          }}
+        >
+          <ArrowLeft size={16} /> {c["姓"]} {c["名"]} 様の詳細に戻る
+        </button>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 350px", gap: "32px" }}>
 
           {/* ── 左カラム：送信設定 */}

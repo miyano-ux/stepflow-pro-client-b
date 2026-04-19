@@ -4,7 +4,7 @@ import axios from "axios";
 import {
   CheckCircle2, XCircle, Loader2, Globe, KeyRound,
   Zap, AlertCircle, ChevronLeft, Copy, Check, Mail,
-  Bell, Phone, X, Plus, MessageSquare, UserCircle,
+  Bell, Phone, X, Plus, MessageSquare, UserCircle, Lock,
 } from "lucide-react";
 import { THEME, GAS_URL } from "../lib/constants";
 import { styles } from "../lib/styles";
@@ -205,7 +205,11 @@ export default function SourceIntegrationDetail({
   const [mappingSaving, setMappingSaving] = useState(false);
   const [mappingSaved,  setMappingSaved]  = useState(false);
 
-  const scenarioIds = [...new Set((scenarios || []).map(s => s["シナリオID"]).filter(Boolean))];
+  const scenarioIds             = [...new Set((scenarios || []).map(s => s["シナリオID"]).filter(Boolean))];
+  const statusLinkedScenarioIds = new Set((statuses || []).map(st => st.scenarioId).filter(Boolean));
+  const unlinkedScenarioIds     = scenarioIds.filter(sid => !statusLinkedScenarioIds.has(sid));
+  const selectedStatusDef       = (statuses || []).find(st => st.name === ruleForm.status);
+  const linkedScenarioId        = selectedStatusDef?.scenarioId || null;
 
   const api = (payload) =>
     axios.post(gasUrl, JSON.stringify(payload), {
@@ -315,8 +319,14 @@ export default function SourceIntegrationDetail({
   // ── マッピング先カラム選択肢 ─────────────────────────────────
   // 「顧客情報」グループ：processCustomerRegistration で直接処理される特殊カラム
   const PERSONAL_DEST_COLS = ["姓", "名", "姓（カナ）", "名（カナ）", "電話番号", "メールアドレス"];
-  // 「物件情報」グループ：物件リストに紐づく4項目
-  const PROPERTY_DEST_COLS = ["物件名", "物件種別", "査定金額", "成約金額"];
+  // 「物件・査定情報」グループ：data{} に格納される汎用カラム
+  const PROPERTY_DEST_COLS = [
+    "問い合わせ番号", "物件種別", "物件名", "物件住所", "所在地",
+    "土地面積", "建物面積", "専有面積", "間取り", "築年", "完成年",
+    "現況", "名義", "残債", "事業所名", "部屋番号",
+    "売却希望時期", "売却理由", "ご要望", "希望連絡時間",
+    "受付日時", "受信日時", "住所", "郵便番号",
+  ];
   const ALL_FIXED = new Set([...PERSONAL_DEST_COLS, ...PROPERTY_DEST_COLS]);
   const customDestCols = (formSettings || [])
     .map(f => f.name)
@@ -325,13 +335,19 @@ export default function SourceIntegrationDetail({
     { value: "", label: "— 保存しない —" },
     { value: "__group_personal__", label: "── 顧客情報 ──", disabled: true },
     ...PERSONAL_DEST_COLS.map(c => ({ value: c, label: c })),
-    { value: "__group_property__", label: "── 物件情報 ──", disabled: true },
+    { value: "__group_property__", label: "── 物件・査定情報 ──", disabled: true },
     ...PROPERTY_DEST_COLS.map(c => ({ value: c, label: c })),
     ...(customDestCols.length > 0 ? [
       { value: "__group_custom__", label: "── カスタム項目 ──", disabled: true },
       ...customDestCols.map(c => ({ value: c, label: c })),
     ] : []),
   ];
+
+  // ── ステータス変更（シナリオ連動制御）──────────────────────────
+  const handleStatusChange = (v) => {
+    // ステータスが変わったらシナリオIDはクリア（連動シナリオはUI上で表示のみ）
+    setRuleForm(p => ({ ...p, status: v, scenarioId: "" }));
+  };
 
   const isConfigured = src.requiresLogin ? !!sourceCredsStatus?.[sourceKey] : true;
 
@@ -454,7 +470,7 @@ export default function SourceIntegrationDetail({
             <LabelText>初期ステータス</LabelText>
             <CustomSelect
               value={ruleForm.status}
-              onChange={v => setRuleForm(p => ({ ...p, status: v }))}
+              onChange={handleStatusChange}
               options={[
                 { value: "", label: "未設定（デフォルト）" },
                 ...(statuses || []).map(s => ({ value: s.name, label: s.name })),
@@ -475,14 +491,28 @@ export default function SourceIntegrationDetail({
           </div>
           <div>
             <LabelText>適用シナリオ</LabelText>
-            <CustomSelect
-              value={ruleForm.scenarioId}
-              onChange={v => setRuleForm(p => ({ ...p, scenarioId: v }))}
-              options={[
-                { value: "", label: "未設定" },
-                ...scenarioIds.map(id => ({ value: id, label: id })),
-              ]}
-            />
+            {linkedScenarioId ? (
+              <div style={{
+                ...S.input,
+                display: "flex", alignItems: "center", gap: 8,
+                backgroundColor: "#F8FAFC", cursor: "not-allowed", userSelect: "none",
+              }}>
+                <Lock size={13} color="#94A3B8" style={{ flexShrink: 0 }} />
+                <span style={{ fontWeight: 700, color: THEME.textMain, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{linkedScenarioId}</span>
+                <span style={{ fontSize: 11, fontWeight: 700, backgroundColor: "#EEF2FF", color: "#6366F1", padding: "2px 8px", borderRadius: 99, whiteSpace: "nowrap", flexShrink: 0 }}>
+                  ステータスに連動
+                </span>
+              </div>
+            ) : (
+              <CustomSelect
+                value={ruleForm.scenarioId}
+                onChange={v => setRuleForm(p => ({ ...p, scenarioId: v }))}
+                options={[
+                  { value: "", label: "未設定" },
+                  ...unlinkedScenarioIds.map(id => ({ value: id, label: id })),
+                ]}
+              />
+            )}
           </div>
         </div>
         <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 8 }}>

@@ -398,16 +398,10 @@ export default function CustomerDetail({
       }
 
       // ステータス変更を検知して楽観的にタイムラインへ即時反映
-      const prevStatus = customer?.["対応ステータス"];
-      const nextStatus = snapshot["対応ステータス"];
-      if (prevStatus && nextStatus && prevStatus !== nextStatus) {
-        setPendingHistoryEntry({
-          "顧客ID": id,
-          "ステータス": nextStatus,
-          "変更日時": new Date().toISOString(),
-          _pending: true,
-        });
-      }
+      // ※ applyOptimisticStatusHistory は同じステータスのときは何もしないので安全に呼べる
+      const prevStatus = customer?.["対応ステータス"] || "";
+      const nextStatus = snapshot["対応ステータス"] || "";
+      applyOptimisticStatusHistory(prevStatus, nextStatus);
 
       await axios.post(
         gasUrl,
@@ -442,8 +436,18 @@ export default function CustomerDetail({
         setScenarioConfirm({ newStatus: val, scenarioId: statusDef.scenarioId, promptFields: pf });
         return;
       }
-      // シナリオなしでもpromptFieldsがあればformData更新後にprompt表示
-      setFormData(prev => ({ ...prev, [key]: val }));
+      // 新ステータスにシナリオが紐づいていない場合:
+      // 現在のシナリオIDが「ステータス連動」のもの（availableScenariosに存在しない）なら
+      // 自動的にクリアする。
+      // ※ CustomSelectはoptions外の値を「未選択」と表示するため、ユーザーには
+      //   未選択に見えているのにformData上は旧IDが残るという不一致が起きるのを防ぐ。
+      const currentScenarioId = formData["シナリオID"] || "";
+      const isStatusLinked = currentScenarioId && !availableScenarios.includes(currentScenarioId);
+      setFormData(prev => ({
+        ...prev,
+        [key]: val,
+        ...(isStatusLinked ? { "シナリオID": "" } : {}),
+      }));
       if (pf.length > 0) setPromptModal({ promptFields: pf });
       return;
     }
@@ -467,6 +471,18 @@ export default function CustomerDetail({
       }
     }
     setPromptModal(null);
+  };
+
+  // ステータス変更を検知して楽観的タイムラインを更新するヘルパー
+  // handleSave・handleFieldChange のどちらから呼ばれた場合も確実に記録する
+  const applyOptimisticStatusHistory = (prevStatus, nextStatus) => {
+    if (!prevStatus || !nextStatus || prevStatus === nextStatus) return;
+    setPendingHistoryEntry({
+      "顧客ID": id,
+      "ステータス": nextStatus,
+      "変更日時": new Date().toISOString(),
+      _pending: true,
+    });
   };
 
   // ── 物件 CRUD（楽観的UI） ────────────────────────────────
@@ -605,10 +621,10 @@ export default function CustomerDetail({
       {/* ── ヘッダー ── */}
       <div style={{ marginBottom: 32 }}>
         <button
-          onClick={() => navigate("/customers")}
+          onClick={() => navigate(location.state?.from ?? "/customers")}
           style={{ background: "none", border: "none", color: THEME.textMuted, cursor: "pointer", display: "flex", alignItems: "center", gap: 6, fontWeight: 700, marginBottom: 16, fontSize: 14 }}
         >
-          <ArrowLeft size={16} /> 顧客一覧に戻る
+          <ArrowLeft size={16} /> {location.state?.from ? "リストに戻る" : "顧客一覧に戻る"}
         </button>
 
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
@@ -969,6 +985,11 @@ export default function CustomerDetail({
           sources={sources}
           contractTypes={contractTypes}
           staffList={staffList}
+          currentValues={{
+            "契約種別":     formData["契約種別"]     || "",
+            "流入元":       formData["流入元"]       || "",
+            "担当者メール": formData["担当者メール"] || "",
+          }}
           onConfirm={handlePromptConfirm}
           onSkip={() => setPromptModal(null)}
         />

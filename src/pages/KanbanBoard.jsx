@@ -110,7 +110,9 @@ function DormantModal({ info, scenarios, gasUrl, onDone, onCancel }) {
   if (!info) return null;
   const handleConfirm = async () => {
     setSaving(true);
-    await axios.post(gasUrl, JSON.stringify({ action: "updateStatus", id: info.customerId, status: info.newStatus, applyScenario: "" }), { headers: { "Content-Type": "text/plain;charset=utf-8" } });
+    // info.scenarioId: ステータス設定で休眠ステータスに紐づけられたシナリオ（即時配信）
+    await axios.post(gasUrl, JSON.stringify({ action: "updateStatus", id: info.customerId, status: info.newStatus, applyScenario: info.scenarioId || "" }), { headers: { "Content-Type": "text/plain;charset=utf-8" } });
+    // scenarioId: モーダル内で選択した「再アプローチ時の」シナリオ（N ヶ月後配信）
     if (selected?.months > 0 && scenarioId) {
       await axios.post(gasUrl, JSON.stringify({ action: "scheduleDormantReapproach", id: info.customerId, months: selected.months, scenarioId }), { headers: { "Content-Type": "text/plain;charset=utf-8" } });
     }
@@ -254,7 +256,7 @@ function LostModal({ info, gasUrl, onDone, onCancel }) {
     if (!reason) return;
     setSaving(true);
     const finalReason = reason === "その他" ? freeText || "その他" : reason;
-    await axios.post(gasUrl, JSON.stringify({ action: "updateStatus", id: info.customerId, status: info.newStatus, applyScenario: "" }), { headers: { "Content-Type": "text/plain;charset=utf-8" } });
+    await axios.post(gasUrl, JSON.stringify({ action: "updateStatus", id: info.customerId, status: info.newStatus, applyScenario: info.scenarioId || "" }), { headers: { "Content-Type": "text/plain;charset=utf-8" } });
     await axios.post(gasUrl, JSON.stringify({ action: "saveLostReason", id: info.customerId, reason: finalReason }), { headers: { "Content-Type": "text/plain;charset=utf-8" } });
     setSaving(false);
     onDone();
@@ -431,7 +433,7 @@ function UketsukeModal({ info, gasUrl, contractTypes, staffList, onDone, onCance
         {/* ヘッダー */}
         <div style={{ textAlign: "center", marginBottom: 24 }}>
           <div style={{ fontSize: 44, marginBottom: 8 }}>🔑</div>
-          <h3 style={{ fontSize: 19, fontWeight: 900, color: THEME.textMain, margin: "0 0 6px" }}>契約に進みます</h3>
+          <h3 style={{ fontSize: 19, fontWeight: 900, color: THEME.textMain, margin: "0 0 6px" }}>受託に進みます</h3>
           <p style={{ fontSize: 13, color: THEME.textMuted, margin: 0, lineHeight: 1.6 }}>
             <strong style={{ color: "#0EA5E9" }}>「{info.newStatus}」</strong> への変更に必要な情報を入力してください。
           </p>
@@ -446,7 +448,7 @@ function UketsukeModal({ info, gasUrl, contractTypes, staffList, onDone, onCance
               <div>
                 <div style={{ fontSize: 12, fontWeight: 800, color: THEME.textMuted, marginBottom: 8 }}>
                   対象物件を選択 <span style={{ color: "#DC2626" }}>*</span>
-                  <span style={{ fontSize: 11, fontWeight: 700, color: "#0EA5E9", marginLeft: 8 }}>（契約する物件にチェック）</span>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: "#0EA5E9", marginLeft: 8 }}>（受託する物件にチェック）</span>
                 </div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                   {info.customerProperties.map(p => {
@@ -578,7 +580,7 @@ function UketsukeModal({ info, gasUrl, contractTypes, staffList, onDone, onCance
                 disabled={saving || !currentPrice}
                 style={{ flex: 2, padding: 14, borderRadius: 12, border: "none", backgroundColor: currentPrice ? "#0EA5E9" : "#E5E7EB", color: "white", fontWeight: 900, fontSize: 15, cursor: currentPrice ? "pointer" : "not-allowed" }}
               >
-                {saving ? "処理中..." : isLastProp ? "契約確定" : "OK（次の物件へ）"}
+                {saving ? "処理中..." : isLastProp ? "受託確定" : "OK（次の物件へ）"}
               </button>
               <button
                 onClick={() => priceStep > 0 ? setPriceStep(s => s - 1) : setPhase("select")}
@@ -632,7 +634,7 @@ function UketsukeModal({ info, gasUrl, contractTypes, staffList, onDone, onCance
                 disabled={saving || !propName || !propAddr || !newAssessPrice || !contractType || !staffEmail}
                 style={{ flex: 2, padding: 14, borderRadius: 12, border: "none", backgroundColor: (propName && propAddr && newAssessPrice && contractType && staffEmail) ? "#0EA5E9" : "#E5E7EB", color: "white", fontWeight: 900, fontSize: 15, cursor: (propName && propAddr && newAssessPrice && contractType && staffEmail) ? "pointer" : "not-allowed" }}
               >
-                {saving ? "処理中..." : "契約確定"}
+                {saving ? "処理中..." : "受託確定"}
               </button>
               <button onClick={onCancel} style={{ flex: 1, padding: 14, borderRadius: 12, border: `1px solid ${THEME.border}`, backgroundColor: "white", color: THEME.textMuted, fontWeight: 800, fontSize: 15, cursor: "pointer" }}>
                 キャンセル
@@ -877,7 +879,7 @@ function UketsukeBackModal({ info, onConfirm, onCancel }) {
       <div style={{ backgroundColor: "white", borderRadius: 24, padding: "40px", width: 460, boxShadow: "0 24px 48px rgba(0,0,0,0.15)" }}>
         <div style={{ textAlign: "center", marginBottom: 28 }}>
           <div style={{ fontSize: 48, marginBottom: 10 }}>⚠️</div>
-          <h3 style={{ fontSize: 20, fontWeight: 900, color: THEME.textMain, margin: "0 0 12px" }}>契約済みステータスを前に戻します</h3>
+          <h3 style={{ fontSize: 20, fontWeight: 900, color: THEME.textMain, margin: "0 0 12px" }}>受託済みステータスを前に戻します</h3>
           <p style={{ fontSize: 14, color: THEME.textMuted, lineHeight: 1.8, margin: 0 }}>
             <strong style={{ color: "#D97706" }}>「{info.newStatus}」</strong> に変更します。<br />
             <span style={{ fontSize: 13 }}>契約種別がリセットされます。この操作は取り消せません。</span>
@@ -1115,7 +1117,7 @@ export default function KanbanBoard({
 
     // 失注
     if (statusDef?.terminalType === "lost") {
-      setLostModal({ customerId: cid, newStatus, prevStatus, lostReasonOptions: statusDef.lostReasonOptions || [] });
+      setLostModal({ customerId: cid, newStatus, prevStatus, lostReasonOptions: statusDef.lostReasonOptions || [], scenarioId: statusDef?.scenarioId || "" });
       return;
     }
     // 成約 → WonModal（物件ごとの成約金額入力）
@@ -1127,7 +1129,7 @@ export default function KanbanBoard({
     }
     // 休眠系（dormant）→ 再アプローチモーダル
     if (statusDef?.terminalType === "dormant") {
-      setDormantModal({ customerId: cid, newStatus, prevStatus });
+      setDormantModal({ customerId: cid, newStatus, prevStatus, scenarioId: statusDef?.scenarioId || "" });
       return;
     }
     // 除外 → シンプル更新（モーダルなし）
@@ -1316,7 +1318,7 @@ export default function KanbanBoard({
                             <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                               {fixed && (
                                 <span style={{ fontSize: 10, fontWeight: 900, backgroundColor: "#0EA5E9", color: "white", padding: "2px 7px", borderRadius: 99, letterSpacing: "0.03em" }}>
-                                  📋 契約
+                                  🔑 受託
                                 </span>
                               )}
                               <h3 style={{ fontSize: "13px", fontWeight: "900", color: THEME.textMain, margin: 0 }}>{st.name}</h3>

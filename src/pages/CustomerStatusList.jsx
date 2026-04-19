@@ -1,5 +1,5 @@
 import React, { useMemo } from "react";
-import { Link, useParams, useNavigate } from "react-router-dom";
+import { Link, useParams, useNavigate, useLocation } from "react-router-dom";
 import { ArrowLeft, ExternalLink, Send, UserCircle, Calendar } from "lucide-react";
 import { THEME } from "../lib/constants";
 
@@ -30,6 +30,7 @@ const formatDate = (v) => {
 export default function CustomerStatusList({ customers = [], statuses = [], staffList = [] }) {
   const { type, name } = useParams(); // type: "won"|"dormant"|"lost" | name: encodeURIComponent(ステータス名)
   const navigate = useNavigate();
+  const location = useLocation();
 
   // ステータス名ベース（新ルート /status-list/by-name/:name）
   const byName = type === "by-name";
@@ -122,8 +123,14 @@ export default function CustomerStatusList({ customers = [], statuses = [], staf
                     >
                       {/* 顧客名 */}
                       <td style={{ padding: "16px 20px", borderBottom: `1px solid ${THEME.border}` }}>
-                        <div style={{ fontWeight: 900, fontSize: 15, color: THEME.textMain }}>
-                          {c["姓"]} {c["名"]} 様
+                        <div style={{ fontWeight: 900, fontSize: 15 }}>
+                          <Link
+                            to={`/detail/${c.id}`}
+                            state={{ from: location.pathname }}
+                            style={{ color: THEME.primary, textDecoration: "underline", textUnderlineOffset: 3, cursor: "pointer" }}
+                          >
+                            {c["姓"]} {c["名"]} 様
+                          </Link>
                         </div>
                         <div style={{ fontSize: 12, color: THEME.textMuted, marginTop: 2 }}>
                           {c["電話番号"] || "-"}

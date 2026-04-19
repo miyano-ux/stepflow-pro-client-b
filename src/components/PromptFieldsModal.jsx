@@ -1,32 +1,24 @@
 import React, { useState } from "react";
 import { THEME } from "../lib/constants";
 import { styles } from "../lib/styles";
+import CustomSelect from "./CustomSelect";
 
 // ==========================================
 // 📝 PromptFieldsModal
 // ステータス変更後に追加で管理項目を確認するポップアップ
 // ==========================================
 
-const selectStyle = {
-  width: "100%", padding: "11px 16px", borderRadius: 10,
-  border: `1px solid #E2E8F0`, fontSize: 14, fontWeight: 700,
-  outline: "none", backgroundColor: "white", color: "#1E293B",
-  appearance: "none",
-  backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2364748B' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E")`,
-  backgroundRepeat: "no-repeat", backgroundPosition: "right 12px center",
-  cursor: "pointer", boxSizing: "border-box",
-};
-
 export default function PromptFieldsModal({
-  newStatus,        // 変更先ステータス名
+  newStatus,         // 変更先ステータス名
   promptFields = [], // ["契約種別", "流入元", "担当者メール"]
   sources = [],
   contractTypes = [],
   staffList = [],
-  onConfirm,        // (values: { [key]: value }) => void
-  onSkip,           // () => void
+  currentValues = {}, // 現在のフォームデータ（初期値として使用）
+  onConfirm,         // (values: { [key]: value }) => void
+  onSkip,            // () => void
 }) {
-  const [values, setValues] = useState({});
+  const [values, setValues] = useState(currentValues);
 
   if (promptFields.length === 0) return null;
 
@@ -38,30 +30,45 @@ export default function PromptFieldsModal({
         return (
           <div key={key}>
             <div style={{ fontSize: 13, fontWeight: 800, color: THEME.textMuted, marginBottom: 6 }}>契約種別</div>
-            <select style={selectStyle} value={values["契約種別"] || ""} onChange={e => set("契約種別", e.target.value)}>
-              <option value="">未選択</option>
-              {contractTypes.map(t => <option key={t} value={t}>{t}</option>)}
-            </select>
+            <CustomSelect
+              value={values["契約種別"] || ""}
+              onChange={v => set("契約種別", v)}
+              placeholder="未選択"
+              options={[
+                { value: "", label: "未選択" },
+                ...contractTypes.map(t => ({ value: t, label: t })),
+              ]}
+            />
           </div>
         );
       case "流入元":
         return (
           <div key={key}>
             <div style={{ fontSize: 13, fontWeight: 800, color: THEME.textMuted, marginBottom: 6 }}>流入元</div>
-            <select style={selectStyle} value={values["流入元"] || ""} onChange={e => set("流入元", e.target.value)}>
-              <option value="">未選択</option>
-              {sources.map(s => <option key={s.name} value={s.name}>{s.name}</option>)}
-            </select>
+            <CustomSelect
+              value={values["流入元"] || ""}
+              onChange={v => set("流入元", v)}
+              placeholder="未選択"
+              options={[
+                { value: "", label: "未選択" },
+                ...sources.map(s => ({ value: s.name, label: s.name })),
+              ]}
+            />
           </div>
         );
       case "担当者メール":
         return (
           <div key={key}>
             <div style={{ fontSize: 13, fontWeight: 800, color: THEME.textMuted, marginBottom: 6 }}>担当者</div>
-            <select style={selectStyle} value={values["担当者メール"] || ""} onChange={e => set("担当者メール", e.target.value)}>
-              <option value="">未選択</option>
-              {staffList.map(s => <option key={s.email} value={s.email}>{s.lastName} {s.firstName}</option>)}
-            </select>
+            <CustomSelect
+              value={values["担当者メール"] || ""}
+              onChange={v => set("担当者メール", v)}
+              placeholder="未選択"
+              options={[
+                { value: "", label: "未選択" },
+                ...staffList.map(s => ({ value: s.email, label: `${s.lastName} ${s.firstName}` })),
+              ]}
+            />
           </div>
         );
       default:

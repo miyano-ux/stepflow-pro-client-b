@@ -349,25 +349,36 @@ export default function CustomerList({
     const cid = String(customer.id);
     setConfirmModal({ open: false, customer: null, field: "", newValue: "", oldValue: "" });
 
+    // ステータス変更の場合、紐づくシナリオIDも一緒にセットする
+    // → GAS の update アクションがシナリオIDの変化を検知して配信スケジューリングを実行する
+    const extraPatch = {};
+    if (field === "対応ステータス") {
+      const statusDef = (statuses || []).find(s => s.name === newValue);
+      if (statusDef?.scenarioId) {
+        extraPatch["シナリオID"] = statusDef.scenarioId;
+      }
+    }
+
     // ① ストアとローカル状態を同時に即時更新
     //    → KanbanBoard がマウント済みなら subscribe 経由で即反映
     //    → KanbanBoard が未マウントでもストアにパッチが残るため
     //      次回マウント時に applyTo() で正しい状態で表示される
-    customerStore.patch(cid, { [field]: newValue });
+    customerStore.patch(cid, { [field]: newValue, ...extraPatch });
     pendingMap.current.set(cid, { field, value: newValue });
     setSyncing(true);
-    setLocalCustomers((prev) => prev.map((c) => String(c.id) === cid ? { ...c, [field]: newValue } : c));
+    setLocalCustomers((prev) => prev.map((c) => String(c.id) === cid ? { ...c, [field]: newValue, ...extraPatch } : c));
 
+    const dataToSend = { ...customer, [field]: newValue, ...extraPatch };
     try {
-      await axios.post(gasUrl, JSON.stringify({ action: "update", id: customer.id, data: { ...customer, [field]: newValue } }), { headers: { "Content-Type": "text/plain;charset=utf-8" } });
+      await axios.post(gasUrl, JSON.stringify({ action: "update", id: customer.id, data: dataToSend }), { headers: { "Content-Type": "text/plain;charset=utf-8" } });
       // サーバー確定後にパッチをクリア（以降はサーバーデータを使用）
       customerStore.clear(cid);
       if (onLightRefresh) onLightRefresh(); else onRefresh();
     } catch {
       // ロールバック
-      customerStore.patch(cid, { [field]: customer[field] });
+      customerStore.patch(cid, { [field]: customer[field], ...Object.fromEntries(Object.keys(extraPatch).map(k => [k, customer[k]])) });
       pendingMap.current.delete(cid);
-      setLocalCustomers((prev) => prev.map((c) => String(c.id) === cid ? { ...c, [field]: customer[field] } : c));
+      setLocalCustomers((prev) => prev.map((c) => String(c.id) === cid ? { ...c, [field]: customer[field], ...Object.fromEntries(Object.keys(extraPatch).map(k => [k, customer[k]])) } : c));
       showToast("更新に失敗しました", "error");
     } finally {
       pendingMap.current.delete(cid);

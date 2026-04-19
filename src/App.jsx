@@ -128,7 +128,7 @@ function App() {
     if (!user) return;
     try {
       const [gasRes] = await Promise.all([
-        axios.get(GAS_URL),
+        axios.get(`${GAS_URL}?_t=${Date.now()}`),
         refreshStaff(), // GASデータと並列で取得
       ]);
       const data = gasRes?.data || {};

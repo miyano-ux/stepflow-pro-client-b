@@ -71,7 +71,7 @@ function StatusRow({ s, idx, scenarios, onChange, onDelete, onDragStart, onDragO
           <div style={{ display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" }}>
             {(s.promptFields || []).map((pf, pi) => (
               <span key={pi} style={{ display: "flex", alignItems: "center", gap: 4, backgroundColor: "#EEF2FF", color: THEME.primary, padding: "4px 10px", borderRadius: 99, fontSize: 12, fontWeight: 800 }}>
-                {pf}
+                {PROMPT_FIELD_OPTIONS.find(o => o.key === pf)?.label?.replace(/^\S+\s/, "") || pf}
                 <button onClick={() => onPromptRemove(idx, pi)} style={{ background: "none", border: "none", cursor: "pointer", padding: 0, color: THEME.primary, lineHeight: 1, fontSize: 14 }}>×</button>
               </span>
             ))}
@@ -153,7 +153,7 @@ function ContractRow({ s, idx, scenarios, onChange, onDelete, onDragStart, onDra
           <div style={{ display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" }}>
             {(s.promptFields || []).map((pf, pi) => (
               <span key={pi} style={{ display: "flex", alignItems: "center", gap: 4, backgroundColor: "#E0F2FE", color: CONTRACT_COLOR, padding: "4px 10px", borderRadius: 99, fontSize: 12, fontWeight: 800 }}>
-                {pf}
+                {PROMPT_FIELD_OPTIONS.find(o => o.key === pf)?.label?.replace(/^\S+\s/, "") || pf}
                 <button onClick={() => onPromptRemove(idx, pi)} style={{ background: "none", border: "none", cursor: "pointer", padding: 0, color: CONTRACT_COLOR, lineHeight: 1, fontSize: 14 }}>×</button>
               </span>
             ))}
