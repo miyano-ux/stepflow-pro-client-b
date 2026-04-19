@@ -121,8 +121,8 @@ export default function GmailSettings({
   const [syncing, setSyncing]               = useState(false);
   const [successModal, setSuccessModal]     = useState({ open: false, message: "" });
   const [statusConfirmPending, setStatusConfirmPending] = useState(null);
-  const [showAddUser, setShowAddUser]       = useState(false);
-  const addUserRef                          = useRef(null);
+  const [showAddNotifyUser, setShowAddNotifyUser]       = useState(false);
+  const addNotifyUserRef = useRef(null);
 
   // 削除済みIDを記録するRef（GASキャッシュ遅延対策）
   // GASは書き込み直後のGETで古いデータを返すことがある。
@@ -184,18 +184,6 @@ export default function GmailSettings({
   const selectedStatusDef       = (statuses || []).find(st => st.name === modal.data.status);
   const linkedScenarioId        = selectedStatusDef?.scenarioId || null;
 
-  // ── addUserRef 外クリックで閉じる ──────────────────────────
-  useEffect(() => {
-    if (!showAddUser) return;
-    const handler = (e) => {
-      if (addUserRef.current && !addUserRef.current.contains(e.target)) {
-        setShowAddUser(false);
-      }
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, [showAddUser]);
-
   // ── ヘルパー ──────────────────────────────────────────────
   const safeParseCustomKeys = (str) => { try { return str ? JSON.parse(str) : {}; } catch { return {}; } };
   const setData      = (patch) => setModal(m => ({ ...m, data: { ...m.data, ...patch } }));
@@ -214,31 +202,43 @@ export default function GmailSettings({
 
   // ── モーダル開閉 ──────────────────────────────────────────
   const openNew = () => {
-    setTestBody(""); setParsePreview(null); setShowAddUser(false);
+    setTestBody(""); setParsePreview(null); setShowAddNotifyUser(false);
     setModal({ open: true, mode: "add", editLocalId: null, data: EMPTY_DATA });
   };
   const openEdit = (rule) => {
     const ck = safeParseCustomKeys(rule["カスタム項目キー"]);
-    let nu = [];
-    try { nu = JSON.parse(rule["通知先ユーザー"] || "[]"); } catch { nu = []; }
-    setTestBody(""); setParsePreview(null); setShowAddUser(false);
+    let notifyUsers = [];
+    try { notifyUsers = JSON.parse(rule["通知先ユーザー"] || "[]"); } catch { notifyUsers = []; }
+    setTestBody(""); setParsePreview(null); setShowAddNotifyUser(false);
     setModal({
       open: true, mode: "edit", editLocalId: rule._localId,
       data: {
-        subject:      rule["件名"]           || "",
-        nameKey:      rule["氏名キー"]       || "氏名：",
-        phoneKey:     rule["電話キー"]       || "電話番号：",
-        status:       rule["対応ステータス"] || "",
-        source:       rule["流入元"]         || "",
-        staffEmail:   rule["担当者メール"]   || "",
-        scenarioID:   rule["シナリオID"]     || "",
-        customKeys:   ck,
-        notifyUsers:  nu,
+        subject:       rule["件名"]           || "",
+        nameKey:       rule["氏名キー"]       || "氏名：",
+        phoneKey:      rule["電話キー"]       || "電話番号：",
+        status:        rule["対応ステータス"] || "",
+        source:        rule["流入元"]         || "",
+        staffEmail:    rule["担当者メール"]   || "",
+        scenarioID:    rule["シナリオID"]     || "",
+        customKeys:    ck,
+        notifyUsers,
         notifyMessage: rule["通知文言"] || "",
       },
     });
   };
-  const closeModal = () => setModal(m => ({ ...m, open: false }));
+  const closeModal = () => { setModal(m => ({ ...m, open: false })); setShowAddNotifyUser(false); };
+
+  // 通知ユーザー追加ドロップダウン外クリックで閉じる
+  useEffect(() => {
+    if (!showAddNotifyUser) return;
+    const handler = (e) => {
+      if (addNotifyUserRef.current && !addNotifyUserRef.current.contains(e.target)) {
+        setShowAddNotifyUser(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [showAddNotifyUser]);
 
   // ── テスト実行 ────────────────────────────────────────────
   const handleTest = () => {
@@ -311,17 +311,17 @@ export default function GmailSettings({
     setSyncing(true);
     try {
       await apiCall.post(GAS_URL, {
-        action:       "saveGmailSetting",
-        id:           isEdit ? serverIdx : undefined,
-        subject:      formData.subject,
-        nameKey:      formData.nameKey,
-        phoneKey:     formData.phoneKey,
-        status:       formData.status,
-        source:       formData.source,
-        staffEmail:   formData.staffEmail,
-        scenarioID:   formData.scenarioID,
-        customKeys:   JSON.stringify(formData.customKeys),
-        notifyUsers:  JSON.stringify(formData.notifyUsers || []),
+        action:        "saveGmailSetting",
+        id:            isEdit ? serverIdx : undefined,
+        subject:       formData.subject,
+        nameKey:       formData.nameKey,
+        phoneKey:      formData.phoneKey,
+        status:        formData.status,
+        source:        formData.source,
+        staffEmail:    formData.staffEmail,
+        scenarioID:    formData.scenarioID,
+        customKeys:    JSON.stringify(formData.customKeys),
+        notifyUsers:   JSON.stringify(formData.notifyUsers || []),
         notifyMessage: formData.notifyMessage || "",
       });
       onRefresh(); // 正式IDで仮IDを置き換える
@@ -456,17 +456,6 @@ export default function GmailSettings({
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                     <span style={{ ...styles.badge, backgroundColor: THEME.primary, color: "white", fontSize: 11, padding: "4px 10px" }}>ルール</span>
-                    {(() => {
-                      try {
-                        const nu = JSON.parse(rule["通知先ユーザー"] || "[]");
-                        if (nu.length > 0) return (
-                          <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11, fontWeight: 700, color: "#D97706", backgroundColor: "#FFFBEB", border: "1px solid #FDE68A", borderRadius: 999, padding: "2px 8px" }}>
-                            <Bell size={10} /> 通知 {nu.length}件
-                          </span>
-                        );
-                      } catch { return null; }
-                      return null;
-                    })()}
                     {isTemp && <RefreshCw size={12} color={THEME.textMuted} style={{ animation: "spin 1.2s linear infinite" }} />}
                   </div>
                   <div style={{ display: "flex", gap: 4 }}>
@@ -592,23 +581,29 @@ export default function GmailSettings({
 
               {/* 通知設定 */}
               <div style={{ padding: 20, background: "#FFFBEB", borderRadius: 14, border: "1px solid #FDE68A", marginBottom: 28 }}>
-                <div style={{ fontSize: 12, fontWeight: 800, color: "#92400E", marginBottom: 14, display: "flex", alignItems: "center", gap: 6 }}>
+                <div style={{ fontSize: 12, fontWeight: 800, color: "#92400E", marginBottom: 4, display: "flex", alignItems: "center", gap: 6 }}>
                   <Bell size={13} color="#D97706" /> 通知設定（反響受信時のSMS通知）
                 </div>
-                <div style={{ marginBottom: 16 }}>
-                  <LabelText>通知文言</LabelText>
-                  <textarea
-                    style={{ ...styles.input, width: "100%", boxSizing: "border-box", minHeight: 64, resize: "vertical", lineHeight: 1.6, fontFamily: "inherit" }}
-                    value={modal.data.notifyMessage}
-                    onChange={e => setData({ notifyMessage: e.target.value })}
-                    placeholder="カスタム取り込みから反響がありました。確認をお願いします。"
-                  />
-                  <div style={{ fontSize: 11, color: THEME.textMuted, marginTop: 4 }}>※ 登録のたびに上記の文言でSMSが送信されます。</div>
+                <div style={{ fontSize: 11, color: "#92400E", marginBottom: 14 }}>
+                  このルールで取り込みが発生した際にSMSで通知するユーザーを設定します。
                 </div>
 
+                {/* 通知文言 */}
+                <FieldBox style={{ marginBottom: 14 }}>
+                  <LabelText>通知文言</LabelText>
+                  <textarea
+                    style={{ ...styles.input, width: "100%", boxSizing: "border-box", minHeight: 64, resize: "vertical", lineHeight: 1.6, fontFamily: "inherit", fontSize: 13 }}
+                    value={modal.data.notifyMessage}
+                    onChange={e => setData({ notifyMessage: e.target.value })}
+                    placeholder={`${modal.data.subject || "カスタムメール"}から反響がありました。確認をお願いします。`}
+                  />
+                  <div style={{ fontSize: 11, color: THEME.textMuted, marginTop: 4 }}>登録のたびに上記の文言でSMSが送信されます。</div>
+                </FieldBox>
+
+                {/* 通知先ユーザー */}
                 <LabelText>通知先ユーザー</LabelText>
                 {(modal.data.notifyUsers || []).length === 0 && (
-                  <div style={{ fontSize: 13, color: THEME.textMuted, padding: "10px 14px", backgroundColor: "#FEF9C3", borderRadius: 8, border: "1px solid #FDE68A", marginBottom: 10 }}>
+                  <div style={{ fontSize: 12, color: THEME.textMuted, padding: "10px 14px", backgroundColor: "#FEF9EE", borderRadius: 8, border: `1px solid #FDE68A`, marginBottom: 10 }}>
                     通知先が設定されていません。＋ボタンでユーザーを追加してください。
                   </div>
                 )}
@@ -621,7 +616,9 @@ export default function GmailSettings({
                       <Phone size={13} color={THEME.textMuted} style={{ flexShrink: 0 }} />
                       <input
                         style={{ ...styles.input, flex: 1, fontSize: 13 }}
-                        type="tel" placeholder="09012345678" value={u.phone || ""}
+                        type="tel"
+                        placeholder="09012345678"
+                        value={u.phone || ""}
                         onChange={e => {
                           const updated = (modal.data.notifyUsers || []).map((x, i) => i === idx ? { ...x, phone: e.target.value } : x);
                           setData({ notifyUsers: updated });
@@ -631,22 +628,23 @@ export default function GmailSettings({
                     <button
                       onClick={() => setData({ notifyUsers: (modal.data.notifyUsers || []).filter((_, i) => i !== idx) })}
                       style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 32, height: 32, borderRadius: 8, border: "none", backgroundColor: "#FEE2E2", color: "#DC2626", cursor: "pointer", flexShrink: 0 }}
+                      title="削除"
                     >
                       <X size={14} />
                     </button>
                   </div>
                 ))}
 
-                {/* ユーザー追加ドロップダウン */}
-                <div ref={addUserRef} style={{ position: "relative", display: "inline-block", marginTop: 4 }}>
+                {/* ＋ユーザー追加ドロップダウン */}
+                <div ref={addNotifyUserRef} style={{ position: "relative", display: "inline-block", marginTop: 4 }}>
                   <button
-                    style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "8px 14px", borderRadius: 8, border: `1px dashed ${THEME.border}`, backgroundColor: "white", color: THEME.primary, fontSize: 13, fontWeight: 600, cursor: "pointer" }}
-                    onClick={() => setShowAddUser(v => !v)}
+                    style={{ ...styles.btn, ...styles.btnSecondary, border: `1px dashed ${THEME.border}`, color: THEME.primary, gap: 6, display: "inline-flex", alignItems: "center", backgroundColor: "white" }}
+                    onClick={() => setShowAddNotifyUser(v => !v)}
                   >
                     <Plus size={14} /> ユーザーを追加
                   </button>
-                  {showAddUser && (
-                    <div style={{ position: "absolute", top: "calc(100% + 6px)", left: 0, zIndex: 3000, backgroundColor: "white", borderRadius: 12, border: `1px solid ${THEME.border}`, boxShadow: "0 12px 28px rgba(0,0,0,0.12)", minWidth: 220, overflow: "hidden" }}>
+                  {showAddNotifyUser && (
+                    <div style={{ position: "absolute", top: "calc(100% + 6px)", left: 0, zIndex: 3100, backgroundColor: "white", borderRadius: 12, border: `1px solid ${THEME.border}`, boxShadow: "0 12px 28px rgba(0,0,0,0.12)", minWidth: 220, overflow: "hidden" }}>
                       <div style={{ padding: 6 }}>
                         {(staffList || []).length === 0 && (
                           <div style={{ padding: "10px 12px", fontSize: 13, color: THEME.textMuted }}>ユーザーが見つかりません</div>
@@ -656,11 +654,12 @@ export default function GmailSettings({
                           .map(s => {
                             const name = `${s.lastName || ""} ${s.firstName || ""}`.trim() || s.email;
                             return (
-                              <button key={s.email}
+                              <button
+                                key={s.email}
                                 onClick={() => {
                                   const phone = s.phone ? String(s.phone).replace(/'/g, "").trim() : "";
                                   setData({ notifyUsers: [...(modal.data.notifyUsers || []), { email: s.email, name, phone }] });
-                                  setShowAddUser(false);
+                                  setShowAddNotifyUser(false);
                                 }}
                                 style={{ width: "100%", display: "flex", alignItems: "center", gap: 10, padding: "9px 12px", border: "none", borderRadius: 8, cursor: "pointer", backgroundColor: "transparent", fontSize: 13, color: THEME.textMain, fontWeight: 600 }}
                                 onMouseEnter={e => e.currentTarget.style.backgroundColor = "#F0F7FF"}
