@@ -1179,7 +1179,7 @@ export default function KanbanBoard({
       pendingUpdates.current.delete(cid);
       customerStore.patch(cid, { "対応ステータス": prevStatus });
       setLocalCustomers(prev => prev.map(c => String(c.id) === cid ? { ...c, "対応ステータス": prevStatus } : c));
-      showToast("更新に失敗しました", "error");
+      showToast("更新に失敗しました。", "error");
     } finally {
       // ※ pendingUpdates.delete はここでは行わない
       //    サーバー確認（useEffect内）で削除することで、リフレッシュ後の先祖がえりを防ぐ
