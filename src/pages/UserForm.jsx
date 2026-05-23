@@ -54,7 +54,7 @@ function AlertModal({ modal, onClose }) {
  * ユーザーの新規登録および既存情報の編集ページ
  * @param {string} masterUrl - マスタAPIのURL
  */
-function UserForm({ masterUrl, onRefreshStaff }) {
+function UserForm({ masterUrl, onRefreshStaff, staffList = [] }) {
   const navigate = useNavigate();
   const { id } = useParams();                    // id = encodeされたメールアドレス（編集時）
   const isEdit = !!id;
@@ -92,6 +92,21 @@ function UserForm({ masterUrl, onRefreshStaff }) {
       return showModal("error", "氏名とメールアドレスは必須です");
     }
 
+    // 新規登録時のみ: 既存ユーザーとのメール重複を事前にチェック
+    // （メールは固有キー。重複登録は古いレコードを残したまま新規行を増やす原因になる）
+    if (!isEdit) {
+      const norm = (v) => String(v || "").trim().toLowerCase();
+      const duplicate = staffList.find(
+        (u) => norm(u.email) === norm(form.email)
+      );
+      if (duplicate) {
+        return showModal(
+          "error",
+          "このメールアドレスはすでに登録されています。氏名などを変更する場合は、ユーザー一覧の編集ボタンから行ってください。"
+        );
+      }
+    }
+
     setLoading(true);
     try {
       // 電話番号のゼロ落ち防止
@@ -113,7 +128,7 @@ function UserForm({ masterUrl, onRefreshStaff }) {
           }
         : {
             action: "addAllowUser",          // 新規登録
-            "メール": form.email,
+            "メール": String(form.email).trim(),
             "会社名": CLIENT_COMPANY_NAME,
             "姓": form.lastName,
             "名": form.firstName,
