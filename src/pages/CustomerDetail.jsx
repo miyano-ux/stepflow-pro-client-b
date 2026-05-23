@@ -146,10 +146,11 @@ function PropFormModal({ open, mode, data, propTypes, propStatuses, onSave, onCl
           </div>
           <div>
             <label style={{ fontSize: 11, fontWeight: 800, color: "#64748B", display: "block", marginBottom: 5 }}>物件種別</label>
-            <select style={{ width: "100%", padding: "10px 14px", borderRadius: 8, border: "1px solid #E2E8F0", fontSize: 14, outline: "none", boxSizing: "border-box", appearance: "none" }}
-              value={form.propertyType || "マンション"} onChange={e => set("propertyType", e.target.value)}>
-              {propTypes.map(t => <option key={t} value={t}>{t}</option>)}
-            </select>
+            <CustomSelect
+              value={form.propertyType || "マンション"}
+              options={propTypes.map(t => ({ value: t, label: t }))}
+              onChange={v => set("propertyType", v)}
+            />
           </div>
           <div>
             <label style={{ fontSize: 11, fontWeight: 800, color: "#64748B", display: "block", marginBottom: 5 }}>査定金額（万円）</label>
@@ -169,10 +170,11 @@ function PropFormModal({ open, mode, data, propTypes, propStatuses, onSave, onCl
           {isEdit && (
             <div>
               <label style={{ fontSize: 11, fontWeight: 800, color: "#64748B", display: "block", marginBottom: 5 }}>ステータス</label>
-              <select style={{ width: "100%", padding: "10px 14px", borderRadius: 8, border: "1px solid #E2E8F0", fontSize: 14, outline: "none", boxSizing: "border-box", appearance: "none" }}
-                value={form.status || "検討中"} onChange={e => set("status", e.target.value)}>
-                {propStatuses.map(s => <option key={s} value={s}>{s}</option>)}
-              </select>
+              <CustomSelect
+                value={form.status || "検討中"}
+                options={propStatuses.map(s => ({ value: s, label: s }))}
+                onChange={v => set("status", v)}
+              />
             </div>
           )}
           <div style={{ gridColumn: "1 / -1" }}>
@@ -193,6 +195,97 @@ function PropFormModal({ open, mode, data, propTypes, propStatuses, onSave, onCl
           <button
             onClick={onClose}
             style={{ flex: 1, padding: "12px", borderRadius: 10, border: "1px solid #E2E8F0", backgroundColor: "white", color: "#64748B", fontWeight: 700, fontSize: 14, cursor: "pointer" }}
+          >
+            キャンセル
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── 失注理由モーダル ──────────────────────────────────────────
+// 顧客編集画面で失注ステータスに変更した際、失注理由を入力させる。
+// 理由は formData に保持され、「保存する」押下時に GAS へ反映される。
+const DEFAULT_LOST_REASONS = [
+  "金額条件が合わなかった", "他社に決まった", "売却を取り止めた",
+  "時期を再検討する", "連絡が取れなくなった", "その他",
+];
+
+function LostReasonModal({ open, lostReasonOptions = [], onConfirm, onCancel }) {
+  const [reason, setReason]     = useState("");
+  const [freeText, setFreeText] = useState("");
+
+  // モーダルを開くたびに入力をリセット
+  useEffect(() => {
+    if (open) { setReason(""); setFreeText(""); }
+  }, [open]);
+
+  if (!open) return null;
+
+  const options = (lostReasonOptions && lostReasonOptions.length > 0)
+    ? [...lostReasonOptions, "その他"]
+    : DEFAULT_LOST_REASONS;
+
+  const handleConfirm = () => {
+    if (!reason) return;
+    const finalReason = reason === "その他" ? (freeText.trim() || "その他") : reason;
+    onConfirm(finalReason);
+  };
+
+  return (
+    <div style={{ position: "fixed", inset: 0, backgroundColor: "rgba(15,23,42,0.6)", display: "flex", justifyContent: "center", alignItems: "center", zIndex: 3000, backdropFilter: "blur(4px)" }}>
+      <div style={{ backgroundColor: "white", borderRadius: 20, padding: 36, width: 460, boxShadow: "0 24px 48px rgba(0,0,0,0.15)" }}>
+        {/* ヘッダー */}
+        <div style={{ textAlign: "center", marginBottom: 24 }}>
+          <div style={{ width: 56, height: 56, borderRadius: 16, backgroundColor: "#FEF2F2", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 12px", fontSize: 26 }}>🗑</div>
+          <h3 style={{ fontSize: 18, fontWeight: 900, color: "#0F172A", margin: "0 0 6px" }}>失注に変更</h3>
+          <p style={{ fontSize: 13, color: "#64748B", margin: 0, lineHeight: 1.6 }}>失注の理由を記録しておきましょう</p>
+        </div>
+
+        {/* 失注理由セレクト */}
+        <div style={{ marginBottom: reason === "その他" ? 16 : 24 }}>
+          <div style={{ fontSize: 12, fontWeight: 800, color: "#64748B", marginBottom: 8, display: "flex", alignItems: "center", gap: 4 }}>
+            失注理由 <span style={{ color: "#DC2626", fontSize: 11 }}>必須</span>
+          </div>
+          <CustomSelect
+            value={reason}
+            options={options.map(o => ({ value: o, label: o }))}
+            onChange={setReason}
+            color="#DC2626"
+            placeholder="選択してください"
+          />
+        </div>
+
+        {/* その他：自由記述 */}
+        {reason === "その他" && (
+          <div style={{ marginBottom: 24 }}>
+            <div style={{ fontSize: 12, fontWeight: 800, color: "#64748B", marginBottom: 8 }}>詳細（任意）</div>
+            <textarea
+              value={freeText}
+              onChange={e => setFreeText(e.target.value)}
+              placeholder="失注の詳細を入力してください"
+              rows={3}
+              autoFocus
+              style={{ width: "100%", padding: "11px 14px", borderRadius: 12, border: "1.5px solid #E2E8F0", fontSize: 14, fontWeight: 600, resize: "vertical", boxSizing: "border-box", outline: "none", color: "#0F172A", lineHeight: 1.6, fontFamily: "inherit" }}
+              onFocus={e => e.target.style.borderColor = "#DC2626"}
+              onBlur={e => e.target.style.borderColor = "#E2E8F0"}
+            />
+          </div>
+        )}
+
+        {/* アクションボタン */}
+        <div style={{ display: "flex", gap: 12 }}>
+          <button
+            onClick={handleConfirm}
+            disabled={!reason}
+            style={{ flex: 2, padding: 13, borderRadius: 10, border: "none", backgroundColor: reason ? "#DC2626" : "#E5E7EB", color: "white", fontWeight: 900, fontSize: 14, cursor: reason ? "pointer" : "not-allowed", transition: "background-color 0.15s" }}
+          >
+            確定する
+          </button>
+          <button
+            onClick={onCancel}
+            style={{ flex: 1, padding: 13, borderRadius: 10, border: "1px solid #E2E8F0", backgroundColor: "white", color: "#64748B", fontWeight: 800, fontSize: 14, cursor: "pointer" }}
           >
             キャンセル
           </button>
@@ -293,6 +386,7 @@ export default function CustomerDetail({
   const [isEditing, setIsEditing] = useState(false);
   const [scenarioConfirm, setScenarioConfirm] = useState(null); // { newStatus, scenarioId }
   const [promptModal, setPromptModal]         = useState(null); // { promptFields }
+  const [lostModal, setLostModal]             = useState(null); // { newStatus, promptFields, lostReasonOptions }
   const [syncingCount, setSyncingCount] = useState(0);
   const [formData, setFormData] = useState(null);
   const [pendingHistoryEntry, setPendingHistoryEntry] = useState(null); // 楽観的更新用
@@ -408,6 +502,19 @@ export default function CustomerDetail({
         JSON.stringify({ action: "update", id, data: snapshot }),
         { headers: { "Content-Type": "text/plain;charset=utf-8" } }
       );
+
+      // 失注ステータスへ変更した場合は失注理由を確実に保存する。
+      // ※ update は既存列のみ書き込むため、失注理由列が無い環境でも
+      //   列を自動追加する saveLostReason を併用して取りこぼしを防ぐ。
+      const nextStatusDef = (statuses || []).find(s => s.name === nextStatus);
+      if (nextStatusDef?.terminalType === "lost" && snapshot["失注理由"]) {
+        await axios.post(
+          gasUrl,
+          JSON.stringify({ action: "saveLostReason", id, reason: snapshot["失注理由"] }),
+          { headers: { "Content-Type": "text/plain;charset=utf-8" } }
+        );
+      }
+
       setFormData(snapshot);
       // 成功モーダルを表示（OK押下後に編集モードを終了）
       setPropSuccess({ open: true, message: "顧客情報を保存しました。", _onClose: () => setIsEditing(false) });
@@ -432,6 +539,18 @@ export default function CustomerDetail({
     if (key === "対応ステータス" && val !== formData["対応ステータス"]) {
       const statusDef = (statuses || []).find(s => s.name === val);
       const pf = statusDef?.promptFields || [];
+
+      // 失注ステータスへの変更：失注理由モーダルを表示し、
+      // 理由が確定してからステータスを formData に反映する。
+      if (statusDef?.terminalType === "lost") {
+        setLostModal({
+          newStatus: val,
+          promptFields: pf,
+          lostReasonOptions: statusDef.lostReasonOptions || [],
+        });
+        return;
+      }
+
       if (statusDef?.scenarioId) {
         setScenarioConfirm({ newStatus: val, scenarioId: statusDef.scenarioId, promptFields: pf });
         return;
@@ -447,6 +566,8 @@ export default function CustomerDetail({
         ...prev,
         [key]: val,
         ...(isStatusLinked ? { "シナリオID": "" } : {}),
+        // 失注以外のステータスへ変更した場合は失注理由をクリアする
+        ...(prev["失注理由"] ? { "失注理由": "" } : {}),
       }));
       if (pf.length > 0) setPromptModal({ promptFields: pf });
       return;
@@ -471,6 +592,23 @@ export default function CustomerDetail({
       }
     }
     setPromptModal(null);
+  };
+
+  // 失注理由が確定したら、ステータスと失注理由を formData へ反映する。
+  // GAS への保存は「保存する」押下時（handleSave）にまとめて行う。
+  const handleLostConfirm = (reason) => {
+    if (!lostModal) return;
+    const { newStatus, promptFields } = lostModal;
+    const currentScenarioId = formData["シナリオID"] || "";
+    const isStatusLinked = currentScenarioId && !availableScenarios.includes(currentScenarioId);
+    setFormData(prev => ({
+      ...prev,
+      "対応ステータス": newStatus,
+      "失注理由": reason,
+      ...(isStatusLinked ? { "シナリオID": "" } : {}),
+    }));
+    setLostModal(null);
+    if (promptFields.length > 0) setPromptModal({ promptFields });
   };
 
   // ステータス変更を検知して楽観的タイムラインを更新するヘルパー
@@ -978,6 +1116,12 @@ export default function CustomerDetail({
       </div>
 
       {/* ── モーダル群（return の中に配置することで正しくレンダリングされる） ── */}
+      <LostReasonModal
+        open={!!lostModal}
+        lostReasonOptions={lostModal?.lostReasonOptions || []}
+        onConfirm={handleLostConfirm}
+        onCancel={() => setLostModal(null)}
+      />
       {promptModal && (
         <PromptFieldsModal
           newStatus={formData["対応ステータス"] || ""}
