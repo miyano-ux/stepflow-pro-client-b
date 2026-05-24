@@ -97,60 +97,52 @@ function ScenarioConfirmModal({ info, onConfirm, onCancel }) {
   );
 }
 
-// 汎用終点モーダル（休眠系 / 除外）
-function DormantModal({ info, scenarios, gasUrl, onDone, onCancel }) {
-  const [selected, setSelected]   = useState(null);
-  const [scenarioId, setScenarioId] = useState("");
-  const [saving, setSaving]       = useState(false);
-  const OPTS = [
-    { months: 1, label: "1ヶ月後" }, { months: 2, label: "2ヶ月後" },
-    { months: 3, label: "3ヶ月後" }, { months: 6, label: "6ヶ月後" },
-    { months: 12, label: "12ヶ月後" }, { months: 0, label: "設定しない" },
-  ];
+// 終点ステータス（休眠系）確認モーダル
+// 再アプローチの月数・シナリオは StatusSettings 側で定義済み。ここでは適用の確認のみ行う。
+function DormantModal({ info, gasUrl, onDone, onCancel }) {
+  const [saving, setSaving] = useState(false);
   if (!info) return null;
+
+  const months        = Number(info.reapproachMonths) || 0;
+  const scenarioId    = info.reapproachScenarioId || "";
+  const hasReapproach = months > 0 && !!scenarioId;
+
   const handleConfirm = async () => {
     setSaving(true);
-    // info.scenarioId: ステータス設定で休眠ステータスに紐づけられたシナリオ（即時配信）
-    await axios.post(gasUrl, JSON.stringify({ action: "updateStatus", id: info.customerId, status: info.newStatus, applyScenario: info.scenarioId || "" }), { headers: { "Content-Type": "text/plain;charset=utf-8" } });
-    // scenarioId: モーダル内で選択した「再アプローチ時の」シナリオ（N ヶ月後配信）
-    if (selected?.months > 0 && scenarioId) {
-      await axios.post(gasUrl, JSON.stringify({ action: "scheduleDormantReapproach", id: info.customerId, months: selected.months, scenarioId }), { headers: { "Content-Type": "text/plain;charset=utf-8" } });
+    try {
+      await axios.post(gasUrl, JSON.stringify({ action: "updateStatus", id: info.customerId, status: info.newStatus, applyScenario: "" }), { headers: { "Content-Type": "text/plain;charset=utf-8" } });
+      if (hasReapproach) {
+        await axios.post(gasUrl, JSON.stringify({ action: "scheduleDormantReapproach", id: info.customerId, months, scenarioId }), { headers: { "Content-Type": "text/plain;charset=utf-8" } });
+      }
+    } finally {
+      setSaving(false);
+      onDone();
     }
-    setSaving(false);
-    onDone();
   };
+
   return (
     <div style={S.overlay}>
-      <div style={{ ...S.modal, width: 500 }}>
+      <div style={{ ...S.modal, width: 460 }}>
         <div style={{ textAlign: "center", marginBottom: 24 }}>
           <div style={{ fontSize: 48, marginBottom: 8 }}>🌙</div>
-          <h3 style={{ fontSize: 20, fontWeight: 900, color: THEME.textMain, margin: "0 0 8px" }}>「{info.newStatus}」に変更</h3>
-          <p style={{ fontSize: 13, color: THEME.textMuted, margin: 0 }}>再アプローチするタイミングを設定できます</p>
+          <h3 style={{ fontSize: 20, fontWeight: 900, color: THEME.textMain, margin: "0 0 8px" }}>「{info.newStatus}」に変更しますか？</h3>
         </div>
-        <div style={{ marginBottom: 20 }}>
-          <div style={{ fontSize: 13, fontWeight: 800, color: THEME.textMuted, marginBottom: 10 }}>再アプローチ時期</div>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-            {OPTS.map(opt => (
-              <button key={opt.months} onClick={() => setSelected(opt)} style={{ padding: "8px 18px", borderRadius: 99, fontWeight: 800, fontSize: 13, cursor: "pointer", border: `2px solid ${selected?.months === opt.months ? "#D97706" : THEME.border}`, backgroundColor: selected?.months === opt.months ? "#FFFBEB" : "white", color: selected?.months === opt.months ? "#D97706" : THEME.textMuted }}>
-                {opt.label}
-              </button>
-            ))}
-          </div>
+        <div style={{ backgroundColor: hasReapproach ? "#FFFBEB" : "#F9FAFB", border: `1px solid ${hasReapproach ? "#FDE68A" : THEME.border}`, borderRadius: 12, padding: "14px 16px", marginBottom: 24 }}>
+          {hasReapproach ? (
+            <p style={{ fontSize: 14, color: THEME.textMain, lineHeight: 1.8, margin: 0 }}>
+              <strong style={{ color: "#D97706" }}>{months}ヶ月後</strong> にシナリオ <strong style={{ color: "#D97706" }}>「{scenarioId}」</strong> が自動で予約されます。
+            </p>
+          ) : (
+            <p style={{ fontSize: 13, color: THEME.textMuted, lineHeight: 1.7, margin: 0 }}>
+              このステータスには再アプローチが設定されていません。再アプローチを予約するには、ステータス設定画面で「再アプローチ設定」を行ってください。
+            </p>
+          )}
         </div>
-        {selected?.months > 0 && (
-          <div style={{ marginBottom: 20 }}>
-            <div style={{ fontSize: 13, fontWeight: 800, color: THEME.textMuted, marginBottom: 8 }}>適用シナリオ（任意）</div>
-            <select value={scenarioId} onChange={e => setScenarioId(e.target.value)} style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: `1px solid ${THEME.border}`, fontSize: 14, fontWeight: 700 }}>
-              <option value="">シナリオを選択しない</option>
-              {[...new Set(scenarios.map(s => s["シナリオID"]))].map(sid => <option key={sid} value={sid}>{sid}</option>)}
-            </select>
-          </div>
-        )}
         <div style={{ display: "flex", gap: 12 }}>
-          <button onClick={handleConfirm} disabled={saving || selected === null} style={{ flex: 1, padding: 14, borderRadius: 12, border: "none", backgroundColor: selected ? "#D97706" : "#E5E7EB", color: "white", fontWeight: 900, fontSize: 15, cursor: selected ? "pointer" : "not-allowed" }}>
-            {saving ? "処理中..." : "確定する"}
+          <button onClick={handleConfirm} disabled={saving} style={{ flex: 1, padding: 14, borderRadius: 12, border: "none", backgroundColor: "#D97706", color: "white", fontWeight: 900, fontSize: 15, cursor: saving ? "default" : "pointer", opacity: saving ? 0.7 : 1 }}>
+            {saving ? "処理中..." : "変更する"}
           </button>
-          <button onClick={onCancel} style={{ flex: 1, padding: 14, borderRadius: 12, border: `1px solid ${THEME.border}`, backgroundColor: "white", color: THEME.textMuted, fontWeight: 800, fontSize: 15, cursor: "pointer" }}>キャンセル</button>
+          <button onClick={onCancel} disabled={saving} style={{ flex: 1, padding: 14, borderRadius: 12, border: `1px solid ${THEME.border}`, backgroundColor: "white", color: THEME.textMuted, fontWeight: 800, fontSize: 15, cursor: "pointer" }}>キャンセル</button>
         </div>
       </div>
     </div>
@@ -256,7 +248,7 @@ function LostModal({ info, gasUrl, onDone, onCancel }) {
     if (!reason) return;
     setSaving(true);
     const finalReason = reason === "その他" ? freeText || "その他" : reason;
-    await axios.post(gasUrl, JSON.stringify({ action: "updateStatus", id: info.customerId, status: info.newStatus, applyScenario: info.scenarioId || "" }), { headers: { "Content-Type": "text/plain;charset=utf-8" } });
+    await axios.post(gasUrl, JSON.stringify({ action: "updateStatus", id: info.customerId, status: info.newStatus, applyScenario: "" }), { headers: { "Content-Type": "text/plain;charset=utf-8" } });
     await axios.post(gasUrl, JSON.stringify({ action: "saveLostReason", id: info.customerId, reason: finalReason }), { headers: { "Content-Type": "text/plain;charset=utf-8" } });
     setSaving(false);
     onDone();
@@ -1117,7 +1109,7 @@ export default function KanbanBoard({
 
     // 失注
     if (statusDef?.terminalType === "lost") {
-      setLostModal({ customerId: cid, newStatus, prevStatus, lostReasonOptions: statusDef.lostReasonOptions || [], scenarioId: statusDef?.scenarioId || "" });
+      setLostModal({ customerId: cid, newStatus, prevStatus, lostReasonOptions: statusDef.lostReasonOptions || [] });
       return;
     }
     // 成約 → WonModal（物件ごとの成約金額入力）
@@ -1127,9 +1119,13 @@ export default function KanbanBoard({
       setWonModal({ customerId: cid, newStatus, prevStatus, scenarioId, customerProperties });
       return;
     }
-    // 休眠系（dormant）→ 再アプローチモーダル
+    // 休眠系（dormant）→ 再アプローチ確認モーダル
     if (statusDef?.terminalType === "dormant") {
-      setDormantModal({ customerId: cid, newStatus, prevStatus, scenarioId: statusDef?.scenarioId || "" });
+      setDormantModal({
+        customerId: cid, newStatus, prevStatus,
+        reapproachMonths:     statusDef.reapproachMonths || 0,
+        reapproachScenarioId: statusDef.reapproachScenarioId || "",
+      });
       return;
     }
     // 除外 → シンプル更新（モーダルなし）
@@ -1535,7 +1531,7 @@ export default function KanbanBoard({
 
       {/* モーダル群 */}
       <ScenarioConfirmModal info={scenarioModal} onConfirm={handleScenarioConfirm} onCancel={() => setScenarioModal(null)} />
-      <DormantModal info={dormantModal} scenarios={scenarios} gasUrl={gasUrl} onDone={handleModalDone} onCancel={() => setDormantModal(null)} />
+      <DormantModal info={dormantModal} gasUrl={gasUrl} onDone={handleModalDone} onCancel={() => setDormantModal(null)} />
       <LostModal info={lostModal} gasUrl={gasUrl} onDone={handleModalDone} onCancel={() => setLostModal(null)} />
       {wonModal && (
         <WonModal

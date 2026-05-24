@@ -29,6 +29,16 @@ const PLACEMENT_OPTIONS = [
   { value: "right",  label: "➡ 右側" },
 ];
 
+// 終点ステータス（dormant）の再アプローチ時期の選択肢
+const REAPPROACH_MONTH_OPTIONS = [
+  { months: 0,  label: "なし" },
+  { months: 1,  label: "1ヶ月後" },
+  { months: 2,  label: "2ヶ月後" },
+  { months: 3,  label: "3ヶ月後" },
+  { months: 6,  label: "6ヶ月後" },
+  { months: 12, label: "12ヶ月後" },
+];
+
 // ── 通常フロー行 ───────────────────────────────────────
 function StatusRow({ s, idx, scenarios, onChange, onDelete, onDragStart, onDragOver, onDrop, onPromptAdd, onPromptRemove, usedScenarios }) {
   return (
@@ -178,6 +188,7 @@ function TerminalRow({ row, idx, scenarios, usedScenarios, onChange, onDelete })
   const meta = TERMINAL_META[row.terminalType] || TERMINAL_META.dormant;
   const { icon, color, bg, canDelete, canRename, hasPlacement } = meta;
   const isLost = row.terminalType === "lost";
+  const isDormant = row.terminalType === "dormant";
 
   const inputRef = useRef(null);
   const [newOption, setNewOption] = useState("");
@@ -201,7 +212,7 @@ function TerminalRow({ row, idx, scenarios, usedScenarios, onChange, onDelete })
         {icon}
       </div>
 
-      <div style={{ flex: 1, display: "grid", gridTemplateColumns: "1.5fr 1.5fr 1fr 0.8fr", gap: 10, alignItems: "start" }}>
+      <div style={{ flex: 1, display: "grid", gridTemplateColumns: isDormant ? "1.5fr 1fr 0.8fr" : "1.5fr 1.5fr 1fr 0.8fr", gap: 10, alignItems: "start" }}>
         {/* ステータス名 */}
         <div>
           <div style={{ fontSize: 11, fontWeight: 700, color, marginBottom: 4 }}>ステータス名</div>
@@ -213,22 +224,24 @@ function TerminalRow({ row, idx, scenarios, usedScenarios, onChange, onDelete })
           />
         </div>
 
-        {/* 自動シナリオ */}
-        <div>
-          <div style={{ fontSize: 11, fontWeight: 700, color, marginBottom: 4 }}>自動シナリオ（任意）</div>
-          <CustomSelect
-            value={row.scenarioId || ""}
-            onChange={v => onChange(idx, "scenarioId", v)}
-            color={color}
-            options={[
-              { value: "", label: "設定しない" },
-              ...[...new Set(scenarios.map(sc => sc["シナリオID"]))].filter(Boolean).map(sid => {
-                const isUsed = usedScenarios.has(sid) && sid !== row.scenarioId;
-                return { value: sid, label: sid + (isUsed ? "（他で使用中）" : ""), disabled: isUsed };
-              })
-            ]}
-          />
-        </div>
+        {/* 自動シナリオ（dormant 以外） */}
+        {!isDormant && (
+          <div>
+            <div style={{ fontSize: 11, fontWeight: 700, color, marginBottom: 4 }}>自動シナリオ（任意）</div>
+            <CustomSelect
+              value={row.scenarioId || ""}
+              onChange={v => onChange(idx, "scenarioId", v)}
+              color={color}
+              options={[
+                { value: "", label: "設定しない" },
+                ...[...new Set(scenarios.map(sc => sc["シナリオID"]))].filter(Boolean).map(sid => {
+                  const isUsed = usedScenarios.has(sid) && sid !== row.scenarioId;
+                  return { value: sid, label: sid + (isUsed ? "（他で使用中）" : ""), disabled: isUsed };
+                })
+              ]}
+            />
+          </div>
+        )}
 
         {/* 配置 */}
         <div>
@@ -297,6 +310,54 @@ function TerminalRow({ row, idx, scenarios, usedScenarios, onChange, onDelete })
         </div>
       )}
 
+      {/* 再アプローチ設定（dormant タイプのみ） */}
+      {isDormant && (
+        <div style={{ gridColumn: "1 / -1", marginTop: 4 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color, marginBottom: 8 }}>🔁 再アプローチ設定</div>
+          <div style={{ display: "flex", gap: 20, flexWrap: "wrap", alignItems: "flex-start" }}>
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 700, color: THEME.textMuted, marginBottom: 6 }}>再アプローチ時期</div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                {REAPPROACH_MONTH_OPTIONS.map(opt => {
+                  const active = (row.reapproachMonths || 0) === opt.months;
+                  return (
+                    <button key={opt.months} onClick={() => onChange(idx, "reapproachMonths", opt.months)} style={{
+                      padding: "7px 14px", borderRadius: 99, fontSize: 12, fontWeight: 800, cursor: "pointer",
+                      border: `2px solid ${active ? color : THEME.border}`,
+                      backgroundColor: active ? bg : "white",
+                      color: active ? color : THEME.textMuted,
+                    }}>
+                      {opt.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+            {(row.reapproachMonths || 0) > 0 && (
+              <div style={{ minWidth: 220 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: THEME.textMuted, marginBottom: 6 }}>適用シナリオ</div>
+                <CustomSelect
+                  value={row.reapproachScenarioId || ""}
+                  onChange={v => onChange(idx, "reapproachScenarioId", v)}
+                  color={color}
+                  options={[
+                    { value: "", label: "シナリオを選択しない" },
+                    ...[...new Set(scenarios.map(sc => sc["シナリオID"]))].filter(Boolean).map(sid => ({ value: sid, label: sid }))
+                  ]}
+                />
+              </div>
+            )}
+          </div>
+          <div style={{ fontSize: 11, color: THEME.textMuted, marginTop: 8, lineHeight: 1.6 }}>
+            {(row.reapproachMonths || 0) === 0
+              ? "「なし」の場合、カンバンでこのステータスに移しても再アプローチは予約されません。"
+              : !row.reapproachScenarioId
+                ? "適用シナリオを選択すると、カンバンでこのステータスに移したとき再アプローチが予約されます。"
+                : `カンバンでこのステータスに移すと、${row.reapproachMonths}ヶ月後にシナリオ「${row.reapproachScenarioId}」が自動で予約されます。`}
+          </div>
+        </div>
+      )}
+
       {canDelete ? (
         <button onClick={() => onDelete(idx)} style={{ background: "none", border: "none", cursor: "pointer", padding: 6, borderRadius: 8, color }} title="削除">
           <Trash2 size={15} />
@@ -342,7 +403,7 @@ export default function StatusSettings({ statuses: statusesProp = [], scenarios 
       const terminals = statusesProp.filter(s => s.terminalType);
       setFlowRows(flows.map(s => ({ ...s })));
 
-      const termArr = terminals.map(s => ({ placement: "bottom", ...s }));
+      const termArr = terminals.map(s => ({ placement: "bottom", reapproachMonths: 0, reapproachScenarioId: "", ...s }));
       // 必須ステータスが存在しない場合は補完
       if (!termArr.some(s => s.terminalType === "won"))
         termArr.push({ name: "成約", terminalType: "won", placement: "bottom", scenarioId: "", reportArrival: false, reportCount: true });
@@ -357,7 +418,7 @@ export default function StatusSettings({ statuses: statusesProp = [], scenarios 
         { name: "対応中", terminalType: "", scenarioId: "", reportArrival: false, reportCount: true },
       ]);
       setTerminalRows([
-        { name: "休眠",   terminalType: "dormant",  placement: "bottom", scenarioId: "", reportArrival: false, reportCount: false },
+        { name: "休眠",   terminalType: "dormant",  placement: "bottom", scenarioId: "", reportArrival: false, reportCount: false, reapproachMonths: 0, reapproachScenarioId: "" },
         { name: "成約",   terminalType: "won",      placement: "bottom", scenarioId: "", reportArrival: false, reportCount: true  },
         { name: "失注",   terminalType: "lost",     placement: "bottom", scenarioId: "", reportArrival: false, reportCount: false },
         { name: "除外",   terminalType: "excluded", placement: "right",  scenarioId: "", reportArrival: false, reportCount: false },
@@ -389,7 +450,7 @@ export default function StatusSettings({ statuses: statusesProp = [], scenarios 
   const handleTerminalChange = (idx, key, val) => setTerminalRows(prev => prev.map((r, i) => i === idx ? { ...r, [key]: val } : r));
   const handleTerminalDelete = (idx) => setTerminalRows(prev => prev.filter((_, i) => i !== idx));
   const handleTerminalAdd    = () => {
-    setTerminalRows(prev => [...prev, { name: "終点", terminalType: "dormant", placement: "bottom", scenarioId: "", reportArrival: false, reportCount: false }]);
+    setTerminalRows(prev => [...prev, { name: "終点", terminalType: "dormant", placement: "bottom", scenarioId: "", reportArrival: false, reportCount: false, reapproachMonths: 0, reapproachScenarioId: "" }]);
   };
 
   const usedScenarios = new Set([...flowRows, ...terminalRows].map(r => r.scenarioId).filter(Boolean));

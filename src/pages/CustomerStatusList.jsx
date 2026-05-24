@@ -15,7 +15,7 @@ const PAGE_CONFIG = {
   dormant:  { emoji: "🌙", label: "休眠",  color: "#D97706", bg: "#FEF3C7", border: "#FDE68A" },
   lost:     { emoji: "🗑",  label: "失注",  color: "#DC2626", bg: "#FEE2E2", border: "#FCA5A5" },
   excluded: { emoji: "🚫", label: "除外",  color: "#6B7280", bg: "#F3F4F6", border: "#D1D5DB" },
-  fixed:    { emoji: "🔑", label: "受託",  color: "#0EA5E9", bg: "#F0F9FF", border: "#BAE6FD" },
+  fixed:    { emoji: "🔑", label: "契約",  color: "#0EA5E9", bg: "#F0F9FF", border: "#BAE6FD" },
   default:  { emoji: "📋", label: "",      color: "#6B7280", bg: "#F3F4F6", border: "#D1D5DB" },
 };
 
