@@ -190,12 +190,19 @@ export default function ScenarioList({ scenarios = [], statuses = [], onRefresh,
   }, {});
   const scenarioIds = Object.keys(grouped);
 
+  // 全シナリオに実在するシナリオIDの集合
+  const existingScenarioIds = new Set(scenarioIds);
+
   const scenarioToStatus = {};
   visibleStatuses.forEach(st => {
     if (st.scenarioId) scenarioToStatus[st.scenarioId] = st;
   });
 
-  const linkedStatuses = visibleStatuses.filter(st => st.scenarioId);
+  // 自動適用シナリオ設定：ステータスに紐づき、かつ全シナリオに実在するものだけ表示する。
+  // （削除済みシナリオへのダングリング参照がステータス設定側に残っていても表記しない）
+  const linkedStatuses = visibleStatuses.filter(
+    st => st.scenarioId && existingScenarioIds.has(st.scenarioId)
+  );
 
   const handleDeleteConfirm = async () => {
     if (!deleteModal) return;

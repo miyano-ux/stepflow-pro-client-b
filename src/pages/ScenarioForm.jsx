@@ -28,7 +28,7 @@ const VARIABLE_GROUPS = [
       { label: "姓",      value: "{{姓}}"      },
       { label: "名",      value: "{{名}}"      },
       { label: "電話番号", value: "{{電話番号}}" },
-      { label: "会社名",  value: "{{会社名}}"   },
+      { label: "メールアドレス", value: "{{メールアドレス}}" },
     ],
   },
   {
@@ -231,7 +231,7 @@ export default function ScenarioForm({ scenarios = [], customers = [], staffList
       map["姓"]      = latestCustomer["姓"]      || "";
       map["名"]      = latestCustomer["名"]      || "";
       map["電話番号"] = latestCustomer["電話番号"] || "";
-      map["会社名"]  = latestCustomer["会社名"]  || "";
+      map["メールアドレス"] = latestCustomer["メールアドレス"] || "";
     }
 
     if (staffData) {

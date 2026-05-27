@@ -4,7 +4,7 @@ import axios from "axios";
 import {
   ArrowLeft, Save, MessageSquare, History, Loader2,
   Edit3, X, Clock, LayoutGrid, ExternalLink,
-  Phone, User, Building2, Plus, Trash2, Check, RefreshCw, Lock,
+  Phone, Mail, User, Building2, Plus, Trash2, Check, RefreshCw, Lock,
 } from "lucide-react";
 import { THEME, GAS_URL } from "../lib/constants";
 import { styles } from "../lib/styles";
@@ -825,8 +825,8 @@ export default function CustomerDetail({
               <User size={15} /> 基本情報
             </h3>
 
-            {/* 対応ステータス・担当者・流入元 */}
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr" + (sources.length > 0 ? " 1fr" : ""), gap: 20, marginBottom: 20, padding: "20px", backgroundColor: THEME.bg, borderRadius: 12 }}>
+            {/* 対応ステータス・担当者・流入元・契約種別 */}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20, marginBottom: 20, padding: "20px", backgroundColor: THEME.bg, borderRadius: 12 }}>
               {isEditing ? (
                 <>
                   <EditSelect
@@ -852,12 +852,20 @@ export default function CustomerDetail({
                       value={formData["流入元"]} onChange={handleFieldChange}
                     />
                   )}
+                  {contractTypes.length > 0 && (
+                    <EditSelect
+                      label="契約種別" fieldName="契約種別"
+                      options={[{ value: "", label: "未選択" }, ...contractTypes.map((t) => ({ value: t, label: t }))]}
+                      value={formData["契約種別"]} onChange={handleFieldChange}
+                    />
+                  )}
                 </>
               ) : (
                 <>
                   <ViewField label="対応ステータス" value={formData["対応ステータス"]} />
                   <ViewField label="担当者" value={assignedName} />
                   {sources.length > 0 && <ViewField label="流入元" value={formData["流入元"] || "－"} />}
+                  {contractTypes.length > 0 && <ViewField label="契約種別" value={formData["契約種別"] || "－"} />}
                 </>
               )}
             </div>
@@ -910,19 +918,21 @@ export default function CustomerDetail({
               )}
             </div>
 
-            {/* 姓・名・電話番号 */}
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 20 }}>
+            {/* 姓・名 / 電話番号・メールアドレス */}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
               {isEditing ? (
                 <>
                   <EditText label="姓" fieldName="姓" value={formData["姓"]} onChange={handleFieldChange} />
                   <EditText label="名" fieldName="名" value={formData["名"]} onChange={handleFieldChange} />
                   <EditText label="電話番号" fieldName="電話番号" value={formData["電話番号"]} onChange={handleFieldChange} />
+                  <EditText label="メールアドレス" fieldName="メールアドレス" type="email" value={formData["メールアドレス"]} onChange={handleFieldChange} />
                 </>
               ) : (
                 <>
                   <ViewField label="姓" value={formData["姓"]} icon={<User size={12} />} />
                   <ViewField label="名" value={formData["名"]} />
                   <ViewField label="電話番号" value={formData["電話番号"]} icon={<Phone size={12} />} />
+                  <ViewField label="メールアドレス" value={formData["メールアドレス"]} icon={<Mail size={12} />} />
                 </>
               )}
             </div>
