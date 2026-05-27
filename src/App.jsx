@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from "react";
 import { ToastProvider, useToast } from "./ToastContext";
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
 import axios from "axios";
-import { MessageSquare, Loader2 } from "lucide-react";
+import { MessageSquare, Loader2, AlertTriangle, RefreshCw } from "lucide-react";
 import { GoogleOAuthProvider, GoogleLogin } from "@react-oauth/google";
 import { jwtDecode } from "jwt-decode";
 
@@ -98,6 +98,8 @@ function App() {
     }
   }, []);
   const [load, setLoad] = useState(true);
+  // GAS への接続失敗を保持（true のときエラー画面を表示）
+  const [loadError, setLoadError] = useState(false);
   const [user, setUser] = useState(() => {
     const sUser = localStorage.getItem("sf_user");
     return sUser ? JSON.parse(sUser) : null;
@@ -137,11 +139,17 @@ function App() {
         data.statuses = [...data.statuses].sort((a, b) => (Number(a.order) || 0) - (Number(b.order) || 0));
       }
       setD(data);
+      setLoadError(false);
       // displaySettings はlocalStorageが未設定の場合のみGAS値を初期値として使う
       const local = getDisplaySettings();
       if (!local && data.displaySettings?.length > 0) {
         setDisplaySettings(data.displaySettings);
       }
+    } catch (e) {
+      // GAS への接続に失敗（CORS / ネットワーク / GAS デプロイ設定など）。
+      // 画面を真っ白にせず、原因と再読み込みボタンを表示する。
+      console.error("[refresh] データ取得に失敗しました", e);
+      setLoadError(true);
     } finally {
       setLoad(false);
     }
@@ -277,6 +285,50 @@ function App() {
         }}
       >
         <Loader2 size={48} className="animate-spin" color={THEME.primary} />
+      </div>
+    );
+  }
+
+  // ── GAS 接続エラー画面 ────────────────────────
+  // データ取得に失敗したとき、白紙ではなく原因と再読み込みを表示する。
+  if (loadError) {
+    return (
+      <div style={{
+        height: "100vh", display: "flex", alignItems: "center",
+        justifyContent: "center", backgroundColor: THEME.bg, padding: 24,
+      }}>
+        <div style={{
+          maxWidth: 480, width: "100%", backgroundColor: "white",
+          borderRadius: 16, padding: "40px 32px", textAlign: "center",
+          boxShadow: "0 10px 25px -5px rgba(0,0,0,0.1)",
+        }}>
+          <div style={{
+            width: 64, height: 64, borderRadius: "50%",
+            backgroundColor: "#FEF3C7", display: "flex",
+            alignItems: "center", justifyContent: "center", margin: "0 auto 20px",
+          }}>
+            <AlertTriangle size={30} color="#D97706" />
+          </div>
+          <h2 style={{ margin: "0 0 10px", fontSize: 20, fontWeight: 900, color: THEME.textMain }}>
+            サーバーに接続できません
+          </h2>
+          <p style={{ margin: "0 0 24px", fontSize: 14, color: THEME.textMuted, lineHeight: 1.7 }}>
+            データの取得に失敗しました。インターネット接続をご確認のうえ、
+            再読み込みをお試しください。改善しない場合は、サーバー（GAS）の
+            デプロイ設定が原因の可能性があります。
+          </p>
+          <button
+            onClick={() => { setLoad(true); setLoadError(false); refresh(); }}
+            style={{
+              display: "inline-flex", alignItems: "center", gap: 8,
+              backgroundColor: THEME.primary, color: "white", border: "none",
+              borderRadius: 10, padding: "12px 28px", fontSize: 14, fontWeight: 800,
+              cursor: "pointer",
+            }}
+          >
+            <RefreshCw size={16} /> 再読み込み
+          </button>
+        </div>
       </div>
     );
   }
