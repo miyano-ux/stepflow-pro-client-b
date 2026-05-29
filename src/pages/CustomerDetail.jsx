@@ -1095,27 +1095,38 @@ export default function CustomerDetail({
             </div>
           ) : (
             <div style={{ maxHeight: 560, overflowY: "auto" }}>
-              {customerLogs.map((log, i) => {
-                const isHot = log.last_clicked_at && (new Date() - new Date(log.last_clicked_at)) < 5 * 60 * 1000;
-                return (
-                  <div
-                    key={i}
-                    style={{ paddingLeft: 20, borderLeft: `2px solid ${isHot ? THEME.danger : i === 0 ? THEME.primary : THEME.border}`, position: "relative", marginBottom: 20, paddingBottom: 4 }}
-                  >
-                    <div style={{ position: "absolute", left: -6, top: 3, width: 10, height: 10, borderRadius: "50%", backgroundColor: isHot ? THEME.danger : i === 0 ? THEME.primary : THEME.border, border: "2px solid white" }} />
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-                      <span style={{ fontSize: 11, color: THEME.textMuted, fontWeight: 700 }}>最終クリック: {formatDateJP(log.last_clicked_at) || "-"}</span>
-                      {isHot && <span style={{ backgroundColor: THEME.danger, color: "white", fontSize: 9, padding: "1px 6px", borderRadius: 4, fontWeight: 900 }}>HOT</span>}
+              {customerLogs.flatMap((log, logIdx) => {
+                const clickCount = parseInt(log.click_count) || 0;
+                // クリック数分だけ個別の行として展開する
+                return Array.from({ length: clickCount }, (_, clickIdx) => {
+                  const key = `${logIdx}-${clickIdx}`;
+                  // 最後のクリック(clickIdx===0が最新)のみ last_clicked_at を表示、それ以外は sent_at を参照
+                  const isLatest = clickIdx === 0;
+                  const displayTime = isLatest ? log.last_clicked_at : null;
+                  const isHot = isLatest && log.last_clicked_at && (new Date() - new Date(log.last_clicked_at)) < 60 * 60 * 1000;
+                  const globalIdx = logIdx === 0 && clickIdx === 0;
+                  return (
+                    <div
+                      key={key}
+                      style={{ paddingLeft: 20, borderLeft: `2px solid ${isHot ? THEME.danger : globalIdx ? THEME.primary : THEME.border}`, position: "relative", marginBottom: 20, paddingBottom: 4 }}
+                    >
+                      <div style={{ position: "absolute", left: -6, top: 3, width: 10, height: 10, borderRadius: "50%", backgroundColor: isHot ? THEME.danger : globalIdx ? THEME.primary : THEME.border, border: "2px solid white" }} />
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                        <span style={{ fontSize: 11, color: THEME.textMuted, fontWeight: 700 }}>
+                          {displayTime ? `クリック日時: ${formatDateJP(displayTime)}` : `送信日時: ${formatDateJP(log.sent_at) || "-"}`}
+                        </span>
+                        {isHot && <span style={{ backgroundColor: THEME.danger, color: "white", fontSize: 9, padding: "1px 6px", borderRadius: 4, fontWeight: 900 }}>HOT</span>}
+                      </div>
+                      <div style={{ fontSize: 13, fontWeight: 800, color: THEME.textMain, marginBottom: 4 }}>URLクリック</div>
+                      <div style={{ fontSize: 11, color: THEME.textMuted, marginBottom: 4 }}>送信: {formatDateJP(log.sent_at) || "-"}</div>
+                      {log.original_url && (
+                        <a href={log.original_url} target="_blank" rel="noreferrer" style={{ fontSize: 11, color: THEME.primary, display: "flex", alignItems: "center", gap: 4, textDecoration: "none", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          <ExternalLink size={10} /> {log.original_url}
+                        </a>
+                      )}
                     </div>
-                    <div style={{ fontSize: 13, fontWeight: 800, color: THEME.textMain, marginBottom: 4 }}>{parseInt(log.click_count)}回クリック</div>
-                    <div style={{ fontSize: 11, color: THEME.textMuted, marginBottom: 4 }}>送信: {formatDateJP(log.sent_at) || "-"}</div>
-                    {log.original_url && (
-                      <a href={log.original_url} target="_blank" rel="noreferrer" style={{ fontSize: 11, color: THEME.primary, display: "flex", alignItems: "center", gap: 4, textDecoration: "none", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                        <ExternalLink size={10} /> {log.original_url}
-                      </a>
-                    )}
-                  </div>
-                );
+                  );
+                });
               })}
             </div>
           )}

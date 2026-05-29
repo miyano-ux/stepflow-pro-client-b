@@ -74,7 +74,7 @@ export default function TrackingDashboard() {
   const isHot = (dateStr) => {
     if (!dateStr) return false;
     const diff = new Date() - new Date(dateStr);
-    return diff < 5 * 60 * 1000;
+    return diff < 60 * 60 * 1000;
   };
 
   if (loading && logs.length === 0) {
