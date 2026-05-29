@@ -1097,23 +1097,32 @@ export default function CustomerDetail({
             <div style={{ maxHeight: 560, overflowY: "auto" }}>
               {customerLogs.flatMap((log, logIdx) => {
                 const clickCount = parseInt(log.click_count) || 0;
-                // クリック数分だけ個別の行として展開する
+
+                // click_timestamps（JSON配列）があれば個別日時を使う。
+                // なければ last_clicked_at のみ判明しているので最新行のみ日時あり、残りは日時不明として展開。
+                let timestamps = [];
+                try {
+                  if (log.click_timestamps) {
+                    const parsed = JSON.parse(log.click_timestamps);
+                    if (Array.isArray(parsed)) timestamps = [...parsed].reverse(); // 新しい順に並べる
+                  }
+                } catch (e) { timestamps = []; }
+
+                // clickCount 分の行を生成（timestamps が足りない場合は null で補完）
                 return Array.from({ length: clickCount }, (_, clickIdx) => {
                   const key = `${logIdx}-${clickIdx}`;
-                  // 最後のクリック(clickIdx===0が最新)のみ last_clicked_at を表示、それ以外は sent_at を参照
-                  const isLatest = clickIdx === 0;
-                  const displayTime = isLatest ? log.last_clicked_at : null;
-                  const isHot = isLatest && log.last_clicked_at && (new Date() - new Date(log.last_clicked_at)) < 60 * 60 * 1000;
-                  const globalIdx = logIdx === 0 && clickIdx === 0;
+                  const clickedAt = timestamps[clickIdx] || null;
+                  const isHot = clickedAt && (new Date() - new Date(clickedAt)) < 60 * 60 * 1000;
+                  const globalFirst = logIdx === 0 && clickIdx === 0;
                   return (
                     <div
                       key={key}
-                      style={{ paddingLeft: 20, borderLeft: `2px solid ${isHot ? THEME.danger : globalIdx ? THEME.primary : THEME.border}`, position: "relative", marginBottom: 20, paddingBottom: 4 }}
+                      style={{ paddingLeft: 20, borderLeft: `2px solid ${isHot ? THEME.danger : globalFirst ? THEME.primary : THEME.border}`, position: "relative", marginBottom: 20, paddingBottom: 4 }}
                     >
-                      <div style={{ position: "absolute", left: -6, top: 3, width: 10, height: 10, borderRadius: "50%", backgroundColor: isHot ? THEME.danger : globalIdx ? THEME.primary : THEME.border, border: "2px solid white" }} />
+                      <div style={{ position: "absolute", left: -6, top: 3, width: 10, height: 10, borderRadius: "50%", backgroundColor: isHot ? THEME.danger : globalFirst ? THEME.primary : THEME.border, border: "2px solid white" }} />
                       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
                         <span style={{ fontSize: 11, color: THEME.textMuted, fontWeight: 700 }}>
-                          {displayTime ? `クリック日時: ${formatDateJP(displayTime)}` : `送信日時: ${formatDateJP(log.sent_at) || "-"}`}
+                          {clickedAt ? `クリック日時: ${formatDateJP(clickedAt)}` : "クリック日時: 不明（記録前のデータ）"}
                         </span>
                         {isHot && <span style={{ backgroundColor: THEME.danger, color: "white", fontSize: 9, padding: "1px 6px", borderRadius: 4, fontWeight: 900 }}>HOT</span>}
                       </div>
