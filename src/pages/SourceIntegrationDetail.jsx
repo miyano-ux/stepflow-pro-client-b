@@ -5,6 +5,7 @@ import {
   CheckCircle2, XCircle, Loader2, Globe, KeyRound,
   Zap, AlertCircle, ChevronLeft, Copy, Check, Mail,
   Bell, Phone, X, Plus, MessageSquare, UserCircle, Lock,
+  Eye, EyeOff,
 } from "lucide-react";
 import { THEME, GAS_URL } from "../lib/constants";
 import { styles } from "../lib/styles";
@@ -156,10 +157,13 @@ export default function SourceIntegrationDetail({
     loginId:  sourceLoginIds[sourceKey] || "",
     password: "",
   });
-  const [testResult,  setTestResult]  = useState(null);
-  const [testLoading, setTestLoading] = useState(false);
-  const [credsSaved,  setCredsSaved]  = useState(false);
-  const [credsSaving, setCredsSaving] = useState(false);
+  const [testResult,   setTestResult]   = useState(null);
+  const [testLoading,  setTestLoading]  = useState(false);
+  const [credsSaved,   setCredsSaved]   = useState(false);
+  const [credsSaving,  setCredsSaving]  = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  // 認証済みの場合は「マスク済み・未編集」状態からスタート
+  const [pwEditing,    setPwEditing]    = useState(false);
 
   const [ruleForm, setRuleForm] = useState({
     source:     existingRule["流入元"]        || src.name,
@@ -218,18 +222,28 @@ export default function SourceIntegrationDetail({
 
   // ── 認証情報の保存 ───────────────────────────────────────────
   const handleSaveCreds = async () => {
-    if (!loginForm.loginId || !loginForm.password) {
-      showToast("ログインIDとパスワードを入力してください", "warning");
+    if (!loginForm.loginId) {
+      showToast("ログインIDを入力してください", "warning");
+      return;
+    }
+    // pwEditing=false（マスク状態）の場合は既存パスワードを維持するので空チェック不要
+    if (pwEditing && !loginForm.password) {
+      showToast("パスワードを入力してください", "warning");
       return;
     }
     setCredsSaving(true);
     try {
-      await api({ action: "saveSourceCredentials", sourceKey, loginId: loginForm.loginId, password: loginForm.password });
+      const payload = { action: "saveSourceCredentials", sourceKey, loginId: loginForm.loginId };
+      // パスワード編集中の場合のみ新しいパスワードを送信
+      if (pwEditing) payload.password = loginForm.password;
+      await api(payload);
       setCredsSaved(true);
+      setPwEditing(false);
+      setLoginForm(p => ({ ...p, password: "" }));
       setTimeout(() => setCredsSaved(false), 2000);
       onRefresh?.();
     } catch (e) {
-      showToast("保存に失敗しました: " + (e?.message || e, "error"));
+      showToast("保存に失敗しました: " + (e?.message || e), "error");
     } finally {
       setCredsSaving(false);
     }
@@ -351,6 +365,12 @@ export default function SourceIntegrationDetail({
 
   const isConfigured = src.requiresLogin ? !!sourceCredsStatus?.[sourceKey] : true;
 
+  // 認証済みの場合は最初からマスク状態（未編集）にする
+  useEffect(() => {
+    setPwEditing(!isConfigured);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sourceKey]);
+
   return (
     <Page
       title={src.name}
@@ -404,6 +424,7 @@ export default function SourceIntegrationDetail({
             認証情報
           </div>
           <div style={S.row}>
+            {/* ── ログインID ── */}
             <div>
               <LabelText>ログインID（メールアドレス）</LabelText>
               <input
@@ -414,15 +435,72 @@ export default function SourceIntegrationDetail({
                 onChange={e => setLoginForm(p => ({ ...p, loginId: e.target.value }))}
               />
             </div>
+
+            {/* ── パスワード ── */}
             <div>
               <LabelText>パスワード</LabelText>
-              <input
-                style={S.input}
-                type="password"
-                placeholder="パスワードを入力"
-                value={loginForm.password}
-                onChange={e => setLoginForm(p => ({ ...p, password: e.target.value }))}
-              />
+              {!pwEditing ? (
+                /* 登録済みマスク表示 */
+                <div style={{
+                  ...S.input,
+                  display: "flex", alignItems: "center", justifyContent: "space-between",
+                  cursor: "default", userSelect: "none",
+                  backgroundColor: "#F0FDF4",
+                  border: `1px solid #86EFAC`,
+                  color: THEME.textMuted,
+                  gap: 8,
+                }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <Lock size={13} color="#16A34A" style={{ flexShrink: 0 }} />
+                    <span style={{ letterSpacing: "0.18em", fontSize: 16, color: "#16A34A", lineHeight: 1 }}>
+                      ••••••••
+                    </span>
+                    <span style={{ fontSize: 11, color: "#16A34A", fontWeight: 600, letterSpacing: 0 }}>
+                      設定済み
+                    </span>
+                  </div>
+                  <div style={{ display: "flex", gap: 4 }}>
+                    <button
+                      onClick={() => { setPwEditing(true); setShowPassword(false); }}
+                      style={{
+                        fontSize: 11, fontWeight: 600, padding: "3px 10px",
+                        borderRadius: 6, border: "1px solid #86EFAC",
+                        backgroundColor: "white", color: "#16A34A",
+                        cursor: "pointer", whiteSpace: "nowrap",
+                      }}
+                      title="パスワードを変更する"
+                    >
+                      変更
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                /* 編集中：入力フィールド ＋ 表示切り替えボタン */
+                <div style={{ position: "relative" }}>
+                  <input
+                    style={{ ...S.input, paddingRight: 40 }}
+                    type={showPassword ? "text" : "password"}
+                    placeholder="パスワードを入力"
+                    value={loginForm.password}
+                    autoFocus
+                    onChange={e => setLoginForm(p => ({ ...p, password: e.target.value }))}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(v => !v)}
+                    style={{
+                      position: "absolute", right: 10, top: "50%",
+                      transform: "translateY(-50%)",
+                      background: "none", border: "none",
+                      cursor: "pointer", padding: 2,
+                      color: THEME.textMuted, display: "flex", alignItems: "center",
+                    }}
+                    title={showPassword ? "パスワードを隠す" : "パスワードを表示"}
+                  >
+                    {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </button>
+                </div>
+              )}
             </div>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
