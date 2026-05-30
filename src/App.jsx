@@ -216,16 +216,13 @@ function App() {
             padding: "48px",
           }}
         >
-          <div style={{ margin: "0 auto 32px", display: "flex", justifyContent: "center" }}>
+          <div style={{ margin: "0 auto 40px", display: "flex", justifyContent: "center" }}>
             <img
               src="/logo_beta.png"
               alt="SMooSy"
               style={{ height: "80px", width: "auto", objectFit: "contain" }}
             />
           </div>
-          <h1 style={{ fontSize: 28, fontWeight: 900, marginBottom: 10 }}>
-            SMooSy
-          </h1>
           <GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID}>
             <GoogleLogin
               onSuccess={async (res) => {
