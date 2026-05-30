@@ -1112,7 +1112,9 @@ export default function CustomerDetail({
                 return Array.from({ length: clickCount }, (_, clickIdx) => {
                   const key = `${logIdx}-${clickIdx}`;
                   const clickedAt = timestamps[clickIdx] || null;
-                  const isHot = clickedAt && (new Date() - new Date(clickedAt)) < 60 * 60 * 1000;
+                  // click_timestamps がない旧データは last_clicked_at をフォールバックに使ってHOT判定する
+                  const hotBaseTime = clickedAt || (clickIdx === 0 ? log.last_clicked_at : null);
+                  const isHot = hotBaseTime && (new Date() - new Date(hotBaseTime)) < 60 * 60 * 1000;
                   const globalFirst = logIdx === 0 && clickIdx === 0;
                   return (
                     <div
@@ -1122,7 +1124,7 @@ export default function CustomerDetail({
                       <div style={{ position: "absolute", left: -6, top: 3, width: 10, height: 10, borderRadius: "50%", backgroundColor: isHot ? THEME.danger : globalFirst ? THEME.primary : THEME.border, border: "2px solid white" }} />
                       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
                         <span style={{ fontSize: 11, color: THEME.textMuted, fontWeight: 700 }}>
-                          {clickedAt ? `クリック日時: ${formatDateJP(clickedAt)}` : "クリック日時: 不明（記録前のデータ）"}
+                          {clickedAt ? `クリック日時: ${formatDateJP(clickedAt)}` : `クリック日時: ${formatDateJP(log.last_clicked_at) || "不明"}`}
                         </span>
                         {isHot && <span style={{ backgroundColor: THEME.danger, color: "white", fontSize: 9, padding: "1px 6px", borderRadius: 4, fontWeight: 900 }}>HOT</span>}
                       </div>
