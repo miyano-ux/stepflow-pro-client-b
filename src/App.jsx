@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from "react";
 import { ToastProvider, useToast } from "./ToastContext";
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
 import axios from "axios";
-import { MessageSquare, Loader2, AlertTriangle, RefreshCw } from "lucide-react";
+import { Loader2, AlertTriangle, RefreshCw } from "lucide-react";
 import { GoogleOAuthProvider, GoogleLogin } from "@react-oauth/google";
 import { jwtDecode } from "jwt-decode";
 
@@ -216,27 +216,16 @@ function App() {
             padding: "48px",
           }}
         >
-          <div
-            style={{
-              backgroundColor: THEME.primary,
-              width: "64px",
-              height: "64px",
-              borderRadius: "18px",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              margin: "0 auto 32px",
-              boxShadow: "0 10px 25px -5px rgba(79, 70, 229, 0.4)",
-            }}
-          >
-            <MessageSquare color="white" size={32} />
+          <div style={{ margin: "0 auto 32px", display: "flex", justifyContent: "center" }}>
+            <img
+              src="/logo_beta.png"
+              alt="SMooSy"
+              style={{ height: "80px", width: "auto", objectFit: "contain" }}
+            />
           </div>
           <h1 style={{ fontSize: 28, fontWeight: 900, marginBottom: 10 }}>
-            StepFlow
+            SMooSy
           </h1>
-          <p style={{ fontSize: 14, color: THEME.textMuted, marginBottom: 40 }}>
-            マーケティングSMS・配信管理 [V34.0]
-          </p>
           <GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID}>
             <GoogleLogin
               onSuccess={async (res) => {
