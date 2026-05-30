@@ -287,21 +287,17 @@ export default function UserManager({
   const [newGroupName,    setNewGroupName]     = useState("");
   const [newGroupMembers, setNewGroupMembers]  = useState([]);
 
-  // ── 楽観的UI（パターンA：固有IDあり） ──────────────────────
-  // ※ すべての state/ref 宣言は useEffect より前に書く（TDZエラー防止）
+  // ── 楽観的UI ──────────────────────────────────────────────
   const [localGroups, setLocalGroups] = useState(groupsProp);
   // 削除済みグループIDを記録（GASキャッシュ staleデータ対策）
-  // onRefresh() が古いデータを返しても復活しないようにガード
   const deletedIdsRef = useRef(new Set());
 
   // groupsProp が変化したとき（初回ロード・手動更新）にローカルへ同期
-  // 削除済みIDを除外し、まだ正式IDが届いていない仮エントリを先頭に残す
   React.useEffect(() => {
     setLocalGroups((prev) => {
       const filtered = groupsProp.filter(
         (x) => !deletedIdsRef.current.has(x["グループID"])
       );
-      // _isTemp かつ filtered に同IDがない → まだ正式エントリ未着
       const pendingTemps = prev.filter(
         (x) => x._isTemp && !filtered.some((f) => f["グループID"] === x["グループID"])
       );
@@ -314,6 +310,7 @@ export default function UserManager({
     try { await onRefreshStaff(); } finally { setRefreshing(false); }
   };
 
+  // ユーザー削除：成功時にグループからも該当メールを除去
   const handleDeleteUser = (email) => {
     setConfirmModal({
       title: "このユーザーを完全に削除しますか？",
@@ -326,18 +323,39 @@ export default function UserManager({
             JSON.stringify({ action: "deleteAllowUser", "メール": email, company: companyName }),
             { headers: { "Content-Type": "text/plain;charset=utf-8" } }
           );
-          if (res.data.status === "success") await onRefreshStaff();
-          else showToast("失敗: " + res.data.message, "error");
+          if (res.data.status === "success") {
+            // 該当メールアドレスを含むグループを検出して更新
+            const affectedGroups = localGroups.filter(g => {
+              const members = g["メンバーメール"] ? g["メンバーメール"].split(",").map(s => s.trim()).filter(Boolean) : [];
+              return members.includes(email);
+            });
+            if (affectedGroups.length > 0) {
+              setLocalGroups(prev => prev.map(g => {
+                const members = g["メンバーメール"] ? g["メンバーメール"].split(",").map(s => s.trim()).filter(Boolean) : [];
+                if (!members.includes(email)) return g;
+                return { ...g, "メンバーメール": members.filter(m => m !== email).join(",") };
+              }));
+              await Promise.all(affectedGroups.map(g => {
+                const members = g["メンバーメール"] ? g["メンバーメール"].split(",").map(s => s.trim()).filter(Boolean) : [];
+                return axios.post(
+                  GAS_URL,
+                  JSON.stringify({ action: "saveGroup", groupId: g["グループID"], name: g["グループ名"], members: members.filter(m => m !== email) }),
+                  { headers: { "Content-Type": "text/plain;charset=utf-8" } }
+                );
+              }));
+            }
+            await onRefreshStaff();
+          } else {
+            showToast("失敗: " + res.data.message, "error");
+          }
         } catch { showToast("通信エラーが発生しました", "error"); }
       },
     });
   };
 
-  // グループ保存（編集）楽観的更新：即座にローカルに反映 → バックグラウンドでGAS保存
-  // 成功時は onRefresh() 不要（GASキャッシュ遅延で書き込み前のデータが返るのを避ける）
+  // グループ保存（編集）楽観的更新
   const handleSaveGroup = async ({ groupId, name, members }) => {
     const prevItems = localGroups;
-    // 1) 楽観的更新
     setLocalGroups((prev) =>
       prev.map((g) =>
         g["グループID"] === groupId
@@ -353,17 +371,15 @@ export default function UserManager({
       );
       if (res.data?.status === "error") {
         showToast("エラー: " + (res.data.message || "保存に失敗しました"), "error");
-        setLocalGroups(prevItems); // ロールバック
-        // GroupCard の catch（savedLabel リセット）に伝播させる
+        setLocalGroups(prevItems);
         throw Object.assign(new Error(res.data.message), { _handled: true });
       }
     } catch (e) {
       if (!e._handled) {
-        // axios レベルの通信エラー（上記 throw は除外）
         showToast("通信エラー: " + (e?.message || "不明なエラー"), "error");
-        setLocalGroups(prevItems); // ロールバック
+        setLocalGroups(prevItems);
       }
-      throw e; // GroupCard の catch（savedLabel リセット）に伝播
+      throw e;
     }
   };
 
@@ -375,10 +391,9 @@ export default function UserManager({
       "グループID": groupId,
       "グループ名": newGroupName.trim(),
       "メンバーメール": newGroupMembers.join(","),
-      _isTemp: true, // サーバーの正式IDが届くまでの仮エントリフラグ
+      _isTemp: true,
     };
     const prevItems = localGroups;
-    // 1) 楽観的更新：末尾に追加
     setLocalGroups((prev) => [...prev, newGroup]);
     setSuccessModal({ open: true, message: `「${newGroupName.trim()}」を作成しました。` });
     setNewGroupName("");
@@ -392,13 +407,13 @@ export default function UserManager({
       );
       if (res.data?.status === "error") {
         showToast("エラー: " + (res.data.message || "保存に失敗しました"), "error");
-        setLocalGroups(prevItems); // ロールバック
+        setLocalGroups(prevItems);
       } else {
-        if (onRefresh) onRefresh(); // 正式IDで仮エントリを置き換える
+        if (onRefresh) onRefresh();
       }
     } catch (e) {
       showToast("通信エラー: " + (e?.message || "不明なエラー"), "error");
-      setLocalGroups(prevItems); // ロールバック
+      setLocalGroups(prevItems);
     }
   };
 
@@ -412,23 +427,18 @@ export default function UserManager({
       note: "この操作は取り消せません。",
       onConfirm: async () => {
         setConfirmModal(null);
-        // 1) 削除済みIDを記録（GASキャッシュ staleデータ対策）
-        //    onRefresh() が古いデータを返しても復活しないようにガード
         deletedIdsRef.current.add(groupId);
         const prevItems = localGroups;
-        // 2) 楽観的更新
         setLocalGroups((prev) => prev.filter((g) => g["グループID"] !== groupId));
         setSuccessModal({ open: true, message: `「${label}」を削除しました。` });
-        // 3) バックグラウンドAPI
         try {
           await axios.post(
             GAS_URL,
             JSON.stringify({ action: "deleteGroup", groupId }),
             { headers: { "Content-Type": "text/plain;charset=utf-8" } }
           );
-          if (onRefresh) onRefresh(); // deletedIdsRef でフィルター済みなので復活しない
+          if (onRefresh) onRefresh();
         } catch (e) {
-          // 失敗時のみ記録を取り消してUIを元に戻す
           deletedIdsRef.current.delete(groupId);
           setLocalGroups(prevItems);
           showToast("通信エラー: " + (e?.message || "不明なエラー"), "error");
@@ -608,7 +618,7 @@ export default function UserManager({
         )}
 
         {/* グループ一覧 */}
-{localGroups.length === 0 && !addingGroup ? (
+        {localGroups.length === 0 && !addingGroup ? (
           <div style={{ padding: "48px 0", textAlign: "center", color: THEME.textMuted, fontSize: 14, border: `2px dashed ${THEME.border}`, borderRadius: 14 }}>
             グループがまだ登録されていません。「グループを追加」から作成してください。
           </div>
