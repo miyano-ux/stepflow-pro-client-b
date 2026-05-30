@@ -224,6 +224,7 @@ function App() {
             />
           </div>
           <GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID}>
+            <div style={{ display: "flex", justifyContent: "center" }}>
             <GoogleLogin
               onSuccess={async (res) => {
                 const dec = jwtDecode(res.credential);
@@ -247,6 +248,7 @@ function App() {
               }}
               onError={() => setAuthError("Googleログインに失敗しました。再度お試しください。")}
             />
+            </div>
           </GoogleOAuthProvider>
           {authError && (
             <div style={{ marginTop: 16, padding: "12px 16px", backgroundColor: "#FEE2E2", borderRadius: 10, fontSize: 13, color: "#991B1B", fontWeight: 600, lineHeight: 1.6 }}>
