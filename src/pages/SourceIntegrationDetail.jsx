@@ -117,6 +117,94 @@ function ForwardingAddressBox({ address }) {
   );
 }
 
+// ── 通知文言で挿入できる変数一覧 ─────────────────────────────
+const NOTIFY_VARIABLE_GROUPS = [
+  {
+    label: "顧客情報",
+    color: THEME.primary,
+    bg: "#EEF2FF",
+    vars: [
+      { label: "姓",            value: "{{姓}}"            },
+      { label: "名",            value: "{{名}}"            },
+      { label: "電話番号",       value: "{{電話番号}}"       },
+      { label: "メールアドレス", value: "{{メールアドレス}}" },
+    ],
+  },
+  {
+    label: "担当者",
+    color: "#0284C7",
+    bg: "#E0F2FE",
+    vars: [
+      { label: "担当者姓",     value: "{{担当者姓}}"     },
+      { label: "担当者名",     value: "{{担当者名}}"     },
+      { label: "担当者電話",   value: "{{担当者電話}}"   },
+      { label: "担当者メール", value: "{{担当者メール}}"  },
+    ],
+  },
+];
+
+// ── 通知文言 変数挿入パネル ────────────────────────────────
+function NotifyVariablePanel({ lastInserted, onInsert }) {
+  return (
+    <div style={{
+      backgroundColor: "#F8FAFC",
+      border: `1px solid ${THEME.border}`,
+      borderRadius: "10px 10px 0 0",
+      padding: "10px 14px",
+      borderBottom: "none",
+    }}>
+      <p style={{
+        fontSize: 11, fontWeight: 800, color: THEME.textMuted,
+        margin: "0 0 8px", letterSpacing: "0.05em",
+      }}>
+        変数を挿入　―　クリックするとカーソル位置に挿入されます
+      </p>
+      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+        {NOTIFY_VARIABLE_GROUPS.map((group) => (
+          <div key={group.label} style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+            <span style={{ fontSize: 11, fontWeight: 800, color: group.color, minWidth: 48, flexShrink: 0 }}>
+              {group.label}
+            </span>
+            {group.vars.map((v) => {
+              const active = lastInserted === v.value;
+              return (
+                <button
+                  key={v.value}
+                  type="button"
+                  onClick={() => onInsert(v.value)}
+                  style={{
+                    padding: "3px 10px", borderRadius: 20,
+                    border: `1.5px solid ${active ? group.color : group.color + "60"}`,
+                    backgroundColor: active ? group.color : group.bg,
+                    color: active ? "white" : group.color,
+                    fontSize: 12, fontWeight: 800, cursor: "pointer",
+                    transition: "all 0.15s", fontFamily: "monospace",
+                  }}
+                  onMouseEnter={e => {
+                    if (!active) {
+                      e.currentTarget.style.backgroundColor = group.color;
+                      e.currentTarget.style.color = "white";
+                    }
+                  }}
+                  onMouseLeave={e => {
+                    if (!active) {
+                      e.currentTarget.style.backgroundColor = group.bg;
+                      e.currentTarget.style.color = group.color;
+                    }
+                  }}
+                  title={`クリックで ${v.value} を挿入`}
+                >
+                  {v.label}
+                </button>
+              );
+            })}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function SourceIntegrationDetail({
   sourceIntegrations = [],
   sourceCredsStatus  = {},
@@ -173,6 +261,28 @@ export default function SourceIntegrationDetail({
   });
   const [ruleSaving, setRuleSaving] = useState(false);
   const [ruleSaved,  setRuleSaved]  = useState(false);
+
+  // ── 通知文言 変数差し込み ──────────────────────────────────
+  const notifyTextareaRef                   = useRef(null);
+  const [notifyLastInserted, setNotifyLastInserted] = useState(null);
+
+  const insertNotifyVariable = (varValue) => {
+    const ta = notifyTextareaRef.current;
+    if (!ta) {
+      setNotifyMessage(m => m + varValue);
+    } else {
+      const start = ta.selectionStart;
+      const end   = ta.selectionEnd;
+      setNotifyMessage(m => m.slice(0, start) + varValue + m.slice(end));
+      requestAnimationFrame(() => {
+        ta.focus();
+        const pos = start + varValue.length;
+        ta.setSelectionRange(pos, pos);
+      });
+    }
+    setNotifyLastInserted(varValue);
+    setTimeout(() => setNotifyLastInserted(null), 1200);
+  };
 
   // ── 通知設定 ──────────────────────────────────────────────
   const [notifyUsers, setNotifyUsers] = useState(() => {
@@ -618,19 +728,23 @@ export default function SourceIntegrationDetail({
         {/* 通知文言 */}
         <div style={{ marginBottom: 20 }}>
           <LabelText>通知文言</LabelText>
+          {/* 変数挿入パネル（textarea 上部に接続） */}
+          <NotifyVariablePanel lastInserted={notifyLastInserted} onInsert={insertNotifyVariable} />
           <textarea
+            ref={notifyTextareaRef}
             style={{
               ...S.input,
               width: "100%", boxSizing: "border-box",
               minHeight: 72, resize: "vertical", lineHeight: 1.6,
               fontFamily: "inherit",
+              borderRadius: "0 0 10px 10px",
             }}
             value={notifyMessage}
             onChange={e => setNotifyMessage(e.target.value)}
             placeholder={`${src.name}から反響がありました。確認をお願いします。`}
           />
           <div style={{ fontSize: 11, color: THEME.textMuted, marginTop: 4 }}>
-            ※ 登録のたびに上記の文言でSMSが送信されます。
+            ※ 登録のたびに上記の文言でSMSが送信されます。顧客情報の変数（例: <span style={{ fontFamily: "monospace", color: THEME.primary }}>{"{{姓}}"}</span>）を使って送信先ごとにパーソナライズできます。
           </div>
         </div>
 
