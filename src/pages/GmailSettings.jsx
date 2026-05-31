@@ -125,34 +125,15 @@ export default function GmailSettings({
   const addNotifyUserRef = useRef(null);
 
   // 削除済みIDを記録するRef（GASキャッシュ遅延対策）
-  // GASは書き込み直後のGETで古いデータを返すことがある。
-  // onRefresh()がstaleデータを返しても、このSetでフィルターして復活を防ぐ。
-  // エラー時は delete(id) で取り消す。
   const deletedIdsRef = useRef(new Set());
-
-  // 削除済みルールのフィンガープリントも追跡する（IDと両方でガード）
-  // deletedIdsRef だけでは「GASキャッシュで戻ってきた同内容ルールに
-  // 新しいIDが発行されて素通りする」ケースを防げないため必要。
   const deletedFingerprintsRef = useRef(new Set());
 
-  // 親の gmailSettings が変化したとき、削除済みIDを除外してローカルに反映。
-  // ⚠️ prev関数形式必須。丸ごと上書きするとAPIが完了する前に親が再レンダリング
-  //    したとき仮エントリ(_isTemp)が消える。
-  // ⚠️ _localId の付与ルール:
-  //    - 既存ローカルエントリと内容が一致するものは _localId を引き継ぐ
-  //      （同内容ルールが複数ある場合は順番に1対1対応させる）
-  //    - 新規サーバーエントリには nextId() で新しい安定IDを発行
-  //    こうすることで削除済みIDが別ルールに誤マッチするのを防ぐ
   useEffect(() => {
     setLocalSettings((prev) => {
-      // 仮エントリを先に退避
       const pendingTemps = prev.filter(x => x._isTemp);
-
-      // サーバーデータに安定IDを付与（既存ローカルエントリと照合して引き継ぐ）
       const usedLocalIds = new Set();
       const merged = gmailSettings.map((s, i) => {
         const fp = makeFingerprint(s);
-        // 同内容の未使用ローカルエントリを探して _localId を引き継ぐ
         const existing = prev.find(p =>
           !p._isTemp &&
           !usedLocalIds.has(p._localId) &&
@@ -163,13 +144,8 @@ export default function GmailSettings({
         return { ...s, _localId: localId, _serverIdx: i };
       }).filter(s =>
         !deletedIdsRef.current.has(s._localId) &&
-        !deletedFingerprintsRef.current.has(makeFingerprint(s))  // ← 追加
+        !deletedFingerprintsRef.current.has(makeFingerprint(s))
       );
-
-      // まだ正式エントリが届いていない仮エントリだけ先頭に残す。
-      // ⚠️ _localId ではなくフィンガープリントで比較すること。
-      //    tempアイテムのIDとサーバーから返るrealアイテムのIDは絶対に
-      //    一致しないため、_localIdで比較するとtempが永遠に残り続ける。
       const stillPending = pendingTemps.filter(
         t => !merged.some(m => makeFingerprint(m) === makeFingerprint(t))
       );
@@ -185,19 +161,45 @@ export default function GmailSettings({
   const linkedScenarioId        = selectedStatusDef?.scenarioId || null;
 
   // ── ヘルパー ──────────────────────────────────────────────
-  // customKeys UI形式: { fieldName, keyword }[]  DB保存形式: { fieldName: keyword }
+  // customKeys UI形式: { fieldName, keyword }[]
+  // DB保存形式: { fieldName: keyword } (JSON文字列)
+  //
+  // safeParseCustomKeys: スプレッドシートのJSON文字列 → UI配列形式に変換
+  //   対応する3パターン:
+  //   1. 新形式オブジェクト {"項目名":"キーワード"} → UI配列に変換
+  //   2. 旧形式配列 [{fieldName,keyword},...] → そのまま返す（すでにUI配列形式）
+  //   3. 旧旧形式配列 [{fieldName,keyword},...] の一部にオブジェクト混在 → フィルタして返す
   const safeParseCustomKeys = (str) => {
     try {
-      const obj = str ? JSON.parse(str) : {};
-      if (Array.isArray(obj)) return obj;
-      return Object.entries(obj).map(([fieldName, keyword]) => ({ fieldName, keyword: keyword || "" }));
+      if (!str) return [];
+      const parsed = JSON.parse(str);
+      // 配列形式: [{fieldName, keyword},...] → そのまま返す（UI形式と一致）
+      if (Array.isArray(parsed)) {
+        return parsed
+          .filter(item => item && typeof item === "object" && !Array.isArray(item))
+          .map(item => ({
+            fieldName: String(item.fieldName || ""),
+            keyword:   String(item.keyword   || ""),
+          }));
+      }
+      // オブジェクト形式: {"項目名":"キーワード"} → UI配列形式に変換
+      if (parsed && typeof parsed === "object") {
+        return Object.entries(parsed).map(([fieldName, keyword]) => ({
+          fieldName,
+          keyword: String(keyword || ""),
+        }));
+      }
+      return [];
     } catch { return []; }
   };
+
+  // customKeysToObject: UI配列形式 → DB保存用オブジェクト {"項目名":"キーワード"}
   const customKeysToObject = (arr) => {
     const obj = {};
     (arr || []).forEach(({ fieldName, keyword }) => { if (fieldName) obj[fieldName] = keyword || ""; });
     return obj;
   };
+
   const setData = (patch) => setModal(m => ({ ...m, data: { ...m.data, ...patch } }));
   const addCustomKeyRow    = () => setData({ customKeys: [...(modal.data.customKeys || []), { fieldName: "", keyword: "" }] });
   const removeCustomKeyRow = (idx) => setData({ customKeys: (modal.data.customKeys || []).filter((_, i) => i !== idx) });
@@ -272,10 +274,9 @@ export default function GmailSettings({
     const isEdit   = modal.mode === "edit";
     const formData = { ...modal.data };
 
-    // 件名キーワードの重複チェック（編集中の自分自身は除外）
     const subjectKey = formData.subject.trim();
     const isDuplicate = localSettings.some(s => {
-      if (isEdit && s._localId === modal.editLocalId) return false; // 自分自身は除外
+      if (isEdit && s._localId === modal.editLocalId) return false;
       return (s["件名"] || "").trim() === subjectKey;
     });
     if (isDuplicate) {
@@ -287,11 +288,9 @@ export default function GmailSettings({
 
     setSaving(true);
 
-    // 編集時はサーバーインデックスを取得
     const serverItem = isEdit ? localSettings.find(s => s._localId === modal.editLocalId) : null;
     const serverIdx  = serverItem?._serverIdx ?? -1;
 
-    // ローカル表現として使う新しいルールオブジェクト
     const newRule = {
       "件名":             formData.subject,
       "氏名キー":         formData.nameKey,
@@ -305,7 +304,6 @@ export default function GmailSettings({
       "通知文言":         formData.notifyMessage || "",
     };
 
-    // 1) 楽観的更新（即座にUIに反映）
     if (isEdit) {
       const newLocalId = makeFingerprint(newRule);
       setLocalSettings(prev => prev.map(s =>
@@ -318,31 +316,28 @@ export default function GmailSettings({
       setLocalSettings(prev => [{ ...newRule, _localId: tempId, _serverIdx: -1, _isTemp: true }, ...prev]);
     }
 
-    // 2) モーダルを即座に閉じて成功表示
     closeModal();
     setSaving(false);
     setSuccessModal({ open: true, message: isEdit ? "ルールを更新しました。" : "ルールを追加しました。" });
 
-    // 3) バックグラウンドでAPI → リフレッシュ
     setSyncing(true);
     try {
       await apiCall.post(GAS_URL, {
-        action:     "saveGmailSetting",
-        id:         isEdit ? serverIdx : undefined,
-        subject:    formData.subject,
-        nameKey:    formData.nameKey,
-        phoneKey:   formData.phoneKey,
-        status:     formData.status,
-        source:     formData.source,
-        staffEmail: formData.staffEmail,
-        scenarioID: formData.scenarioID,
+        action:        "saveGmailSetting",
+        id:            isEdit ? serverIdx : undefined,
+        subject:       formData.subject,
+        nameKey:       formData.nameKey,
+        phoneKey:      formData.phoneKey,
+        status:        formData.status,
+        source:        formData.source,
+        staffEmail:    formData.staffEmail,
+        scenarioID:    formData.scenarioID,
         customKeys:    JSON.stringify(customKeysToObject(formData.customKeys)),
         notifyUsers:   JSON.stringify(formData.notifyUsers || []),
         notifyMessage: formData.notifyMessage || "",
       });
-      onRefresh(); // 正式IDで仮IDを置き換える
+      onRefresh();
     } catch {
-      // ロールバック：props の最新状態に戻す（削除済みはフィルター）
       setLocalSettings(
         gmailSettings
           .map((s, i) => ({ ...s, _localId: makeFingerprint(s), _serverIdx: i }))
@@ -362,25 +357,16 @@ export default function GmailSettings({
       note: "この操作は取り消せません。",
       onConfirm: async () => {
         setConfirmModal(null);
-
-        // 1) 削除済みIDとフィンガープリントの両方を記録（GASキャッシュ staleデータ対策）
-        //    - deletedIdsRef:          既存エントリが同じIDで戻ってくるケースをガード
-        //    - deletedFingerprintsRef: 同内容エントリが新しいIDで戻ってくるケースをガード
         deletedIdsRef.current.add(rule._localId);
         deletedFingerprintsRef.current.add(makeFingerprint(rule));
         const prevSettings = localSettings;
-
-        // 2) 楽観的更新：即座にリストから除去
         setLocalSettings(prev => prev.filter(s => s._localId !== rule._localId));
         setSuccessModal({ open: true, message: "ルールを削除しました。" });
-
-        // 3) バックグラウンドAPI
         setSyncing(true);
         try {
           await apiCall.post(GAS_URL, { action: "deleteGmailSetting", id: rule._serverIdx });
-          onRefresh(); // GASが古いデータを返してもdeletedIdsRefでフィルターされる
+          onRefresh();
         } catch {
-          // 失敗時：記録を取り消してUIを元に戻す
           deletedIdsRef.current.delete(rule._localId);
           deletedFingerprintsRef.current.delete(makeFingerprint(rule));
           setLocalSettings(prevSettings);
@@ -390,6 +376,13 @@ export default function GmailSettings({
         }
       },
     });
+  };
+
+  // ── カード一覧表示用：カスタムキーをオブジェクト形式で取得 ──
+  // safeParseCustomKeys は UI配列形式を返すので、カード表示用にオブジェクトに戻す
+  const parseCustomKeysForDisplay = (str) => {
+    const arr = safeParseCustomKeys(str);
+    return customKeysToObject(arr);
   };
 
   return (
@@ -458,7 +451,7 @@ export default function GmailSettings({
         {/* ルール一覧 */}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(420px, 1fr))", gap: 24, marginBottom: 32 }}>
           {localSettings.map((rule) => {
-            const ck   = safeParseCustomKeys(rule["カスタム項目キー"]);
+            const ck   = parseCustomKeysForDisplay(rule["カスタム項目キー"]);
             const mgmt = [
               rule["対応ステータス"] && `ステータス: ${rule["対応ステータス"]}`,
               rule["流入元"]         && `流入元: ${rule["流入元"]}`,
@@ -653,7 +646,6 @@ export default function GmailSettings({
                 </div>
               </div>
 
-
               {/* 通知設定 */}
               <div style={{ padding: 20, background: "#FFFBEB", borderRadius: 14, border: "1px solid #FDE68A", marginBottom: 28 }}>
                 <div style={{ fontSize: 12, fontWeight: 800, color: "#92400E", marginBottom: 4, display: "flex", alignItems: "center", gap: 6 }}>
@@ -752,6 +744,7 @@ export default function GmailSettings({
                   )}
                 </div>
               </div>
+
               {/* 保存・キャンセル */}
               <div style={{ display: "flex", gap: 12 }}>
                 <button onClick={handleSave} disabled={saving} style={{ flex: 1, padding: "13px", borderRadius: 12, border: "none", backgroundColor: saving ? "#818CF8" : THEME.primary, color: "white", fontWeight: 900, fontSize: 15, cursor: saving ? "not-allowed" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, transition: "background-color 0.2s" }}>
