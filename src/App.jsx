@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { ToastProvider, useToast } from "./ToastContext";
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
 import axios from "axios";
@@ -104,6 +104,11 @@ function App() {
     const sUser = localStorage.getItem("sf_user");
     return sUser ? JSON.parse(sUser) : null;
   });
+  // setUser は非同期のため refresh() 内で user を直接参照すると
+  // setState直後の呼び出しで null になる。ref で即時参照できるようにする。
+  const userRef = useRef(
+    (() => { try { return JSON.parse(localStorage.getItem("sf_user")); } catch { return null; } })()
+  );
 
   // ── スタッフ一覧: App.jsx で一元管理・キャッシュ ──────────────
   // 各コンポーネントが個別に fetch しないよう、ここで取得して props で渡す
@@ -127,7 +132,7 @@ function App() {
   }, []);
 
   const refresh = useCallback(async () => {
-    if (!user) return;
+    if (!userRef.current) return;
     try {
       const [gasRes] = await Promise.all([
         axios.get(`${GAS_URL}?_t=${Date.now()}`),
@@ -153,7 +158,7 @@ function App() {
     } finally {
       setLoad(false);
     }
-  }, [user, getDisplaySettings, refreshStaff]);
+  }, [getDisplaySettings, refreshStaff]);
 
   // 顧客データのみを高速再取得（カンバン↔顧客リスト間の即時同期用）
   // doGet の全シート読み込み（2〜5秒）と違い、顧客シートだけ読むため高速
@@ -166,7 +171,6 @@ function App() {
       const customers = res?.data?.customers;
       if (customers) setD(prev => ({ ...prev, customers }));
     } catch (e) {
-      // refresh()を呼ぶとCORSループになるため削除
       console.warn("[lightRefresh] 失敗", e);
     }
   }, [refresh]);
@@ -191,7 +195,6 @@ function App() {
     }));
   }, []);
 
-  // [refresh]依存にするとrefreshが再生成のたびに発火しCORSループになるため[]固定
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { refresh(); }, []);
 
@@ -243,10 +246,10 @@ function App() {
                   return;
                 }
                 // ── 認証OK ─────────────────────────────────────
+                userRef.current = dec; // setState前に ref を更新して refresh() が通るようにする
                 setUser(dec);
                 localStorage.setItem("sf_user", JSON.stringify(dec));
-                // useEffect が [] のためログイン後に明示的にデータ取得
-                setTimeout(() => refresh(), 0);
+                refresh();
               }}
               onError={() => setAuthError("Googleログインに失敗しました。再度お試しください。")}
             />

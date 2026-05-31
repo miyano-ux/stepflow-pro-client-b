@@ -391,7 +391,7 @@ export default function SourceIntegrationDetail({
       setTimeout(() => setRuleSaved(false), 2000);
       onRefresh?.();
     } catch (e) {
-      showToast("保存に失敗しました: " + (e?.message || e, "error"));
+      showToast("保存に失敗しました: " + (e?.message || e), "error");
     } finally {
       setRuleSaving(false);
     }
@@ -415,7 +415,7 @@ export default function SourceIntegrationDetail({
       setTimeout(() => setNotifySaved(false), 2000);
       onRefresh?.();
     } catch (e) {
-      showToast("保存に失敗しました: " + (e?.message || e, "error"));
+      showToast("保存に失敗しました: " + (e?.message || e), "error");
     } finally {
       setNotifySaving(false);
     }
@@ -434,7 +434,7 @@ export default function SourceIntegrationDetail({
       setTimeout(() => setMappingSaved(false), 2000);
       onRefresh?.();
     } catch (e) {
-      showToast("保存に失敗しました: " + (e?.message || e, "error"));
+      showToast("保存に失敗しました: " + (e?.message || e), "error");
     } finally {
       setMappingSaving(false);
     }
