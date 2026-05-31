@@ -36,7 +36,7 @@ function makeFingerprint(rule) {
 
 const EMPTY_DATA = {
   subject: "", nameKey: "氏名：", phoneKey: "電話番号：",
-  status: "", source: "", staffEmail: "", scenarioID: "", customKeys: {},
+  status: "", source: "", staffEmail: "", scenarioID: "", customKeys: [],
   notifyUsers: [], notifyMessage: "",
 };
 
@@ -185,10 +185,38 @@ export default function GmailSettings({
   const linkedScenarioId        = selectedStatusDef?.scenarioId || null;
 
   // ── ヘルパー ──────────────────────────────────────────────
-  const safeParseCustomKeys = (str) => { try { return str ? JSON.parse(str) : {}; } catch { return {}; } };
-  const setData      = (patch) => setModal(m => ({ ...m, data: { ...m.data, ...patch } }));
-  const setCustomKey = (name, val) => setData({ customKeys: { ...modal.data.customKeys, [name]: val } });
+  // customKeys UI形式: { fieldName, keyword }[]  DB保存形式: { fieldName: keyword }
+  const safeParseCustomKeys = (str) => {
+    try {
+      const obj = str ? JSON.parse(str) : {};
+      if (Array.isArray(obj)) return obj;
+      return Object.entries(obj).map(([fieldName, keyword]) => ({ fieldName, keyword: keyword || "" }));
+    } catch { return []; }
+  };
+  const customKeysToObject = (arr) => {
+    const obj = {};
+    (arr || []).forEach(({ fieldName, keyword }) => { if (fieldName) obj[fieldName] = keyword || ""; });
+    return obj;
+  };
+  const setData = (patch) => setModal(m => ({ ...m, data: { ...m.data, ...patch } }));
+  const addCustomKeyRow    = () => setData({ customKeys: [...(modal.data.customKeys || []), { fieldName: "", keyword: "" }] });
+  const removeCustomKeyRow = (idx) => setData({ customKeys: (modal.data.customKeys || []).filter((_, i) => i !== idx) });
+  const updateCustomKeyRow = (idx, patch) => setData({
+    customKeys: (modal.data.customKeys || []).map((row, i) => i === idx ? { ...row, ...patch } : row),
+  });
   const getStaffName = (email) => { const s = staffList.find(s => s.email === email); return s ? `${s.lastName} ${s.firstName}` : email; };
+
+  // 通知ユーザー追加ドロップダウン外クリックで閉じる
+  useEffect(() => {
+    if (!showAddNotifyUser) return;
+    const handler = (e) => {
+      if (addNotifyUserRef.current && !addNotifyUserRef.current.contains(e.target)) {
+        setShowAddNotifyUser(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [showAddNotifyUser]);
 
   // ── ステータス変更（シナリオ連動確認）──────────────────────
   const handleStatusChange = (v) => {
@@ -228,25 +256,13 @@ export default function GmailSettings({
   };
   const closeModal = () => { setModal(m => ({ ...m, open: false })); setShowAddNotifyUser(false); };
 
-  // 通知ユーザー追加ドロップダウン外クリックで閉じる
-  useEffect(() => {
-    if (!showAddNotifyUser) return;
-    const handler = (e) => {
-      if (addNotifyUserRef.current && !addNotifyUserRef.current.contains(e.target)) {
-        setShowAddNotifyUser(false);
-      }
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, [showAddNotifyUser]);
-
   // ── テスト実行 ────────────────────────────────────────────
   const handleTest = () => {
     if (!testBody) return showToast("テスト用の本文を入力してください", "warning");
     try {
       const extract = (key) => { if (!key) return "－"; const m = testBody.match(new RegExp(key + "\\s*(.+)")); return m ? m[1].trim() : "抽出失敗"; };
       const customs = {};
-      Object.entries(modal.data.customKeys).forEach(([k, v]) => { if (v) customs[k] = extract(v); });
+      (modal.data.customKeys || []).forEach(({ fieldName, keyword }) => { if (fieldName && keyword) customs[fieldName] = extract(keyword); });
       setParsePreview({ name: extract(modal.data.nameKey), phone: extract(modal.data.phoneKey), customs });
     } catch { showToast("キーの形式が正しくありません", "info"); }
   };
@@ -284,7 +300,7 @@ export default function GmailSettings({
       "流入元":           formData.source,
       "担当者メール":     formData.staffEmail,
       "シナリオID":       formData.scenarioID,
-      "カスタム項目キー": JSON.stringify(formData.customKeys),
+      "カスタム項目キー": JSON.stringify(customKeysToObject(formData.customKeys)),
       "通知先ユーザー":   JSON.stringify(formData.notifyUsers || []),
       "通知文言":         formData.notifyMessage || "",
     };
@@ -311,16 +327,16 @@ export default function GmailSettings({
     setSyncing(true);
     try {
       await apiCall.post(GAS_URL, {
-        action:        "saveGmailSetting",
-        id:            isEdit ? serverIdx : undefined,
-        subject:       formData.subject,
-        nameKey:       formData.nameKey,
-        phoneKey:      formData.phoneKey,
-        status:        formData.status,
-        source:        formData.source,
-        staffEmail:    formData.staffEmail,
-        scenarioID:    formData.scenarioID,
-        customKeys:    JSON.stringify(formData.customKeys),
+        action:     "saveGmailSetting",
+        id:         isEdit ? serverIdx : undefined,
+        subject:    formData.subject,
+        nameKey:    formData.nameKey,
+        phoneKey:   formData.phoneKey,
+        status:     formData.status,
+        source:     formData.source,
+        staffEmail: formData.staffEmail,
+        scenarioID: formData.scenarioID,
+        customKeys:    JSON.stringify(customKeysToObject(formData.customKeys)),
         notifyUsers:   JSON.stringify(formData.notifyUsers || []),
         notifyMessage: formData.notifyMessage || "",
       });
@@ -530,7 +546,9 @@ export default function GmailSettings({
               {/* 抽出キーワード */}
               <div style={{ padding: 20, background: "#F8FAFC", borderRadius: 14, border: `1px solid ${THEME.border}`, marginBottom: 20 }}>
                 <div style={{ fontSize: 12, fontWeight: 800, color: THEME.textMuted, marginBottom: 14 }}>抽出キーワード設定（その文字の「後ろ」を取得します）</div>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+
+                {/* 固定フィールド：氏名・電話番号 */}
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 16 }}>
                   <FieldBox>
                     <LabelText>氏名</LabelText>
                     <input style={styles.input} value={modal.data.nameKey} onChange={e => setData({ nameKey: e.target.value })} />
@@ -539,13 +557,69 @@ export default function GmailSettings({
                     <LabelText>電話番号</LabelText>
                     <input style={styles.input} value={modal.data.phoneKey} onChange={e => setData({ phoneKey: e.target.value })} />
                   </FieldBox>
-                  {formSettings.map(f => (
-                    <FieldBox key={f.name}>
-                      <LabelText>{f.name}</LabelText>
-                      <input style={styles.input} value={modal.data.customKeys[f.name] || ""} onChange={e => setCustomKey(f.name, e.target.value)} placeholder={`例: ${f.name}：`} />
-                    </FieldBox>
-                  ))}
                 </div>
+
+                {/* カスタム項目：動的追加行 */}
+                {(modal.data.customKeys || []).length > 0 && (
+                  <div style={{ marginBottom: 12 }}>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 32px", gap: 8, marginBottom: 6 }}>
+                      <span style={{ fontSize: 11, fontWeight: 800, color: THEME.textMuted }}>取り込み先項目</span>
+                      <span style={{ fontSize: 11, fontWeight: 800, color: THEME.textMuted }}>抽出キーワード</span>
+                      <span />
+                    </div>
+                    {(modal.data.customKeys || []).map((row, idx) => {
+                      const usedFields = new Set(
+                        (modal.data.customKeys || [])
+                          .filter((_, i) => i !== idx)
+                          .map(r => r.fieldName)
+                          .filter(Boolean)
+                      );
+                      const fieldOptions = [
+                        { value: "", label: "項目を選択..." },
+                        ...formSettings
+                          .filter(f => !usedFields.has(f.name))
+                          .map(f => ({ value: f.name, label: f.name })),
+                      ];
+                      return (
+                        <div key={idx} style={{ display: "grid", gridTemplateColumns: "1fr 1fr 32px", gap: 8, marginBottom: 8, alignItems: "center" }}>
+                          <CustomSelect
+                            value={row.fieldName}
+                            onChange={v => updateCustomKeyRow(idx, { fieldName: v })}
+                            options={fieldOptions}
+                            placeholder="項目を選択..."
+                          />
+                          <input
+                            style={styles.input}
+                            value={row.keyword}
+                            onChange={e => updateCustomKeyRow(idx, { keyword: e.target.value })}
+                            placeholder={row.fieldName ? `例: ${row.fieldName}：` : "例: カスタム項目："}
+                          />
+                          <button
+                            onClick={() => removeCustomKeyRow(idx)}
+                            style={{ width: 32, height: 32, border: "none", background: "none", cursor: "pointer", color: THEME.danger, display: "flex", alignItems: "center", justifyContent: "center", borderRadius: 6, flexShrink: 0 }}
+                          >
+                            <X size={16} />
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* 追加ボタン */}
+                {formSettings.length > 0 && (modal.data.customKeys || []).length < formSettings.length && (
+                  <button
+                    onClick={addCustomKeyRow}
+                    style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 700, color: THEME.primary, background: "none", border: `1px dashed ${THEME.primary}`, borderRadius: 8, padding: "6px 14px", cursor: "pointer" }}
+                  >
+                    <Plus size={14} /> カスタム項目を追加
+                  </button>
+                )}
+                {formSettings.length === 0 && (
+                  <div style={{ fontSize: 12, color: THEME.textMuted, padding: "8px 0" }}>
+                    ※ カスタム項目を追加するには、先に「登録項目の定義」でカスタム項目を作成してください。
+                  </div>
+                )}
               </div>
 
               {/* 管理項目 */}
@@ -578,6 +652,7 @@ export default function GmailSettings({
                   </FieldBox>
                 </div>
               </div>
+
 
               {/* 通知設定 */}
               <div style={{ padding: 20, background: "#FFFBEB", borderRadius: 14, border: "1px solid #FDE68A", marginBottom: 28 }}>
@@ -677,7 +752,6 @@ export default function GmailSettings({
                   )}
                 </div>
               </div>
-
               {/* 保存・キャンセル */}
               <div style={{ display: "flex", gap: 12 }}>
                 <button onClick={handleSave} disabled={saving} style={{ flex: 1, padding: "13px", borderRadius: 12, border: "none", backgroundColor: saving ? "#818CF8" : THEME.primary, color: "white", fontWeight: 900, fontSize: 15, cursor: saving ? "not-allowed" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, transition: "background-color 0.2s" }}>

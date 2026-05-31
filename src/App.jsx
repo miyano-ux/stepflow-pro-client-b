@@ -166,8 +166,8 @@ function App() {
       const customers = res?.data?.customers;
       if (customers) setD(prev => ({ ...prev, customers }));
     } catch (e) {
-      console.warn("[lightRefresh] 失敗 → フルリフレッシュにフォールバック", e);
-      refresh();
+      // refresh()を呼ぶとCORSループになるため削除
+      console.warn("[lightRefresh] 失敗", e);
     }
   }, [refresh]);
 
@@ -191,9 +191,9 @@ function App() {
     }));
   }, []);
 
-  useEffect(() => {
-    refresh();
-  }, [refresh]);
+  // [refresh]依存にするとrefreshが再生成のたびに発火しCORSループになるため[]固定
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { refresh(); }, []);
 
   // ── 未ログイン：ログイン画面 ──────────────────
   if (!user) {
@@ -219,7 +219,7 @@ function App() {
           <div style={{ margin: "0 auto 40px", display: "flex", justifyContent: "center" }}>
             <img
               src="/logo_beta.png"
-              alt="SMooSy"
+              alt="SMOOSy"
               style={{ height: "80px", width: "auto", objectFit: "contain" }}
             />
           </div>
@@ -245,6 +245,8 @@ function App() {
                 // ── 認証OK ─────────────────────────────────────
                 setUser(dec);
                 localStorage.setItem("sf_user", JSON.stringify(dec));
+                // useEffect が [] のためログイン後に明示的にデータ取得
+                setTimeout(() => refresh(), 0);
               }}
               onError={() => setAuthError("Googleログインに失敗しました。再度お試しください。")}
             />
