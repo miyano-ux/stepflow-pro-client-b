@@ -72,13 +72,18 @@ export default function CustomSelect({ value, options = [], onChange, color, pla
                 onClick={() => { if (!opt.disabled) { onChange(opt.value); setOpen(false); } }}
                 style={{
                   display: "flex", alignItems: "center", justifyContent: "space-between",
-                  width: "100%", padding: "10px 14px",
-                  border: "none", backgroundColor: isActive ? `${accentColor}15` : "transparent",
-                  color: opt.disabled ? "#aaa" : isActive ? accentColor : THEME.textMain,
-                  fontSize: "14px", fontWeight: isActive ? 800 : 700,
-                  cursor: opt.disabled ? "not-allowed" : "pointer",
+                  width: "100%",
+                  padding: opt.disabled ? "5px 14px 4px" : "10px 14px",
+                  border: "none",
+                  backgroundColor: opt.disabled ? "#F3F4F6" : isActive ? `${accentColor}15` : "transparent",
+                  color: opt.disabled ? "#9CA3AF" : isActive ? accentColor : THEME.textMain,
+                  fontSize: opt.disabled ? "11px" : "14px",
+                  fontWeight: opt.disabled ? 800 : isActive ? 800 : 700,
+                  cursor: opt.disabled ? "default" : "pointer",
                   textAlign: "left", boxSizing: "border-box",
                   transition: "background 0.1s",
+                  letterSpacing: opt.disabled ? "0.03em" : 0,
+                  borderTop: opt.disabled ? "1px solid #E5E7EB" : "none",
                 }}
                 onMouseEnter={e => { if (!opt.disabled && !isActive) e.currentTarget.style.backgroundColor = "#F8FAFC"; }}
                 onMouseLeave={e => { if (!opt.disabled && !isActive) e.currentTarget.style.backgroundColor = "transparent"; }}

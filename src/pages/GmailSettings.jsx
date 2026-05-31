@@ -16,6 +16,15 @@ import { useToast } from "../ToastContext";
 // 📧 GmailSettings - カスタム取り込みルール設定（楽観的UI）
 // ============================================================
 
+// ── 顧客情報：固定フィールド一覧（氏名・電話は抽出キーワードで別管理のため除外）──
+const CUSTOMER_FIXED_FIELDS = [
+  "メールアドレス",
+  "姓（カナ）",
+  "名（カナ）",
+  "住所",
+  "郵便番号",
+];
+
 // ── コンテンツフィンガープリント（照合専用・IDには使わない）────
 // 同じ内容のルールが複数存在しうるため、フィンガープリントをIDに使うと
 // Reactキー衝突や誤フィルターが発生する。
@@ -540,38 +549,67 @@ export default function GmailSettings({
               <div style={{ padding: 20, background: "#F8FAFC", borderRadius: 14, border: `1px solid ${THEME.border}`, marginBottom: 20 }}>
                 <div style={{ fontSize: 12, fontWeight: 800, color: THEME.textMuted, marginBottom: 14 }}>抽出キーワード設定（その文字の「後ろ」を取得します）</div>
 
-                {/* 固定フィールド：氏名・電話番号 */}
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 16 }}>
-                  <FieldBox>
-                    <LabelText>氏名</LabelText>
-                    <input style={styles.input} value={modal.data.nameKey} onChange={e => setData({ nameKey: e.target.value })} />
-                  </FieldBox>
-                  <FieldBox>
-                    <LabelText>電話番号</LabelText>
-                    <input style={styles.input} value={modal.data.phoneKey} onChange={e => setData({ phoneKey: e.target.value })} />
-                  </FieldBox>
+                {/* 全フィールド共通ヘッダー */}
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 32px", gap: 8, marginBottom: 8 }}>
+                  <span style={{ fontSize: 11, fontWeight: 800, color: THEME.textMuted }}>取り込み先項目</span>
+                  <span style={{ fontSize: 11, fontWeight: 800, color: THEME.textMuted }}>抽出キーワード</span>
+                  <span />
                 </div>
+
+                {/* 固定フィールド：氏名・電話番号（必須・固定ラベル） */}
+                {[
+                  { label: "氏名", key: "nameKey" },
+                  { label: "電話番号", key: "phoneKey" },
+                ].map(({ label, key }) => (
+                  <div key={key} style={{ display: "grid", gridTemplateColumns: "1fr 1fr 32px", gap: 8, marginBottom: 8, alignItems: "center" }}>
+                    {/* 取り込み先：固定ラベル（プルダウン風の見た目） */}
+                    <div style={{
+                      display: "flex", alignItems: "center", justifyContent: "space-between",
+                      padding: "11px 14px", border: `1px solid ${THEME.border}`,
+                      borderRadius: 12, backgroundColor: "#F3F4F6",
+                      fontSize: 14, fontWeight: 700, color: THEME.textMain,
+                      userSelect: "none", boxSizing: "border-box",
+                    }}>
+                      <span>{label}</span>
+                      <span style={{ fontSize: 10, fontWeight: 800, color: THEME.primary, backgroundColor: "#EEF2FF", borderRadius: 4, padding: "2px 6px", letterSpacing: "0.03em" }}>必須</span>
+                    </div>
+                    {/* 抽出キーワード：編集可能 */}
+                    <input
+                      style={styles.input}
+                      value={modal.data[key]}
+                      onChange={e => setData({ [key]: e.target.value })}
+                      placeholder={`例: ${label}：`}
+                    />
+                    {/* 削除ボタン不要のためダミースペース */}
+                    <span />
+                  </div>
+                ))}
 
                 {/* カスタム項目：動的追加行 */}
                 {(modal.data.customKeys || []).length > 0 && (
-                  <div style={{ marginBottom: 12 }}>
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 32px", gap: 8, marginBottom: 6 }}>
-                      <span style={{ fontSize: 11, fontWeight: 800, color: THEME.textMuted }}>取り込み先項目</span>
-                      <span style={{ fontSize: 11, fontWeight: 800, color: THEME.textMuted }}>抽出キーワード</span>
-                      <span />
-                    </div>
+                  <div style={{ marginBottom: 0 }}>
                     {(modal.data.customKeys || []).map((row, idx) => {
+                      // 他の行で既に使われているフィールド名（現在行は除く）
                       const usedFields = new Set(
                         (modal.data.customKeys || [])
                           .filter((_, i) => i !== idx)
                           .map(r => r.fieldName)
                           .filter(Boolean)
                       );
+                      // 顧客情報（固定）グループ：使用済みを除外
+                      const availableFixed = CUSTOMER_FIXED_FIELDS.filter(f => !usedFields.has(f));
+                      // カスタム項目グループ：使用済みを除外
+                      const availableCustom = formSettings.filter(f => !usedFields.has(f.name));
                       const fieldOptions = [
                         { value: "", label: "項目を選択..." },
-                        ...formSettings
-                          .filter(f => !usedFields.has(f.name))
-                          .map(f => ({ value: f.name, label: f.name })),
+                        ...(availableFixed.length > 0 ? [
+                          { value: "__group_customer__", label: "── 顧客情報 ──", disabled: true },
+                          ...availableFixed.map(f => ({ value: f, label: f })),
+                        ] : []),
+                        ...(availableCustom.length > 0 ? [
+                          { value: "__group_custom__", label: "── カスタム項目 ──", disabled: true },
+                          ...availableCustom.map(f => ({ value: f.name, label: f.name })),
+                        ] : []),
                       ];
                       return (
                         <div key={idx} style={{ display: "grid", gridTemplateColumns: "1fr 1fr 32px", gap: 8, marginBottom: 8, alignItems: "center" }}>
@@ -585,7 +623,7 @@ export default function GmailSettings({
                             style={styles.input}
                             value={row.keyword}
                             onChange={e => updateCustomKeyRow(idx, { keyword: e.target.value })}
-                            placeholder={row.fieldName ? `例: ${row.fieldName}：` : "例: カスタム項目："}
+                            placeholder={row.fieldName ? `例: ${row.fieldName}：` : "例: フィールド名："}
                           />
                           <button
                             onClick={() => removeCustomKeyRow(idx)}
@@ -599,20 +637,21 @@ export default function GmailSettings({
                   </div>
                 )}
 
-                {/* 追加ボタン */}
-                {formSettings.length > 0 && (modal.data.customKeys || []).length < formSettings.length && (
-                  <button
-                    onClick={addCustomKeyRow}
-                    style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 700, color: THEME.primary, background: "none", border: `1px dashed ${THEME.primary}`, borderRadius: 8, padding: "6px 14px", cursor: "pointer" }}
-                  >
-                    <Plus size={14} /> カスタム項目を追加
-                  </button>
-                )}
-                {formSettings.length === 0 && (
-                  <div style={{ fontSize: 12, color: THEME.textMuted, padding: "8px 0" }}>
-                    ※ カスタム項目を追加するには、先に「登録項目の定義」でカスタム項目を作成してください。
-                  </div>
-                )}
+                {/* 追加ボタン：追加可能な項目が残っている限り表示 */}
+                {(() => {
+                  const usedCount = (modal.data.customKeys || []).length;
+                  const totalAvailable = CUSTOMER_FIXED_FIELDS.length + formSettings.length;
+                  const canAdd = usedCount < totalAvailable;
+                  if (!canAdd) return null;
+                  return (
+                    <button
+                      onClick={addCustomKeyRow}
+                      style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 700, color: THEME.primary, background: "none", border: `1px dashed ${THEME.primary}`, borderRadius: 8, padding: "6px 14px", cursor: "pointer" }}
+                    >
+                      <Plus size={14} /> 項目を追加
+                    </button>
+                  );
+                })()}
               </div>
 
               {/* 管理項目 */}
