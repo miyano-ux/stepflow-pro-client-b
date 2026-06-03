@@ -1,5 +1,5 @@
 import React, { useState, useCallback } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import {
   Lock, Trash2, Plus, ChevronDown, ChevronUp,
   Type, Calendar, List, ToggleLeft, ToggleRight, GripVertical, X, CheckCircle2
@@ -23,7 +23,6 @@ const FIELD_TYPES = [
 const FIXED_FIELDS = ["姓", "名", "電話番号", "メールアドレス"];
 
 function buildItems(formSettings) {
-  const showToast = useToast();
   return (formSettings || []).map(f => ({
     name:     f.name || "",
     type:     f.type || "text",
@@ -36,6 +35,11 @@ function buildItems(formSettings) {
 
 export default function FormSettings({ formSettings = [], sheetCustomColumns = [], onRefresh }) {
   const nav = useNavigate();
+  const location = useLocation();
+  const from = location.state?.from;
+  const backTo    = from === "master-settings" ? "/master-settings" : "/add";
+  const backLabel = from === "master-settings" ? "管理項目設定へ戻る" : "登録画面へ戻る";
+  const showToast = useToast();
 
   // 初回マウント時のみ初期化（useEffectなし → 無限ループ防止）
   const [items, setItems]         = useState(() => buildItems(formSettings));
@@ -88,7 +92,7 @@ export default function FormSettings({ formSettings = [], sheetCustomColumns = [
       await apiCall.post(GAS_URL, { action: "saveFormSettings", settings });
       setSaved(true);
       if (onRefresh) await onRefresh();
-      nav("/add");
+      nav(backTo);
     } catch (err) {
       console.error("saveFormSettings error:", err);
       showToast("保存に失敗しました: " + (err?.message || "不明なエラー", "error"));
@@ -102,8 +106,8 @@ export default function FormSettings({ formSettings = [], sheetCustomColumns = [
     <Page
       title="登録項目の定義"
       topButton={
-        <button onClick={() => nav("/add")} style={{ ...styles.btn, ...styles.btnSecondary }}>
-          登録画面へ戻る
+        <button onClick={() => nav(backTo)} style={{ ...styles.btn, ...styles.btnSecondary }}>
+          {backLabel}
         </button>
       }
     >

@@ -1,6 +1,6 @@
 import React from "react";
 import { Link } from "react-router-dom";
-import { Settings, Globe, FileText, MessageSquare, ChevronRight } from "lucide-react";
+import { Settings, Globe, FileText, MessageSquare, ChevronRight, ClipboardList } from "lucide-react";
 import { THEME } from "../lib/constants";
 
 // ==========================================
@@ -79,6 +79,40 @@ export default function MasterSettings({ statuses = [], sources = [], contractTy
             </div>
           )}
         </Section>
+
+        {/* 登録項目の定義への導線 */}
+        <Link
+          to="/form-settings"
+          state={{ from: "master-settings" }}
+          style={{
+            display: "flex", alignItems: "center", justifyContent: "space-between",
+            padding: "14px 20px", marginBottom: 20,
+            backgroundColor: "white", borderRadius: 12,
+            border: `1px solid ${THEME.border}`,
+            textDecoration: "none", transition: "box-shadow 0.15s, border-color 0.15s",
+          }}
+          onMouseEnter={e => {
+            e.currentTarget.style.borderColor = THEME.primary;
+            e.currentTarget.style.boxShadow = `0 0 0 3px ${THEME.primary}18`;
+          }}
+          onMouseLeave={e => {
+            e.currentTarget.style.borderColor = THEME.border;
+            e.currentTarget.style.boxShadow = "none";
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <span style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 32, height: 32, backgroundColor: "#EEF2FF", borderRadius: 8 }}>
+              <ClipboardList size={16} color={THEME.primary} />
+            </span>
+            <div>
+              <div style={{ fontSize: 14, fontWeight: 800, color: THEME.textMain }}>登録項目の定義</div>
+              <div style={{ fontSize: 12, color: THEME.textMuted, marginTop: 1 }}>顧客登録フォームのカスタム項目を設定</div>
+            </div>
+          </div>
+          <span style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 800, color: THEME.primary, padding: "7px 16px", backgroundColor: "#EEF2FF", borderRadius: 99 }}>
+            設定を編集 <ChevronRight size={14} />
+          </span>
+        </Link>
 
         {/* 流入元設定 */}
         <Section icon={<Globe size={18} />} title="流入元設定" linkTo="/sources" linkLabel="設定を編集">

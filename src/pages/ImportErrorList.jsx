@@ -187,7 +187,8 @@ function ImportErrorList({ errors = [], onRefresh }) {
             <thead>
               <tr>
                 <th style={styles.tableTh}>日時</th>
-                <th style={styles.tableTh}>件名 / 送信元</th>
+                <th style={styles.tableTh}>送信元</th>
+                <th style={styles.tableTh}>件名 / 反響番号</th>
                 <th style={styles.tableTh}>エラー原因</th>
                 <th style={{ ...styles.tableTh, textAlign: "right" }}>詳細</th>
               </tr>
@@ -206,12 +207,8 @@ function ImportErrorList({ errors = [], onRefresh }) {
                     }
                   >
                     <td style={styles.tableTd}>{formatDate(e["日時"])}</td>
-                    <td style={styles.tableTd}>
-                      <div style={{ fontWeight: 700 }}>{e["件名"]}</div>
-                      <div style={{ fontSize: "12px", color: THEME.textMuted }}>
-                        {e["送信元"]}
-                      </div>
-                    </td>
+                    <td style={styles.tableTd}>{e["送信元"]}</td>
+                    <td style={styles.tableTd}>{e["件名 / 反響番号"]}</td>
                     <td style={styles.tableTd}>
                       <span style={{ color: THEME.danger, fontWeight: 800 }}>
                         {e["エラー原因"]}
@@ -235,7 +232,7 @@ function ImportErrorList({ errors = [], onRefresh }) {
               ) : (
                 <tr>
                   <td
-                    colSpan="4"
+                    colSpan="5"
                     style={{
                       ...styles.tableTd,
                       textAlign: "center",
@@ -304,7 +301,7 @@ function ImportErrorList({ errors = [], onRefresh }) {
                   color: THEME.textMain,
                 }}
               >
-                {selected["内容"]}
+                {selected["詳細"]}
               </div>
             </div>
           </div>
