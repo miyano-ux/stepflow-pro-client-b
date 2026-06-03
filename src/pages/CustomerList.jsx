@@ -276,8 +276,15 @@ export default function CustomerList({
   }, [localCustomers, search, dateRange, sort]);
 
   const handleExportCSV = () => {
-    // ヘッダー行：仮想列「氏名」は「姓」「名」に展開
-    const csvCols = vCols.flatMap((col) => col === "氏名" ? ["姓", "名"] : [col]);
+    // CSV は表示設定に関わらず全カラムを出力する
+    const SALES_KEYS   = ["対応ステータス", "流入元", "担当者メール", "シナリオID"];
+    const DEFAULT_KEYS = ["姓", "名", "電話番号", "登録日", "メールアドレス"];
+    const allFixed     = new Set([...SALES_KEYS, ...DEFAULT_KEYS]);
+    const customKeys   = (formSettings || []).map(f => f.name).filter(k => !allFixed.has(k));
+    // 固定列（姓・名・電話番号・登録日・メールアドレス・営業管理列）＋カスタム列 の全カラム
+    const allColKeys = [...DEFAULT_KEYS, ...SALES_KEYS, ...customKeys];
+    // ヘッダー行：仮想列「氏名」は使わず「姓」「名」をそのまま出力
+    const csvCols = allColKeys;
     const header = csvCols.map((col) => {
       if (col === "担当者メール") return "担当者";
       if (col === "シナリオID") return "適用シナリオ";
