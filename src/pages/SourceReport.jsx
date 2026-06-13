@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { GitBranch, ChevronLeft } from "lucide-react";
 import { THEME as APP_THEME } from "../lib/constants";
@@ -18,6 +18,25 @@ function toYM(date) {
   const d = new Date(date);
   if (isNaN(d)) return null;
   return `${d.getFullYear()}年${String(d.getMonth() + 1).padStart(2, "0")}月`;
+}
+// 日付を "YYYY-MM" キーに変換（input[type=month]の値と同形式・文字列比較可能）
+function ymKey(dateStr) {
+  const d = new Date(dateStr);
+  if (isNaN(d)) return null;
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+// 月キーが指定範囲 { from, to } 内かどうか判定（from/to空欄は無制限）
+function inMonthRange(ym, range) {
+  if (!ym) return false;
+  if (range.from && ym < range.from) return false;
+  if (range.to && ym > range.to) return false;
+  return true;
+}
+// "YYYY-MM" → "YYYY年MM月" 表示用
+function fmtYMLabel(ym) {
+  if (!ym) return "";
+  const [y, m] = ym.split("-");
+  return `${y}年${m}月`;
 }
 function parseMan(val) {
   return Number(String(val || "").replace(/[^0-9.]/g, "")) || 0;
@@ -123,6 +142,55 @@ function KpiCard({ label, value, sub, color }) {
   );
 }
 
+// ── 月範囲フィルター（〇年〇月 〜 〇年〇月） ──────────
+function MonthRangeFilter({ value, onChange, min, max }) {
+  const inputStyle = {
+    fontSize: 12, padding: "6px 10px", borderRadius: 8,
+    border: `1px solid ${THEME.border}`, background: THEME.bg,
+    color: THEME.textMain, cursor: "pointer", fontWeight: 700,
+    fontFamily: "inherit", outline: "none",
+  };
+  const hasValue = value.from || value.to;
+  const label = hasValue
+    ? `${value.from ? fmtYMLabel(value.from) : "最初"} 〜 ${value.to ? fmtYMLabel(value.to) : "最新"}`
+    : "全期間";
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+      <span style={{ fontSize: 11, fontWeight: 700, color: THEME.textMuted }}>集計期間</span>
+      <input
+        type="month"
+        value={value.from || ""}
+        min={min}
+        max={value.to || max}
+        onChange={e => onChange({ ...value, from: e.target.value })}
+        style={inputStyle}
+      />
+      <span style={{ color: THEME.textMuted, fontSize: 13 }}>〜</span>
+      <input
+        type="month"
+        value={value.to || ""}
+        min={value.from || min}
+        max={max}
+        onChange={e => onChange({ ...value, to: e.target.value })}
+        style={inputStyle}
+      />
+      {hasValue && (
+        <button
+          onClick={() => onChange({ from: "", to: "" })}
+          style={{
+            fontSize: 11, fontWeight: 700, padding: "6px 10px", borderRadius: 8,
+            border: `1px solid ${THEME.border}`, background: "white",
+            color: THEME.textMuted, cursor: "pointer",
+          }}
+        >
+          クリア
+        </button>
+      )}
+      <span style={{ fontSize: 11, color: THEME.textMuted }}>（{label}）</span>
+    </div>
+  );
+}
+
 // ─────────────────────────────────────────────────────
 // メインコンポーネント
 // ─────────────────────────────────────────────────────
@@ -135,9 +203,11 @@ export default function SourceReport({
   properties = [],
 }) {
   const navigate = useNavigate();
-  const [periodCP, setPeriodCP]   = useState("全期間");  // 契約獲得力
-  const [periodROI, setPeriodROI] = useState("全期間");  // 成約金額ROI
-  const [periodCost, setPeriodCost] = useState("全期間"); // 費用対効果
+  const [periodCP, setPeriodCP]     = useState({ from: "", to: "" });  // 契約獲得力
+  const [periodROI, setPeriodROI]   = useState({ from: "", to: "" });  // 成約金額ROI
+  const [periodCost, setPeriodCost] = useState({ from: "", to: "" });  // 費用対効果
+  // 各期間フィルターを「最古〜最新」で初期プリセット済みかどうか（一度だけ実行）
+  const periodInit = useRef({ cp: false, roi: false, cost: false });
 
   // ── 共通：流入元名一覧 ─────────────────────────────
   const sourceNames = useMemo(() =>
@@ -181,22 +251,23 @@ export default function SourceReport({
     [statuses]
   );
 
-  const costHalfPeriods = useMemo(() => {
-    const set = new Set();
-    customers.forEach(c => {
-      const d = new Date(c["ステータス変更日"] || c["登録日"]);
-      if (!isNaN(d)) set.add(`${d.getFullYear()}年${d.getMonth() < 6 ? "上半期" : "下半期"}`);
-    });
-    return ["全期間", ...[...set].sort().reverse()];
+  // 顧客データ（ステータス変更日/登録日）の利用可能な月範囲（input[type=month]のmin/max用）
+  const costMonthBounds = useMemo(() => {
+    const keys = customers
+      .map(c => ymKey(c["ステータス変更日"] || c["登録日"]))
+      .filter(Boolean);
+    if (!keys.length) return { min: undefined, max: undefined };
+    return {
+      min: keys.reduce((a, b) => (a < b ? a : b)),
+      max: keys.reduce((a, b) => (a > b ? a : b)),
+    };
   }, [customers]);
 
-  const filterCusts = (custs, period) => {
-    if (period === "全期間") return custs;
-    return custs.filter(c => {
-      const d = new Date(c["ステータス変更日"] || c["登録日"]);
-      if (isNaN(d)) return false;
-      return `${d.getFullYear()}年${d.getMonth() < 6 ? "上半期" : "下半期"}` === period;
-    });
+  const filterCusts = (custs, range) => {
+    if (!range.from && !range.to) return custs;
+    return custs.filter(c =>
+      inMonthRange(ymKey(c["ステータス変更日"] || c["登録日"]), range)
+    );
   };
 
   const costData = useMemo(() =>
@@ -241,24 +312,41 @@ export default function SourceReport({
     [statusHistory, wonStatusNames]
   );
 
-  // 半期判定: 上半期=1〜6月, 下半期=7〜12月
-  const halfPeriods = useMemo(() => {
-    const set = new Set();
-    wonEntries.forEach(h => {
-      const d = new Date(h["変更日時"]);
-      if (!isNaN(d)) set.add(`${d.getFullYear()}年${d.getMonth() < 6 ? "上半期" : "下半期"}`);
-    });
-    return ["全期間", ...[...set].sort().reverse()];
+  // 成約データ（変更日時）の利用可能な月範囲（input[type=month]のmin/max用）
+  const wonMonthBounds = useMemo(() => {
+    const keys = wonEntries.map(h => ymKey(h["変更日時"])).filter(Boolean);
+    if (!keys.length) return { min: undefined, max: undefined };
+    return {
+      min: keys.reduce((a, b) => (a < b ? a : b)),
+      max: keys.reduce((a, b) => (a > b ? a : b)),
+    };
   }, [wonEntries]);
 
-  const filterWon = (entries, period) => {
-    if (period === "全期間") return entries;
-    return entries.filter(h => {
-      const d = new Date(h["変更日時"]);
-      if (isNaN(d)) return false;
-      const label = `${d.getFullYear()}年${d.getMonth() < 6 ? "上半期" : "下半期"}`;
-      return label === period;
-    });
+  // ── 期間フィルターの初期プリセット ─────────────────
+  // データ読込後、各フィルターを「最古月〜最新月」で一度だけ初期化する。
+  // （全期間と同じ集計結果だが、画面上に範囲を明示するため）
+  useEffect(() => {
+    if (!periodInit.current.cp && wonMonthBounds.min && wonMonthBounds.max) {
+      setPeriodCP({ from: wonMonthBounds.min, to: wonMonthBounds.max });
+      periodInit.current.cp = true;
+    }
+  }, [wonMonthBounds]);
+  useEffect(() => {
+    if (!periodInit.current.roi && wonMonthBounds.min && wonMonthBounds.max) {
+      setPeriodROI({ from: wonMonthBounds.min, to: wonMonthBounds.max });
+      periodInit.current.roi = true;
+    }
+  }, [wonMonthBounds]);
+  useEffect(() => {
+    if (!periodInit.current.cost && costMonthBounds.min && costMonthBounds.max) {
+      setPeriodCost({ from: costMonthBounds.min, to: costMonthBounds.max });
+      periodInit.current.cost = true;
+    }
+  }, [costMonthBounds]);
+
+  const filterWon = (entries, range) => {
+    if (!range.from && !range.to) return entries;
+    return entries.filter(h => inMonthRange(ymKey(h["変更日時"]), range));
   };
 
   const filteredWon    = useMemo(() => filterWon(wonEntries, periodCP),  [wonEntries, periodCP]);
@@ -417,10 +505,7 @@ export default function SourceReport({
 
           {/* 期間フィルター */}
           <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 16, marginTop: -8 }}>
-            <select value={periodCP} onChange={e => setPeriodCP(e.target.value)}
-              style={{ fontSize: 12, padding: "6px 12px", borderRadius: 8, border: `1px solid ${THEME.border}`, background: THEME.bg, color: THEME.textMain, cursor: "pointer", fontWeight: 700 }}>
-              {halfPeriods.map(p => <option key={p} value={p}>{p}</option>)}
-            </select>
+            <MonthRangeFilter value={periodCP} onChange={setPeriodCP} min={wonMonthBounds.min} max={wonMonthBounds.max} />
           </div>
 
           {/* KPIカード */}
@@ -585,10 +670,7 @@ export default function SourceReport({
 
           {/* 期間フィルター */}
           <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 16, marginTop: -8 }}>
-            <select value={periodROI} onChange={e => setPeriodROI(e.target.value)}
-              style={{ fontSize: 12, padding: "6px 12px", borderRadius: 8, border: `1px solid ${THEME.border}`, background: THEME.bg, color: THEME.textMain, cursor: "pointer", fontWeight: 700 }}>
-              {halfPeriods.map(p => <option key={p} value={p}>{p}</option>)}
-            </select>
+            <MonthRangeFilter value={periodROI} onChange={setPeriodROI} min={wonMonthBounds.min} max={wonMonthBounds.max} />
           </div>
 
           {/* KPIカード */}
@@ -741,10 +823,7 @@ export default function SourceReport({
 
             {/* 期間フィルター */}
             <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 16, marginTop: -8 }}>
-              <select value={periodCost} onChange={e => setPeriodCost(e.target.value)}
-                style={{ fontSize: 12, padding: "6px 12px", borderRadius: 8, border: `1px solid ${THEME.border}`, background: THEME.bg, color: THEME.textMain, cursor: "pointer", fontWeight: 700 }}>
-                {costHalfPeriods.map(p => <option key={p} value={p}>{p}</option>)}
-              </select>
+              <MonthRangeFilter value={periodCost} onChange={setPeriodCost} min={costMonthBounds.min} max={costMonthBounds.max} />
             </div>
             <div style={{ display: "grid", gridTemplateColumns: "140px 1fr 1fr", columnGap: 24, marginBottom: 8 }}>
               <div />
