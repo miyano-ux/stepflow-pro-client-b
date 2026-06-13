@@ -40,7 +40,7 @@ function terminalStyle(terminalType) {
 }
 
 // ── ドリルダウンモーダル ──────────────────────────────
-function DrillModal({ statusName, customers, staffList, avgDays, onClose }) {
+function DrillModal({ statusName, customers, staffList, avgDays, isTerminal, onClose }) {
   const now = new Date();
 
   const rows = customers.map(c => {
@@ -63,7 +63,7 @@ function DrillModal({ statusName, customers, staffList, avgDays, onClose }) {
             <div style={{ fontSize: 18, fontWeight: 900, color: THEME.textMain }}>{statusName}</div>
             <div style={{ fontSize: 13, color: THEME.textMuted, marginTop: 2 }}>
               {customers.length} 件
-              {avgDays != null && (
+              {!isTerminal && avgDays != null && (
                 <span style={{ marginLeft: 12 }}>
                   平均滞在: <strong>{avgDays.toFixed(1)} 日</strong>
                   　🔵 〜平均　🟡 平均+7日　🔴 平均+7日超
@@ -74,25 +74,30 @@ function DrillModal({ statusName, customers, staffList, avgDays, onClose }) {
           <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", padding: 6, color: THEME.textMuted }}><X size={20} /></button>
         </div>
 
-        {/* 凡例 */}
-        <div style={{ display: "flex", gap: 20, padding: "10px 28px", borderBottom: `1px solid ${THEME.border}`, backgroundColor: "#FAFAFA" }}>
-          {Object.entries(STAY_COLORS).map(([k, v]) => (
-            <div key={k} style={{ display: "flex", alignItems: "center", gap: 6 }}>
-              <div style={{ width: 10, height: 10, borderRadius: "50%", backgroundColor: v.border }} />
-              <span style={{ fontSize: 12, fontWeight: 700, color: v.text }}>{v.label}</span>
-              <span style={{ fontSize: 11, color: THEME.textMuted }}>
-                {k === "normal"  ? `〜${avgDays?.toFixed(0) ?? "-"}日` :
-                 k === "warning" ? "+1〜7日" : "+7日超"}
-              </span>
-            </div>
-          ))}
-        </div>
+        {/* 凡例（終点ステータスでは滞在日数を扱わないため非表示） */}
+        {!isTerminal && (
+          <div style={{ display: "flex", gap: 20, padding: "10px 28px", borderBottom: `1px solid ${THEME.border}`, backgroundColor: "#FAFAFA" }}>
+            {Object.entries(STAY_COLORS).map(([k, v]) => (
+              <div key={k} style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <div style={{ width: 10, height: 10, borderRadius: "50%", backgroundColor: v.border }} />
+                <span style={{ fontSize: 12, fontWeight: 700, color: v.text }}>{v.label}</span>
+                <span style={{ fontSize: 11, color: THEME.textMuted }}>
+                  {k === "normal"  ? `〜${avgDays?.toFixed(0) ?? "-"}日` :
+                   k === "warning" ? "+1〜7日" : "+7日超"}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
 
         <div style={{ overflowY: "auto", flex: 1 }}>
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
             <thead>
               <tr style={{ backgroundColor: "#F8FAFC", position: "sticky", top: 0 }}>
-                {["", "氏名", "担当者", "ステータス変更日", "滞在日数", "状況"].map(h => (
+                {(isTerminal
+                  ? ["", "氏名", "担当者", "ステータス変更日"]
+                  : ["", "氏名", "担当者", "ステータス変更日", "滞在日数", "状況"]
+                ).map(h => (
                   <th key={h} style={{ padding: "10px 14px", fontSize: 12, fontWeight: 800, color: THEME.textMuted, textAlign: "left", borderBottom: `1px solid ${THEME.border}` }}>{h}</th>
                 ))}
               </tr>
@@ -118,18 +123,22 @@ function DrillModal({ statusName, customers, staffList, avgDays, onClose }) {
                   <td style={{ padding: "12px 14px", fontSize: 13, color: THEME.textMuted }}>
                     {c["ステータス変更日"] ? String(c["ステータス変更日"]).slice(0, 10) : "–"}
                   </td>
-                  <td style={{ padding: "12px 14px", fontSize: 15, fontWeight: 900, color: col.text }}>
-                    {days != null ? `${days} 日` : "–"}
-                  </td>
-                  <td style={{ padding: "12px 14px" }}>
-                    <span style={{ fontSize: 11, fontWeight: 800, color: col.text, backgroundColor: col.bg, border: `1px solid ${col.border}`, padding: "3px 10px", borderRadius: 99 }}>
-                      {col.label}
-                    </span>
-                  </td>
+                  {!isTerminal && (
+                    <>
+                      <td style={{ padding: "12px 14px", fontSize: 15, fontWeight: 900, color: col.text }}>
+                        {days != null ? `${days} 日` : "–"}
+                      </td>
+                      <td style={{ padding: "12px 14px" }}>
+                        <span style={{ fontSize: 11, fontWeight: 800, color: col.text, backgroundColor: col.bg, border: `1px solid ${col.border}`, padding: "3px 10px", borderRadius: 99 }}>
+                          {col.label}
+                        </span>
+                      </td>
+                    </>
+                  )}
                 </tr>
               ))}
               {rows.length === 0 && (
-                <tr><td colSpan={6} style={{ padding: 40, textAlign: "center", color: THEME.textMuted }}>該当なし</td></tr>
+                <tr><td colSpan={isTerminal ? 4 : 6} style={{ padding: 40, textAlign: "center", color: THEME.textMuted }}>該当なし</td></tr>
               )}
             </tbody>
           </table>
@@ -168,6 +177,7 @@ export default function AnalysisReport({ customers = [], statuses = [], tracking
     statuses.filter(s =>
       s.terminalType &&
       s.terminalType !== "excluded" &&
+      s.terminalType !== "won" &&            // 成約は上部「案件分布」グラフに表示済みのため下部サマリからは除外
       (s.placement || "bottom") === "right"
     ),
     [statuses]
@@ -222,11 +232,14 @@ export default function AnalysisReport({ customers = [], statuses = [], tracking
   }, [statusHistory]);
 
   const phaseTransitions = useMemo(() =>
-    chartStatuses.map(st => ({
-      name: st.name,
-      avgDays: avgDaysMap[st.name] ?? null,
-      terminalType: st.terminalType,
-    })),
+    chartStatuses
+      // 終点ステータス（成約・失注・休眠など）は「次フェーズへ進むまでの滞在日数」が存在しないため除外
+      .filter(st => !st.terminalType)
+      .map(st => ({
+        name: st.name,
+        avgDays: avgDaysMap[st.name] ?? null,
+        terminalType: st.terminalType,
+      })),
     [chartStatuses, avgDaysMap]
   );
 
@@ -411,6 +424,7 @@ export default function AnalysisReport({ customers = [], statuses = [], tracking
           customers={drillData.customers}
           staffList={staffList}
           avgDays={drillAvgDays}
+          isTerminal={!!drillData.terminalType}
           onClose={() => setDrillStatus(null)}
         />
       )}
