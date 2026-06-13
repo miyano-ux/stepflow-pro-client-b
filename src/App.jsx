@@ -46,10 +46,26 @@ import MasterSettings        from "./pages/MasterSettings";
 import SourceIntegrationIndex  from "./pages/SourceIntegrationIndex";
 import SourceIntegrationDetail from "./pages/SourceIntegrationDetail";
 
+// ── pages (公開ページ) ────────────────────────────
+import PublicMemberPage       from "./pages/PublicMemberPage.jsx";
+
 // ==========================================
 // 🚀 App - 認証 & ルーティング
 // ==========================================
 function App() {
+  // ── 公開メンバーページ ───────────────────────────
+  // /m/:slug への直接アクセスは、認証・データ取得を一切経由せず描画する。
+  // （ログイン不要で誰でも閲覧できる外部公開ページ）
+  if (typeof window !== "undefined" && window.location.pathname.startsWith("/m/")) {
+    return (
+      <Router>
+        <Routes>
+          <Route path="/m/:slug" element={<PublicMemberPage />} />
+        </Routes>
+      </Router>
+    );
+  }
+
   const [d, setD] = useState({
     customers: [],
     scenarios: [],

@@ -14,6 +14,11 @@ import { useToast } from "../ToastContext";
 // 👥 UserManager - ユーザー管理 + グループ管理
 // ==========================================
 
+// 公開メンバーページのURL組み立て・コピー
+const memberUrl = (slug) =>
+  slug ? `${window.location.origin}/m/${slug}` : "";
+const copyText = (t) => { try { navigator.clipboard.writeText(t); } catch {} };
+
 const lS = {
   main:    { minHeight: "100vh", backgroundColor: THEME.bg },
   wrapper: { padding: "48px 64px", maxWidth: "1440px", margin: "0 auto" },
@@ -489,13 +494,14 @@ export default function UserManager({
                 <th style={lS.tableTh}>担当スタッフ</th>
                 <th style={lS.tableTh}>メールアドレス</th>
                 <th style={lS.tableTh}>電話番号</th>
+                <th style={lS.tableTh}>紹介ページ</th>
                 <th style={{ ...lS.tableTh, textAlign: "center", width: 120 }}>操作</th>
               </tr>
             </thead>
             <tbody>
               {staffList.length === 0 ? (
                 <tr>
-                  <td colSpan="4" style={{ padding: 80, textAlign: "center", color: THEME.textMuted }}>
+                  <td colSpan="5" style={{ padding: 80, textAlign: "center", color: THEME.textMuted }}>
                     登録データが見つかりません
                   </td>
                 </tr>
@@ -524,6 +530,26 @@ export default function UserManager({
                       <div style={{ display: "flex", alignItems: "center", gap: 8, color: THEME.textMuted }}>
                         <Phone size={14} /> {String(u.phone || "-").replace(/'/g, "")}
                       </div>
+                    </td>
+                    <td style={lS.tableTd}>
+                      {u.published && u.slug ? (
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                          <span style={{
+                            fontSize: 11, fontWeight: 800, color: THEME.primary,
+                            backgroundColor: "#EEF2FF", padding: "3px 8px", borderRadius: 99,
+                          }}>公開中</span>
+                          <a href={memberUrl(u.slug)} target="_blank" rel="noreferrer"
+                            style={{ fontSize: 12, color: THEME.textMuted, textDecoration: "none" }}>
+                            /m/{u.slug}
+                          </a>
+                          <button onClick={() => copyText(memberUrl(u.slug))}
+                            style={{ background: "none", border: "none", color: THEME.primary, cursor: "pointer", fontSize: 12, fontWeight: 700, padding: 0 }}>
+                            コピー
+                          </button>
+                        </div>
+                      ) : (
+                        <span style={{ fontSize: 12, color: THEME.textMuted }}>非公開</span>
+                      )}
                     </td>
                     <td style={lS.tableTd}>
                       <div style={{ display: "flex", gap: 16, justifyContent: "center" }}>
