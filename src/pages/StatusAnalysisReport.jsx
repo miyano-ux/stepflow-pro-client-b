@@ -2,6 +2,7 @@ import React, { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Activity, ChevronLeft } from "lucide-react";
 import { THEME as APP_THEME } from "../lib/constants";
+import { StaffDropdown } from "../components/StaffDropdown";
 
 const THEME = APP_THEME;
 const COLORS = ["#4F46E5","#0891B2","#059669","#D97706","#DC2626","#7C3AED","#DB2777","#EA580C"];
@@ -45,6 +46,7 @@ export default function StatusAnalysisReport({
   customers = [],
   statuses = [],
   sources = [],
+  staffList = [],
 }) {
   const navigate = useNavigate();
   const [filterStaff, setFilterStaff] = useState("");
@@ -93,11 +95,12 @@ export default function StatusAnalysisReport({
     [reportStatuses, sourceNames, bySource]
   );
 
-  // 担当者リスト
-  const staffEmails = useMemo(() =>
-    [...new Set(customers.map(c => c["担当者メール"]).filter(Boolean))],
-    [customers]
-  );
+  // 担当者リスト（staffList 未指定時は顧客データのメールから補完してフィルターを必ず表示）
+  const effectiveStaffList = useMemo(() => {
+    if (staffList.length > 0) return staffList;
+    return [...new Set(customers.map(c => c["担当者メール"]).filter(Boolean))]
+      .map(email => ({ email, lastName: email, firstName: "" }));
+  }, [staffList, customers]);
 
   const colHd = (align = "left") => ({
     fontSize: 13, fontWeight: 800, color: THEME.textMain,
@@ -133,19 +136,12 @@ export default function StatusAnalysisReport({
             </div>
           </div>
           {/* 担当者フィルター */}
-          {staffEmails.length > 0 && (
-            <select
+          {effectiveStaffList.length > 0 && (
+            <StaffDropdown
+              staffList={effectiveStaffList}
               value={filterStaff}
-              onChange={e => setFilterStaff(e.target.value)}
-              style={{
-                fontSize: 13, padding: "8px 14px", borderRadius: 10,
-                border: `1px solid ${THEME.border}`, background: "white",
-                color: THEME.textMain, cursor: "pointer", fontWeight: 700,
-              }}
-            >
-              <option value="">全担当者</option>
-              {staffEmails.map(e => <option key={e} value={e}>{e}</option>)}
-            </select>
+              onChange={setFilterStaff}
+            />
           )}
         </div>
 
