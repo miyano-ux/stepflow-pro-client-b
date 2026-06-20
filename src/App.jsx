@@ -48,11 +48,14 @@ import SourceIntegrationDetail from "./pages/SourceIntegrationDetail";
 
 // ── pages (公開ページ) ────────────────────────────
 import PublicMemberPage       from "./pages/PublicMemberPage.jsx";
+import { useWindowWidth } from "./lib/useWindowWidth";
 
 // ==========================================
 // 🚀 App - 認証 & ルーティング
 // ==========================================
 function App() {
+  const { isMobile } = useWindowWidth();
+
   // ── 公開メンバーページ ───────────────────────────
   // /m/:slug への直接アクセスは、認証・データ取得を一切経由せず描画する。
   // （ログイン不要で誰でも閲覧できる外部公開ページ）
@@ -367,6 +370,7 @@ function App() {
               boxSizing: "border-box",
               backgroundColor: THEME.bg,
               minHeight: "100vh",
+              paddingTop: isMobile ? "56px" : 0,
             }}
           >
             <Routes>

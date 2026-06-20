@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import { useNavigate, useParams, useLocation } from "react-router-dom";
-import { ArrowLeft, Loader2, UserCheck, Zap, Send, Calendar, MessageSquare, X, CheckCircle2 } from "lucide-react";
+import { ArrowLeft, Loader2, UserCheck, Zap, Send, Calendar, MessageSquare, X, CheckCircle2, FileText, ChevronDown, ChevronUp } from "lucide-react";
 import axios from "axios";
 import { THEME, CLIENT_COMPANY_NAME, GAS_URL } from "../lib/constants";
 import { styles } from "../lib/styles";
@@ -154,6 +154,7 @@ function DirectSms({ customers = [], templates = [], staffList = [], onRefresh, 
   const navigate = useNavigate();
   const location = useLocation();
   const { isMobile } = useWindowWidth();
+  const [mobileTemplatesOpen, setMobileTemplatesOpen] = useState(false);
 
   const c = customers?.find((x) => String(x.id) === String(id));
 
@@ -343,24 +344,6 @@ function DirectSms({ customers = [], templates = [], staffList = [], onRefresh, 
         </button>
         <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 350px", gap: isMobile ? "20px" : "32px" }}>
 
-          {/* ── テンプレート一覧（モバイルでは先頭に表示） ── */}
-          {isMobile && (
-            <div>
-              <h3 style={{ margin: "0 0 12px 0", fontSize: "14px", fontWeight: "800", color: THEME.textMuted }}>テンプレート</h3>
-              <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-                {templates.map((t) => (
-                  <div
-                    key={t.id}
-                    onClick={() => setMsg(t.content)}
-                    style={{ ...styles.card, padding: "14px 16px", cursor: "pointer" }}
-                  >
-                    {t.name}
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
           {/* ── 左カラム：送信設定 */}
           <div>
 
@@ -390,28 +373,77 @@ function DirectSms({ customers = [], templates = [], staffList = [], onRefresh, 
 
             {/* 配信内容 */}
             <div>
-              {/* ラベル行：左にタイトル、右にトラッキングボタン */}
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+              {/* ラベル行：左にタイトル、右にテンプレート選択／トラッキングボタン */}
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8, flexWrap: "wrap", gap: 8 }}>
                 <label style={{ ...styles.label, marginBottom: 0 }}>配信内容</label>
-                {hasUrl && (
-                  <button
-                    onClick={handleConvertToTracking}
-                    disabled={isConverting}
-                    style={{
-                      ...styles.btn,
-                      backgroundColor: "white",
-                      color: THEME.primary,
-                      border: `1px solid ${THEME.primary}`,
-                      padding: "4px 12px",
-                      height: "30px",
-                      fontSize: "12px",
-                    }}
-                  >
-                    {isConverting ? <Loader2 size={14} className="animate-spin" /> : <Zap size={14} />}
-                    URLをトラッキング化
-                  </button>
-                )}
+                <div style={{ display: "flex", gap: 8 }}>
+                  {isMobile && templates.length > 0 && (
+                    <button
+                      onClick={() => setMobileTemplatesOpen((o) => !o)}
+                      style={{
+                        ...styles.btn,
+                        backgroundColor: mobileTemplatesOpen ? "#EEF2FF" : "white",
+                        color: THEME.primary,
+                        border: `1px solid ${THEME.primary}`,
+                        padding: "4px 12px",
+                        height: "30px",
+                        fontSize: "12px",
+                      }}
+                    >
+                      <FileText size={14} />
+                      テンプレートから選ぶ
+                      {mobileTemplatesOpen ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+                    </button>
+                  )}
+                  {hasUrl && (
+                    <button
+                      onClick={handleConvertToTracking}
+                      disabled={isConverting}
+                      style={{
+                        ...styles.btn,
+                        backgroundColor: "white",
+                        color: THEME.primary,
+                        border: `1px solid ${THEME.primary}`,
+                        padding: "4px 12px",
+                        height: "30px",
+                        fontSize: "12px",
+                      }}
+                    >
+                      {isConverting ? <Loader2 size={14} className="animate-spin" /> : <Zap size={14} />}
+                      URLをトラッキング化
+                    </button>
+                  )}
+                </div>
               </div>
+
+              {/* テンプレート選択パネル（モバイル限定・折りたたみ） */}
+              {isMobile && mobileTemplatesOpen && (
+                <div style={{ ...styles.card, padding: 12, marginBottom: 10, border: `1px solid ${THEME.primary}40` }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                    <p style={{ margin: 0, fontSize: 13, fontWeight: 800, color: THEME.textMain }}>テンプレートを選択</p>
+                    <button
+                      onClick={() => setMobileTemplatesOpen(false)}
+                      style={{ background: "none", border: "none", cursor: "pointer", color: THEME.textMuted, padding: 4, display: "flex" }}
+                    >
+                      <X size={16} />
+                    </button>
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 240, overflowY: "auto" }}>
+                    {templates.map((t) => (
+                      <div
+                        key={t.id}
+                        onClick={() => { setMsg(t.content); setMobileTemplatesOpen(false); }}
+                        style={{
+                          backgroundColor: "#F8FAFC", borderRadius: 10, padding: "10px 12px",
+                          fontSize: 13, color: THEME.textMain, cursor: "pointer",
+                        }}
+                      >
+                        {t.name}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {/* 変数挿入パネル（textarea 上部に接続） */}
               <VariablePanel lastInserted={lastInserted} onInsert={insertVariable} />

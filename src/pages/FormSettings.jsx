@@ -9,6 +9,7 @@ import { styles } from "../lib/styles";
 import { apiCall } from "../lib/utils";
 import Page from "../components/Page";
 import { useToast } from "../ToastContext";
+import { useWindowWidth } from "../lib/useWindowWidth";
 
 // ==========================================
 // ⚙️ FormSettings - 登録項目定義ページ
@@ -40,6 +41,7 @@ export default function FormSettings({ formSettings = [], sheetCustomColumns = [
   const backTo    = from === "master-settings" ? "/master-settings" : "/add";
   const backLabel = from === "master-settings" ? "管理項目設定へ戻る" : "登録画面へ戻る";
   const showToast = useToast();
+  const { isMobile } = useWindowWidth();
 
   // 初回マウント時のみ初期化（useEffectなし → 無限ループ防止）
   const [items, setItems]         = useState(() => buildItems(formSettings));
@@ -124,7 +126,7 @@ export default function FormSettings({ formSettings = [], sheetCustomColumns = [
             固定項目（変更不可）
           </p>
           {FIXED_FIELDS.map(f => (
-            <div key={f} style={{ display: "flex", alignItems: "center", gap: 14, padding: "14px 20px", backgroundColor: "#F8FAFC", borderRadius: 10, border: `1px solid ${THEME.border}`, marginBottom: 6, opacity: 0.7 }}>
+            <div key={f} style={{ display: "flex", alignItems: "center", gap: 14, padding: isMobile ? "12px 16px" : "14px 20px", backgroundColor: "#F8FAFC", borderRadius: 10, border: `1px solid ${THEME.border}`, marginBottom: 6, opacity: 0.7 }}>
               <Lock size={15} color={THEME.textMuted} />
               <span style={{ fontSize: 14, fontWeight: 700, color: THEME.textMain, flex: 1 }}>{f}</span>
               <span style={{ fontSize: 12, color: THEME.textMuted, backgroundColor: "white", padding: "3px 10px", borderRadius: 99, border: `1px solid ${THEME.border}` }}>テキスト</span>
@@ -161,19 +163,32 @@ export default function FormSettings({ formSettings = [], sheetCustomColumns = [
                 {/* ヘッダー行（クリックで開閉） */}
                 <div
                   onClick={() => setOpenIndex(isOpen ? null : i)}
-                  style={{ display: "flex", alignItems: "center", gap: 12, padding: "16px 20px", cursor: "pointer", userSelect: "none", backgroundColor: isOpen ? "#F6F5FF" : "white" }}
+                  style={{
+                    display: "flex",
+                    flexDirection: isMobile ? "column" : "row",
+                    alignItems: isMobile ? "stretch" : "center",
+                    gap: isMobile ? 8 : 12,
+                    padding: isMobile ? "14px 16px" : "16px 20px",
+                    cursor: "pointer", userSelect: "none",
+                    backgroundColor: isOpen ? "#F6F5FF" : "white",
+                  }}
                 >
-                  <GripVertical size={16} color={THEME.border} style={{ flexShrink: 0 }} />
-                  <span style={{ flex: 1, fontSize: 14, fontWeight: 700, color: item.name ? THEME.textMain : THEME.textMuted }}>
-                    {item.name || "（未入力）"}
-                  </span>
-                  <span style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 12, color: THEME.textMuted, backgroundColor: "#F8FAFC", padding: "3px 10px", borderRadius: 99, border: `1px solid ${THEME.border}` }}>
-                    {typeIcon} {typeLabel}
-                  </span>
-                  <span style={{ fontSize: 11, fontWeight: 700, color: item.required ? THEME.primary : THEME.textMuted, backgroundColor: item.required ? "#EEF2FF" : "#F1F5F9", padding: "3px 8px", borderRadius: 99 }}>
-                    {item.required ? "必須" : "任意"}
-                  </span>
-                  {isOpen ? <ChevronUp size={16} color={THEME.textMuted} /> : <ChevronDown size={16} color={THEME.textMuted} />}
+                  <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                    <GripVertical size={16} color={THEME.border} style={{ flexShrink: 0 }} />
+                    <span style={{ flex: 1, fontSize: 14, fontWeight: 700, color: item.name ? THEME.textMain : THEME.textMuted }}>
+                      {item.name || "（未入力）"}
+                    </span>
+                    {isMobile && (isOpen ? <ChevronUp size={16} color={THEME.textMuted} /> : <ChevronDown size={16} color={THEME.textMuted} />)}
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, ...(isMobile ? { paddingLeft: 28 } : {}) }}>
+                    <span style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 12, color: THEME.textMuted, backgroundColor: "#F8FAFC", padding: "3px 10px", borderRadius: 99, border: `1px solid ${THEME.border}` }}>
+                      {typeIcon} {typeLabel}
+                    </span>
+                    <span style={{ fontSize: 11, fontWeight: 700, color: item.required ? THEME.primary : THEME.textMuted, backgroundColor: item.required ? "#EEF2FF" : "#F1F5F9", padding: "3px 8px", borderRadius: 99 }}>
+                      {item.required ? "必須" : "任意"}
+                    </span>
+                    {!isMobile && (isOpen ? <ChevronUp size={16} color={THEME.textMuted} /> : <ChevronDown size={16} color={THEME.textMuted} />)}
+                  </div>
                 </div>
 
                 {/* 展開時の編集フォーム */}
@@ -195,12 +210,12 @@ export default function FormSettings({ formSettings = [], sheetCustomColumns = [
                     {/* 入力形式 */}
                     <div style={{ marginTop: 16 }}>
                       <label style={styles.label}>入力形式</label>
-                      <div style={{ display: "flex", gap: 8 }}>
+                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                         {FIELD_TYPES.map(t => (
                           <button
                             key={t.value}
                             onClick={e => { e.stopPropagation(); updateItem(i, { type: t.value }); }}
-                            style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 14px", borderRadius: 8, border: `1.5px solid ${item.type === t.value ? THEME.primary : THEME.border}`, backgroundColor: item.type === t.value ? "#EEF2FF" : "white", color: item.type === t.value ? THEME.primary : THEME.textMuted, fontWeight: item.type === t.value ? 700 : 500, fontSize: 13, cursor: "pointer" }}
+                            style={{ display: "flex", alignItems: "center", gap: 6, padding: isMobile ? "8px 12px" : "8px 14px", borderRadius: 8, border: `1.5px solid ${item.type === t.value ? THEME.primary : THEME.border}`, backgroundColor: item.type === t.value ? "#EEF2FF" : "white", color: item.type === t.value ? THEME.primary : THEME.textMuted, fontWeight: item.type === t.value ? 700 : 500, fontSize: 13, cursor: "pointer" }}
                           >
                             {t.icon} {t.label}
                           </button>
@@ -235,7 +250,7 @@ export default function FormSettings({ formSettings = [], sheetCustomColumns = [
                     )}
 
                     {/* 必須・削除 */}
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 20, paddingTop: 16, borderTop: `1px solid ${THEME.border}` }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 20, paddingTop: 16, borderTop: `1px solid ${THEME.border}`, flexWrap: "wrap", gap: 12 }}>
                       <button
                         onClick={() => updateItem(i, { required: !item.required })}
                         style={{ display: "flex", alignItems: "center", gap: 8, background: "none", border: "none", cursor: "pointer", color: item.required ? THEME.primary : THEME.textMuted, fontSize: 13, fontWeight: 600, padding: 0 }}

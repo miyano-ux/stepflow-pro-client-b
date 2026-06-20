@@ -14,6 +14,7 @@ import Page from "../components/Page";
 import StaffGroupSelect from "../components/StaffGroupSelect";
 import { SUPPORTED_SOURCES } from "./SourceIntegrationIndex";
 import { useToast } from "../ToastContext";
+import { useWindowWidth } from "../lib/useWindowWidth";
 
 // ============================================================
 // 🔗 SourceIntegrationDetail - 媒体連携 個別設定
@@ -41,9 +42,9 @@ const S = {
     textTransform: "uppercase", letterSpacing: "0.05em",
     marginBottom: 16, display: "flex", alignItems: "center", gap: 6,
   },
-  row: {
-    display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16,
-  },
+  row: (isMobile = false) => ({
+    display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 16, marginBottom: 16,
+  }),
   btn: (variant = "default") => ({
     display: "inline-flex", alignItems: "center", gap: 6,
     padding: "10px 18px", borderRadius: 10, fontSize: 13, fontWeight: 600,
@@ -223,6 +224,7 @@ export default function SourceIntegrationDetail({
   const showToast = useToast();
   const { sourceKey } = useParams();
   const navigate      = useNavigate();
+  const { isMobile }  = useWindowWidth();
 
   // 対応媒体リストから該当媒体を取得
   const src = SUPPORTED_SOURCES.find(s => s.key === sourceKey);
@@ -445,7 +447,7 @@ export default function SourceIntegrationDetail({
   const PERSONAL_DEST_COLS = ["姓", "名", "姓（カナ）", "名（カナ）", "電話番号", "メールアドレス"];
   // 「物件情報」グループ：物件リスト（SHEET_PROPERTIES）で管理しているカラムのみ
   const PROPERTY_DEST_COLS = [
-    "物件名", "物件種別", "査定金額", "成約金額", "住所", "備考",
+    "物件名", "物件種別", "査定金額", "成約金額", "住所",
   ];
   const ALL_FIXED = new Set([...PERSONAL_DEST_COLS, ...PROPERTY_DEST_COLS]);
   const customDestCols = (formSettings || [])
@@ -529,7 +531,7 @@ export default function SourceIntegrationDetail({
             <KeyRound size={13} />
             認証情報
           </div>
-          <div style={S.row}>
+          <div style={S.row(isMobile)}>
             {/* ── ログインID ── */}
             <div>
               <LabelText>ログインID（メールアドレス）</LabelText>
@@ -609,7 +611,7 @@ export default function SourceIntegrationDetail({
               )}
             </div>
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
             <button style={S.btn("default")} onClick={handleSaveCreds} disabled={credsSaving}>
               {credsSaving
                 ? <><Loader2 size={14} /> 保存中…</>
@@ -639,7 +641,7 @@ export default function SourceIntegrationDetail({
         <div style={S.sectionTitle}>
           連携ルール（取り込み時の初期値）
         </div>
-        <div style={S.row}>
+        <div style={S.row(isMobile)}>
           <div>
             <LabelText>流入元</LabelText>
             <input
@@ -662,7 +664,7 @@ export default function SourceIntegrationDetail({
             />
           </div>
         </div>
-        <div style={S.row}>
+        <div style={S.row(isMobile)}>
           <div>
             <LabelText>担当者</LabelText>
             <StaffGroupSelect
@@ -760,7 +762,9 @@ export default function SourceIntegrationDetail({
 
         {notifyUsers.map((u, idx) => (
           <div key={idx} style={{
-            display: "grid", gridTemplateColumns: "1fr 1fr auto",
+            display: "grid",
+            gridTemplateColumns: isMobile ? "1fr auto" : "1fr 1fr auto",
+            gridTemplateAreas: isMobile ? `"name name" "phone delete"` : undefined,
             gap: 8, alignItems: "center", marginBottom: 8,
           }}>
             {/* 名前（表示のみ） */}
@@ -770,6 +774,7 @@ export default function SourceIntegrationDetail({
               backgroundColor: "#EEF2FF",
               border: `1px solid #C7D2FE`,
               fontSize: 13, fontWeight: 600, color: THEME.primary,
+              ...(isMobile ? { gridColumn: "1 / -1" } : {}),
             }}>
               <UserCircle size={14} />
               {u.name}
@@ -896,20 +901,22 @@ export default function SourceIntegrationDetail({
             メールから取得した各項目を、顧客DBのどのカラムに保存するか設定します。「保存しない」にした項目は取り込み時に無視されます。
           </p>
 
-          {/* テーブルヘッダー */}
-          <div style={{
-            display: "grid", gridTemplateColumns: "1fr 24px 1fr",
-            gap: 8, alignItems: "center",
-            padding: "6px 4px", marginBottom: 6,
-          }}>
-            <span style={{ fontSize: 11, fontWeight: 800, color: THEME.textMuted, letterSpacing: "0.04em" }}>
-              メール内フィールド
-            </span>
-            <span />
-            <span style={{ fontSize: 11, fontWeight: 800, color: THEME.textMuted, letterSpacing: "0.04em" }}>
-              保存先カラム
-            </span>
-          </div>
+          {/* テーブルヘッダー（PC/タブレットのみ。モバイルは1列積みのため不要） */}
+          {!isMobile && (
+            <div style={{
+              display: "grid", gridTemplateColumns: "1fr 24px 1fr",
+              gap: 8, alignItems: "center",
+              padding: "6px 4px", marginBottom: 6,
+            }}>
+              <span style={{ fontSize: 11, fontWeight: 800, color: THEME.textMuted, letterSpacing: "0.04em" }}>
+                メール内フィールド
+              </span>
+              <span />
+              <span style={{ fontSize: 11, fontWeight: 800, color: THEME.textMuted, letterSpacing: "0.04em" }}>
+                保存先カラム
+              </span>
+            </div>
+          )}
 
           {/* マッピング行 */}
           {src.sourceFields.map(field => {
@@ -919,8 +926,16 @@ export default function SourceIntegrationDetail({
               <div
                 key={field.key}
                 style={{
-                  display: "grid", gridTemplateColumns: "1fr 24px 1fr",
-                  gap: 8, alignItems: "center", marginBottom: 6,
+                  display: "grid",
+                  gridTemplateColumns: isMobile ? "1fr" : "1fr 24px 1fr",
+                  gap: isMobile ? 6 : 8, alignItems: "center",
+                  marginBottom: isMobile ? 12 : 6,
+                  ...(isMobile ? {
+                    padding: "12px",
+                    backgroundColor: "#FBFBFD",
+                    border: `1px solid ${THEME.border}`,
+                    borderRadius: 12,
+                  } : {}),
                 }}
               >
                 {/* 左：媒体フィールド名 */}
@@ -928,7 +943,7 @@ export default function SourceIntegrationDetail({
                   fontSize: 13, fontWeight: 600,
                   color: isMapped ? THEME.textMain : THEME.textMuted,
                   padding: "10px 14px",
-                  backgroundColor: isMapped ? "#F0FDF4" : "#F8FAFC",
+                  backgroundColor: isMapped ? "#F0FDF4" : "white",
                   border: `1px solid ${isMapped ? "#86EFAC" : THEME.border}`,
                   borderRadius: 8,
                   display: "flex", alignItems: "center", gap: 6,
@@ -939,12 +954,13 @@ export default function SourceIntegrationDetail({
                   {field.label}
                 </div>
 
-                {/* 矢印 */}
+                {/* 矢印（モバイルでは下向き・中央寄せ） */}
                 <div style={{
                   textAlign: "center", fontSize: 14, color: THEME.textMuted,
                   opacity: isMapped ? 1 : 0.3,
+                  ...(isMobile ? { padding: "1px 0" } : {}),
                 }}>
-                  →
+                  {isMobile ? "↓" : "→"}
                 </div>
 
                 {/* 右：保存先カラム選択 */}

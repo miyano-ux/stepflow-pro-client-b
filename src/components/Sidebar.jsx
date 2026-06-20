@@ -189,7 +189,7 @@ const Sidebar = ({ onLogout }) => {
   if (isMobile) {
     return (
       <>
-        {/* 固定ヘッダーバー */}
+        {/* 固定ヘッダーバー（高さの確保は App.jsx 側の <main> の paddingTop で行う） */}
         <div style={{
           position: "fixed", top: 0, left: 0, right: 0,
           height: MOBILE_HEADER_HEIGHT,
@@ -223,9 +223,6 @@ const Sidebar = ({ onLogout }) => {
           {/* 右側はバランス用の空スペース（中央寄せのため） */}
           <div style={{ width: 40 }} />
         </div>
-
-        {/* ヘッダー分のスペーサー */}
-        <div style={{ height: MOBILE_HEADER_HEIGHT, flexShrink: 0 }} />
 
         {/* オーバーレイ背景（タップで閉じる） */}
         {mobileOpen && (

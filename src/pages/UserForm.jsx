@@ -5,6 +5,7 @@ import axios from "axios";
 import { THEME, CLIENT_COMPANY_NAME, MASTER_WHITELIST_API } from "../lib/constants";
 import { styles } from "../lib/styles";
 import Page from "../components/Page";
+import { useWindowWidth } from "../lib/useWindowWidth";
 
 // ==========================================
 // 💬 Toast/Modal コンポーネント
@@ -108,6 +109,7 @@ function UserForm({ masterUrl, onRefreshStaff, staffList = [] }) {
   const { id } = useParams();                    // id = encodeされたメールアドレス（編集時）
   const isEdit = !!id;
   const location = useLocation();
+  const { isMobile } = useWindowWidth();
   const [loading, setLoading] = useState(false);
   const [modal, setModal] = useState(null); // { type: "success"|"error", message: string }
   const [copied, setCopied] = useState(false);
@@ -262,11 +264,11 @@ function UserForm({ masterUrl, onRefreshStaff, staffList = [] }) {
         ユーザー一覧に戻る
       </button>
 
-      <div style={{ ...styles.card, maxWidth: "600px", padding: "40px" }}>
+      <div style={{ ...styles.card, maxWidth: "600px", padding: isMobile ? "20px" : "40px" }}>
         <div style={{ display: "flex", flexDirection: "column", gap: "24px" }}>
 
           {/* 姓・名 */}
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px" }}>
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: isMobile ? 16 : 20 }}>
             <div style={styles.inputGroup}>
               <label style={styles.label}>
                 姓 <span style={{ color: THEME.danger }}>*</span>
@@ -439,11 +441,11 @@ function UserForm({ masterUrl, onRefreshStaff, staffList = [] }) {
           </div>
 
           {/* 保存・キャンセルボタン */}
-          <div style={{ marginTop: "16px", display: "flex", gap: "16px" }}>
+          <div style={{ marginTop: "16px", display: "flex", flexDirection: isMobile ? "column" : "row", gap: "12px" }}>
             <button
               onClick={handleSave}
               disabled={loading}
-              style={{ ...styles.btn, ...styles.btnPrimary, flex: 2, height: "54px", fontSize: "15px" }}
+              style={{ ...styles.btn, ...styles.btnPrimary, flex: isMobile ? "none" : 2, height: "54px", fontSize: "15px", order: isMobile ? 1 : 0 }}
             >
               {loading ? (
                 <Loader2 className="animate-spin" size={20} />
@@ -456,7 +458,7 @@ function UserForm({ masterUrl, onRefreshStaff, staffList = [] }) {
             </button>
             <button
               onClick={() => navigate("/users")}
-              style={{ ...styles.btn, ...styles.btnSecondary, flex: 1, height: "54px" }}
+              style={{ ...styles.btn, ...styles.btnSecondary, flex: isMobile ? "none" : 1, height: "54px", order: isMobile ? 2 : 0 }}
             >
               キャンセル
             </button>
