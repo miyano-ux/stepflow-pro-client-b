@@ -16,6 +16,7 @@ import PromptFieldsModal from "../components/PromptFieldsModal";
 import StaffGroupSelect from "../components/StaffGroupSelect";
 import ConfirmModal from "../components/ConfirmModal";
 import { useToast } from "../ToastContext";
+import { useWindowWidth } from "../lib/useWindowWidth";
 
 // ==========================================
 // 👤 CustomerDetail - 顧客詳細ページ
@@ -112,6 +113,7 @@ function PropSyncingBadge({ syncing }) {
 // ── 物件追加・編集モーダル ────────────────────────────────────
 function PropFormModal({ open, mode, data, propTypes, propStatuses, onSave, onClose }) {
   const [form, setForm] = useState(data);
+  const { isMobile } = useWindowWidth();
   useEffect(() => { setForm(data); }, [data]);
   if (!open) return null;
 
@@ -120,11 +122,11 @@ function PropFormModal({ open, mode, data, propTypes, propStatuses, onSave, onCl
 
   return (
     <div
-      style={{ position: "fixed", inset: 0, backgroundColor: "rgba(15,23,42,0.6)", backdropFilter: "blur(4px)", display: "flex", justifyContent: "center", alignItems: "center", zIndex: 2000 }}
+      style={{ position: "fixed", inset: 0, backgroundColor: "rgba(15,23,42,0.6)", backdropFilter: "blur(4px)", display: "flex", justifyContent: "center", alignItems: "center", zIndex: 2000, padding: isMobile ? 16 : 0, boxSizing: "border-box" }}
       onClick={onClose}
     >
       <div
-        style={{ backgroundColor: "white", borderRadius: 20, padding: 32, width: 520, maxHeight: "92vh", overflowY: "auto", boxShadow: "0 24px 48px rgba(0,0,0,0.15)" }}
+        style={{ backgroundColor: "white", borderRadius: 20, padding: isMobile ? "24px 20px" : 32, width: isMobile ? "100%" : 520, maxWidth: 520, maxHeight: "92vh", overflowY: "auto", boxShadow: "0 24px 48px rgba(0,0,0,0.15)", boxSizing: "border-box" }}
         onClick={e => e.stopPropagation()}
       >
         {/* ヘッダー */}
@@ -138,7 +140,7 @@ function PropFormModal({ open, mode, data, propTypes, propStatuses, onSave, onCl
         </div>
 
         {/* フォーム */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 14 }}>
+        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 14, marginBottom: 14 }}>
           <div>
             <label style={{ fontSize: 11, fontWeight: 800, color: "#64748B", display: "block", marginBottom: 5 }}>物件名 *</label>
             <input style={{ width: "100%", padding: "10px 14px", borderRadius: 8, border: "1px solid #E2E8F0", fontSize: 14, outline: "none", boxSizing: "border-box" }}
@@ -215,6 +217,7 @@ const DEFAULT_LOST_REASONS = [
 function LostReasonModal({ open, lostReasonOptions = [], onConfirm, onCancel }) {
   const [reason, setReason]     = useState("");
   const [freeText, setFreeText] = useState("");
+  const { isMobile } = useWindowWidth();
 
   // モーダルを開くたびに入力をリセット
   useEffect(() => {
@@ -234,8 +237,8 @@ function LostReasonModal({ open, lostReasonOptions = [], onConfirm, onCancel }) 
   };
 
   return (
-    <div style={{ position: "fixed", inset: 0, backgroundColor: "rgba(15,23,42,0.6)", display: "flex", justifyContent: "center", alignItems: "center", zIndex: 3000, backdropFilter: "blur(4px)" }}>
-      <div style={{ backgroundColor: "white", borderRadius: 20, padding: 36, width: 460, boxShadow: "0 24px 48px rgba(0,0,0,0.15)" }}>
+    <div style={{ position: "fixed", inset: 0, backgroundColor: "rgba(15,23,42,0.6)", display: "flex", justifyContent: "center", alignItems: "center", zIndex: 3000, backdropFilter: "blur(4px)", padding: isMobile ? 16 : 0, boxSizing: "border-box" }}>
+      <div style={{ backgroundColor: "white", borderRadius: 20, padding: isMobile ? "28px 24px" : 36, width: isMobile ? "100%" : 460, maxWidth: 460, boxShadow: "0 24px 48px rgba(0,0,0,0.15)", boxSizing: "border-box" }}>
         {/* ヘッダー */}
         <div style={{ textAlign: "center", marginBottom: 24 }}>
           <div style={{ width: 56, height: 56, borderRadius: 16, backgroundColor: "#FEF2F2", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 12px", fontSize: 26 }}>🗑</div>
@@ -382,6 +385,7 @@ export default function CustomerDetail({
   const { id } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
+  const { isMobile } = useWindowWidth();
 
   const [isEditing, setIsEditing] = useState(false);
   const [scenarioConfirm, setScenarioConfirm] = useState(null); // { newStatus, scenarioId }
@@ -754,10 +758,10 @@ export default function CustomerDetail({
         }}
         onClose={() => setPropModal(prev => ({ ...prev, open: false }))}
       />
-    <div style={{ minHeight: "100vh", backgroundColor: THEME.bg, padding: "40px 48px" }}>
+    <div style={{ minHeight: "100vh", backgroundColor: THEME.bg, padding: isMobile ? "16px" : "40px 48px", boxSizing: "border-box" }}>
 
       {/* ── ヘッダー ── */}
-      <div style={{ marginBottom: 32 }}>
+      <div style={{ marginBottom: isMobile ? 20 : 32 }}>
         <button
           onClick={() => navigate(location.state?.from ?? "/customers")}
           style={{ background: "none", border: "none", color: THEME.textMuted, cursor: "pointer", display: "flex", alignItems: "center", gap: 6, fontWeight: 700, marginBottom: 16, fontSize: 14 }}
@@ -765,44 +769,44 @@ export default function CustomerDetail({
           <ArrowLeft size={16} /> {location.state?.from ? "リストに戻る" : "顧客一覧に戻る"}
         </button>
 
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+        <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", justifyContent: "space-between", alignItems: isMobile ? "stretch" : "flex-start", gap: isMobile ? 16 : 0, width: "100%", boxSizing: "border-box" }}>
           <div>
-            <h1 style={{ fontSize: 32, fontWeight: 900, color: THEME.textMain, margin: 0 }}>
+            <h1 style={{ fontSize: isMobile ? 22 : 32, fontWeight: 900, color: THEME.textMain, margin: 0 }}>
               {formData["姓"]} {formData["名"]}
-              <span style={{ fontSize: 18, color: THEME.textMuted, fontWeight: 500, marginLeft: 8 }}>様</span>
+              <span style={{ fontSize: isMobile ? 14 : 18, color: THEME.textMuted, fontWeight: 500, marginLeft: 8 }}>様</span>
             </h1>
-            <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 8 }}>
-              <span style={{ ...styles.badge, backgroundColor: "#EEF2FF", color: THEME.primary }}>
+            <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: isMobile ? 8 : 12, marginTop: 8 }}>
+              <span style={{ ...styles.badge, backgroundColor: "#EEF2FF", color: THEME.primary, whiteSpace: "nowrap" }}>
                 {formData["対応ステータス"] || "未対応"}
               </span>
-              {assignedName && (
-                <span style={{ fontSize: 13, color: THEME.textMuted }}>担当: {assignedName}</span>
+              {!isMobile && assignedName && (
+                <span style={{ fontSize: 13, color: THEME.textMuted, whiteSpace: "nowrap" }}>担当: {assignedName}</span>
               )}
-              <span style={{ fontSize: 13, color: THEME.textMuted }}>
+              <span style={{ fontSize: 13, color: THEME.textMuted, whiteSpace: "nowrap" }}>
                 登録: {formatDateJP(formData["登録日"]) || "-"}
               </span>
             </div>
           </div>
 
-          <div style={{ display: "flex", gap: 10 }}>
+          <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", gap: 10, width: isMobile ? "100%" : "auto", boxSizing: "border-box" }}>
             {!isEditing ? (
               <>
-                <button onClick={() => navigate(`/schedule/${id}`)} style={{ ...styles.btn, ...styles.btnSecondary }}>
+                <button onClick={() => navigate(`/schedule/${id}`)} style={{ ...styles.btn, ...styles.btnSecondary, ...(isMobile ? { width: "100%", boxSizing: "border-box" } : {}) }}>
                   <Clock size={16} color={THEME.primary} /> 配信履歴
                 </button>
-                <button onClick={() => navigate(`/direct-sms/${id}`)} style={{ ...styles.btn, ...styles.btnSecondary }}>
+                <button onClick={() => navigate(`/direct-sms/${id}`)} style={{ ...styles.btn, ...styles.btnSecondary, ...(isMobile ? { width: "100%", boxSizing: "border-box" } : {}) }}>
                   <MessageSquare size={16} color={THEME.primary} /> SMS送信
                 </button>
-                <button onClick={() => setIsEditing(true)} style={{ ...styles.btn, ...styles.btnPrimary }}>
+                <button onClick={() => setIsEditing(true)} style={{ ...styles.btn, ...styles.btnPrimary, ...(isMobile ? { width: "100%", boxSizing: "border-box" } : {}) }}>
                   <Edit3 size={16} /> 情報を編集
                 </button>
               </>
             ) : (
               <>
-                <button onClick={handleCancel} style={{ ...styles.btn, ...styles.btnSecondary, color: THEME.danger, borderColor: `${THEME.danger}40` }}>
+                <button onClick={handleCancel} style={{ ...styles.btn, ...styles.btnSecondary, color: THEME.danger, borderColor: `${THEME.danger}40`, ...(isMobile ? { width: "100%", boxSizing: "border-box" } : {}) }}>
                   <X size={16} /> キャンセル
                 </button>
-                <button onClick={handleSave} disabled={syncingCount > 0} style={{ ...styles.btn, ...styles.btnPrimary, opacity: syncingCount > 0 ? 0.7 : 1 }}>
+                <button onClick={handleSave} disabled={syncingCount > 0} style={{ ...styles.btn, ...styles.btnPrimary, opacity: syncingCount > 0 ? 0.7 : 1, ...(isMobile ? { width: "100%", boxSizing: "border-box" } : {}) }}>
                   {syncingCount > 0
                     ? <><Loader2 size={16} className="animate-spin" /> 保存中...</>
                     : <><Save size={16} /> 変更を保存</>}
@@ -814,7 +818,7 @@ export default function CustomerDetail({
       </div>
 
       {/* ── メインコンテンツ ── */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 360px", gap: 28, alignItems: "start" }}>
+      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 360px", gap: isMobile ? 20 : 28, alignItems: "start" }}>
 
         {/* 左：顧客情報 */}
         <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
@@ -826,7 +830,7 @@ export default function CustomerDetail({
             </h3>
 
             {/* 対応ステータス・担当者・流入元・契約種別 */}
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20, marginBottom: 20, padding: "20px", backgroundColor: THEME.bg, borderRadius: 12 }}>
+            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: isMobile ? 14 : 20, marginBottom: 20, padding: isMobile ? "16px" : "20px", backgroundColor: THEME.bg, borderRadius: 12 }}>
               {isEditing ? (
                 <>
                   <EditSelect
@@ -919,7 +923,7 @@ export default function CustomerDetail({
             </div>
 
             {/* 姓・名 / 電話番号・メールアドレス */}
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
+            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: isMobile ? 14 : 20 }}>
               {isEditing ? (
                 <>
                   <EditText label="姓" fieldName="姓" value={formData["姓"]} onChange={handleFieldChange} />
@@ -960,7 +964,7 @@ export default function CustomerDetail({
               <h3 style={{ fontSize: 14, fontWeight: 800, color: THEME.textMuted, marginTop: 0, marginBottom: 20, display: "flex", alignItems: "center", gap: 8 }}>
                 <LayoutGrid size={15} /> カスタム項目
               </h3>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
+              <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: isMobile ? 14 : 20 }}>
                 {formSettings.map((field) => (
                   <CustomField
                     key={field.name}
@@ -977,7 +981,7 @@ export default function CustomerDetail({
           {/* ── 検討物件セクション ── */}
           <div style={styles.card}>
             {/* ヘッダー */}
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+            <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", alignItems: isMobile ? "stretch" : "center", justifyContent: "space-between", gap: isMobile ? 10 : 0, marginBottom: 16 }}>
               <h3 style={{ fontSize: 14, fontWeight: 800, color: THEME.textMuted, margin: 0, display: "flex", alignItems: "center", gap: 8 }}>
                 <Building2 size={15} /> 検討物件
                 {localProperties.length > 0 && (
@@ -986,7 +990,7 @@ export default function CustomerDetail({
                   </span>
                 )}
               </h3>
-              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 12 }}>
                 {/* 合計サマリー */}
                 {localProperties.length > 0 && (() => {
                   const wonTotal = localProperties.filter(p => p.status === "成約")
@@ -1171,8 +1175,8 @@ export default function CustomerDetail({
         />
       )}
       {scenarioConfirm && (
-        <div style={{ position: "fixed", inset: 0, backgroundColor: "rgba(15,23,42,0.6)", display: "flex", justifyContent: "center", alignItems: "center", zIndex: 3000, backdropFilter: "blur(4px)" }}>
-          <div style={{ backgroundColor: "white", borderRadius: 20, padding: 36, width: 440, boxShadow: "0 24px 48px rgba(0,0,0,0.15)" }}>
+        <div style={{ position: "fixed", inset: 0, backgroundColor: "rgba(15,23,42,0.6)", display: "flex", justifyContent: "center", alignItems: "center", zIndex: 3000, backdropFilter: "blur(4px)", padding: isMobile ? 16 : 0, boxSizing: "border-box" }}>
+          <div style={{ backgroundColor: "white", borderRadius: 20, padding: isMobile ? "28px 24px" : 36, width: isMobile ? "100%" : 440, maxWidth: 440, boxShadow: "0 24px 48px rgba(0,0,0,0.15)", boxSizing: "border-box" }}>
             <div style={{ textAlign: "center", marginBottom: 24 }}>
               <div style={{ fontSize: 44, marginBottom: 8 }}>🔄</div>
               <h3 style={{ fontSize: 18, fontWeight: 900, color: "#0F172A", margin: "0 0 10px" }}>

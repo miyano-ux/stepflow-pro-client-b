@@ -348,9 +348,9 @@ function App() {
     <GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID}>
       <style>{globalStyle}</style>
       <Router>
-        <div style={{ display: "flex", minHeight: "100vh" }}>
+        <div style={{ display: "flex", minHeight: "100vh", width: "100%" }}>
 
-          {/* サイドバー（260px 固定） */}
+          {/* サイドバー（PC: 260px固定 / モバイル: ハンバーガー+スライドメニュー） */}
           <Sidebar
             onLogout={() => {
               setUser(null);
@@ -363,6 +363,8 @@ function App() {
             style={{
               flex: 1,
               minWidth: 0,
+              width: "100%",
+              boxSizing: "border-box",
               backgroundColor: THEME.bg,
               minHeight: "100vh",
             }}

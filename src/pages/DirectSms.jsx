@@ -9,6 +9,7 @@ import Page from "../components/Page";
 import CustomSelect from "../components/CustomSelect";
 import SmartDateTimePicker from "../components/SmartDateTimePicker";
 import { useToast } from "../ToastContext";
+import { useWindowWidth } from "../lib/useWindowWidth";
 
 // ==========================================
 // 💬 DirectSms - 個別メッセージ送信ページ
@@ -152,6 +153,7 @@ function DirectSms({ customers = [], templates = [], staffList = [], onRefresh, 
   const { id } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
+  const { isMobile } = useWindowWidth();
 
   const c = customers?.find((x) => String(x.id) === String(id));
 
@@ -297,6 +299,7 @@ function DirectSms({ customers = [], templates = [], staffList = [], onRefresh, 
       await apiCall.post(GAS_URL, {
         action: "sendDirectSms",
         phone: c["電話番号"],
+        customerId: c.id,
         customerName: `${c["姓"]} ${c["名"]}`,
         scheduledTime: time,
         // 変数（{{姓}}等）を実データに置換してから送信
@@ -338,7 +341,25 @@ function DirectSms({ customers = [], templates = [], staffList = [], onRefresh, 
         >
           <ArrowLeft size={16} /> {c["姓"]} {c["名"]} 様の詳細に戻る
         </button>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 350px", gap: "32px" }}>
+        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 350px", gap: isMobile ? "20px" : "32px" }}>
+
+          {/* ── テンプレート一覧（モバイルでは先頭に表示） ── */}
+          {isMobile && (
+            <div>
+              <h3 style={{ margin: "0 0 12px 0", fontSize: "14px", fontWeight: "800", color: THEME.textMuted }}>テンプレート</h3>
+              <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+                {templates.map((t) => (
+                  <div
+                    key={t.id}
+                    onClick={() => setMsg(t.content)}
+                    style={{ ...styles.card, padding: "14px 16px", cursor: "pointer" }}
+                  >
+                    {t.name}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* ── 左カラム：送信設定 */}
           <div>
@@ -450,21 +471,23 @@ function DirectSms({ customers = [], templates = [], staffList = [], onRefresh, 
             </button>
           </div>
 
-          {/* ── 右カラム：テンプレート一覧 */}
-          <div>
-            <h3 style={{ margin: "0 0 16px 0", fontSize: "15px", fontWeight: "800" }}>テンプレート</h3>
-            <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-              {templates.map((t) => (
-                <div
-                  key={t.id}
-                  onClick={() => setMsg(t.content)}
-                  style={{ ...styles.card, padding: "16px", cursor: "pointer" }}
-                >
-                  {t.name}
-                </div>
-              ))}
+          {/* ── 右カラム：テンプレート一覧（PC/タブレットのみ。モバイルは先頭に表示済み） ── */}
+          {!isMobile && (
+            <div>
+              <h3 style={{ margin: "0 0 16px 0", fontSize: "15px", fontWeight: "800" }}>テンプレート</h3>
+              <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                {templates.map((t) => (
+                  <div
+                    key={t.id}
+                    onClick={() => setMsg(t.content)}
+                    style={{ ...styles.card, padding: "16px", cursor: "pointer" }}
+                  >
+                    {t.name}
+                  </div>
+                ))}
+              </div>
             </div>
-          </div>
+          )}
 
         </div>
       </Page>

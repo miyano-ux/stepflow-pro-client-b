@@ -3,13 +3,14 @@ import { Link, useNavigate } from "react-router-dom";
 import axios from "axios";
 import {
   ListTodo, UserCircle, MessageSquare,
-  Loader2, ExternalLink, ChevronDown, Check
+  Loader2, ExternalLink, ChevronDown, Check, X, Filter,
 } from "lucide-react";
 import { THEME } from "../lib/constants";
 import { StaffDropdown } from "../components/StaffDropdown";
 import { apiCall, customerStore } from "../lib/utils";
 import PromptFieldsModal from "../components/PromptFieldsModal";
 import { useToast } from "../ToastContext";
+import { useWindowWidth } from "../lib/useWindowWidth";
 
 // ─────────────────────────────────────────────────────────
 // スタイル定数
@@ -41,6 +42,31 @@ const S = {
   zone:      { minWidth: "260px", height: "96px", borderRadius: "16px", display: "flex", alignItems: "center", justifyContent: "center", gap: "10px", fontWeight: "900", fontSize: "15px", border: "3px dashed transparent", transition: "all 0.2s", cursor: "default", padding: "0 24px" },
   overlay:   { position: "fixed", inset: 0, backgroundColor: "rgba(15,23,42,0.6)", display: "flex", justifyContent: "center", alignItems: "center", zIndex: 2000, backdropFilter: "blur(4px)" },
   modal:     { backgroundColor: "white", borderRadius: 24, padding: "40px", width: 460, boxShadow: "0 24px 48px rgba(0,0,0,0.15)" },
+};
+
+// ─────────────────────────────────────────────────────────
+// モバイル専用スタイル定数
+// ─────────────────────────────────────────────────────────
+const MS = {
+  main:    { minHeight: "100vh", backgroundColor: THEME.bg, display: "flex", flexDirection: "column" },
+  header:  { padding: "14px 16px 12px", flexShrink: 0, display: "flex", justifyContent: "space-between", alignItems: "center", backgroundColor: THEME.bg, borderBottom: `1px solid ${THEME.border}`, position: "sticky", top: 0, zIndex: 20 },
+  tabs:    { display: "flex", gap: "6px", overflowX: "auto", padding: "10px 16px", flexShrink: 0, borderBottom: `1px solid ${THEME.border}`, backgroundColor: THEME.bg },
+  tab:     (active) => ({
+    flexShrink: 0, fontSize: 12, fontWeight: active ? 800 : 700, padding: "7px 14px", borderRadius: 99,
+    backgroundColor: active ? "#EEF2FF" : "white", color: active ? THEME.primary : THEME.textMuted,
+    border: `1px solid ${active ? THEME.primary : THEME.border}`, whiteSpace: "nowrap", cursor: "pointer",
+  }),
+  cardList: { flex: 1, padding: "12px 16px 24px", display: "flex", flexDirection: "column", gap: 10 },
+  card:     { backgroundColor: "white", borderRadius: 14, padding: "14px 16px", boxShadow: "0 2px 6px rgba(0,0,0,0.04)", border: `1px solid ${THEME.border}`, cursor: "pointer" },
+  sheetOverlay: { position: "fixed", inset: 0, backgroundColor: "rgba(15,23,42,0.5)", zIndex: 2000, display: "flex", alignItems: "flex-end", justifyContent: "center" },
+  sheet:    { backgroundColor: "white", width: "100%", maxWidth: 480, borderRadius: "20px 20px 0 0", padding: "10px 16px 28px", maxHeight: "80vh", overflowY: "auto", boxSizing: "border-box" },
+  sheetOption: (active) => ({
+    width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between",
+    padding: "13px 14px", borderRadius: 12, border: "none", cursor: "pointer", textAlign: "left",
+    backgroundColor: active ? "#EEF2FF" : "transparent",
+    color: active ? THEME.primary : THEME.textMain,
+    fontWeight: active ? 900 : 700, fontSize: 14, marginBottom: 4,
+  }),
 };
 
 // ─────────────────────────────────────────────────────────
@@ -97,52 +123,58 @@ function ScenarioConfirmModal({ info, onConfirm, onCancel }) {
   );
 }
 
-// 終点ステータス（休眠系）確認モーダル
-// 再アプローチの月数・シナリオは StatusSettings 側で定義済み。ここでは適用の確認のみ行う。
-function DormantModal({ info, gasUrl, onDone, onCancel }) {
-  const [saving, setSaving] = useState(false);
+// 汎用終点モーダル（休眠系 / 除外）
+function DormantModal({ info, scenarios, gasUrl, onDone, onCancel }) {
+  const [selected, setSelected]   = useState(null);
+  const [scenarioId, setScenarioId] = useState("");
+  const [saving, setSaving]       = useState(false);
+  const OPTS = [
+    { months: 1, label: "1ヶ月後" }, { months: 2, label: "2ヶ月後" },
+    { months: 3, label: "3ヶ月後" }, { months: 6, label: "6ヶ月後" },
+    { months: 12, label: "12ヶ月後" }, { months: 0, label: "設定しない" },
+  ];
   if (!info) return null;
-
-  const months        = Number(info.reapproachMonths) || 0;
-  const scenarioId    = info.reapproachScenarioId || "";
-  const hasReapproach = months > 0 && !!scenarioId;
-
   const handleConfirm = async () => {
     setSaving(true);
-    try {
-      await axios.post(gasUrl, JSON.stringify({ action: "updateStatus", id: info.customerId, status: info.newStatus, applyScenario: "" }), { headers: { "Content-Type": "text/plain;charset=utf-8" } });
-      if (hasReapproach) {
-        await axios.post(gasUrl, JSON.stringify({ action: "scheduleDormantReapproach", id: info.customerId, months, scenarioId }), { headers: { "Content-Type": "text/plain;charset=utf-8" } });
-      }
-    } finally {
-      setSaving(false);
-      onDone();
+    await axios.post(gasUrl, JSON.stringify({ action: "updateStatus", id: info.customerId, status: info.newStatus, applyScenario: "" }), { headers: { "Content-Type": "text/plain;charset=utf-8" } });
+    if (selected?.months > 0 && scenarioId) {
+      await axios.post(gasUrl, JSON.stringify({ action: "scheduleDormantReapproach", id: info.customerId, months: selected.months, scenarioId }), { headers: { "Content-Type": "text/plain;charset=utf-8" } });
     }
+    setSaving(false);
+    onDone();
   };
-
   return (
     <div style={S.overlay}>
-      <div style={{ ...S.modal, width: 460 }}>
+      <div style={{ ...S.modal, width: 500 }}>
         <div style={{ textAlign: "center", marginBottom: 24 }}>
           <div style={{ fontSize: 48, marginBottom: 8 }}>🌙</div>
-          <h3 style={{ fontSize: 20, fontWeight: 900, color: THEME.textMain, margin: "0 0 8px" }}>「{info.newStatus}」に変更しますか？</h3>
+          <h3 style={{ fontSize: 20, fontWeight: 900, color: THEME.textMain, margin: "0 0 8px" }}>「{info.newStatus}」に変更</h3>
+          <p style={{ fontSize: 13, color: THEME.textMuted, margin: 0 }}>再アプローチするタイミングを設定できます</p>
         </div>
-        <div style={{ backgroundColor: hasReapproach ? "#FFFBEB" : "#F9FAFB", border: `1px solid ${hasReapproach ? "#FDE68A" : THEME.border}`, borderRadius: 12, padding: "14px 16px", marginBottom: 24 }}>
-          {hasReapproach ? (
-            <p style={{ fontSize: 14, color: THEME.textMain, lineHeight: 1.8, margin: 0 }}>
-              <strong style={{ color: "#D97706" }}>{months}ヶ月後</strong> にシナリオ <strong style={{ color: "#D97706" }}>「{scenarioId}」</strong> が自動で予約されます。
-            </p>
-          ) : (
-            <p style={{ fontSize: 13, color: THEME.textMuted, lineHeight: 1.7, margin: 0 }}>
-              このステータスには再アプローチが設定されていません。再アプローチを予約するには、ステータス設定画面で「再アプローチ設定」を行ってください。
-            </p>
-          )}
+        <div style={{ marginBottom: 20 }}>
+          <div style={{ fontSize: 13, fontWeight: 800, color: THEME.textMuted, marginBottom: 10 }}>再アプローチ時期</div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+            {OPTS.map(opt => (
+              <button key={opt.months} onClick={() => setSelected(opt)} style={{ padding: "8px 18px", borderRadius: 99, fontWeight: 800, fontSize: 13, cursor: "pointer", border: `2px solid ${selected?.months === opt.months ? "#D97706" : THEME.border}`, backgroundColor: selected?.months === opt.months ? "#FFFBEB" : "white", color: selected?.months === opt.months ? "#D97706" : THEME.textMuted }}>
+                {opt.label}
+              </button>
+            ))}
+          </div>
         </div>
+        {selected?.months > 0 && (
+          <div style={{ marginBottom: 20 }}>
+            <div style={{ fontSize: 13, fontWeight: 800, color: THEME.textMuted, marginBottom: 8 }}>適用シナリオ（任意）</div>
+            <select value={scenarioId} onChange={e => setScenarioId(e.target.value)} style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: `1px solid ${THEME.border}`, fontSize: 14, fontWeight: 700 }}>
+              <option value="">シナリオを選択しない</option>
+              {[...new Set(scenarios.map(s => s["シナリオID"]))].map(sid => <option key={sid} value={sid}>{sid}</option>)}
+            </select>
+          </div>
+        )}
         <div style={{ display: "flex", gap: 12 }}>
-          <button onClick={handleConfirm} disabled={saving} style={{ flex: 1, padding: 14, borderRadius: 12, border: "none", backgroundColor: "#D97706", color: "white", fontWeight: 900, fontSize: 15, cursor: saving ? "default" : "pointer", opacity: saving ? 0.7 : 1 }}>
-            {saving ? "処理中..." : "変更する"}
+          <button onClick={handleConfirm} disabled={saving || selected === null} style={{ flex: 1, padding: 14, borderRadius: 12, border: "none", backgroundColor: selected ? "#D97706" : "#E5E7EB", color: "white", fontWeight: 900, fontSize: 15, cursor: selected ? "pointer" : "not-allowed" }}>
+            {saving ? "処理中..." : "確定する"}
           </button>
-          <button onClick={onCancel} disabled={saving} style={{ flex: 1, padding: 14, borderRadius: 12, border: `1px solid ${THEME.border}`, backgroundColor: "white", color: THEME.textMuted, fontWeight: 800, fontSize: 15, cursor: "pointer" }}>キャンセル</button>
+          <button onClick={onCancel} style={{ flex: 1, padding: 14, borderRadius: 12, border: `1px solid ${THEME.border}`, backgroundColor: "white", color: THEME.textMuted, fontWeight: 800, fontSize: 15, cursor: "pointer" }}>キャンセル</button>
         </div>
       </div>
     </div>
@@ -981,6 +1013,7 @@ export default function KanbanBoard({
 }) {
   const showToast = useToast();
   const navigate = useNavigate();
+  const { isMobile } = useWindowWidth();
   const [filterStaff, setFilterStaff]       = useState("");
   // 初期値をストアのパッチ適用済みデータで初期化
   // → CustomerListで更新後にKanbanBoardへ遷移した瞬間から正しい状態で表示
@@ -988,6 +1021,11 @@ export default function KanbanBoard({
   const [draggingId, setDraggingId]         = useState(null);
   const [overColumn, setOverColumn]         = useState(null);
   const [syncing, setSyncing]               = useState(false);
+
+  // ── モバイル専用UI状態 ──────────────────────────
+  const [mobileActiveStatus, setMobileActiveStatus] = useState(null); // 表示中のカラム（タブ）
+  const [statusSheetCustomer, setStatusSheetCustomer] = useState(null); // ステータス選択シート対象の顧客
+  const [mobileFilterOpen, setMobileFilterOpen] = useState(false); // 担当者フィルタの開閉
 
   const [scenarioModal, setScenarioModal] = useState(null);
   const [promptModal,   setPromptModal]   = useState(null);
@@ -1066,6 +1104,16 @@ export default function KanbanBoard({
   // 右パネルを表示するか
   const hasRightPanel = rightTerminals.length > 0; // excludedはbottomRow右下コーナーに配置
 
+  // ── モバイル用：全ステータスをフラットな1リストに統合（フロー→右終点→下終点→除外の順） ──
+  const allStatusesFlat = [...flowStatuses, ...rightTerminals, ...bottomTerminals, ...excludedStatuses];
+
+  // 初期表示カラム：先頭のフローステータス（未設定時のみ）
+  useEffect(() => {
+    if (!mobileActiveStatus && flowStatuses.length > 0) {
+      setMobileActiveStatus(flowStatuses[0].name);
+    }
+  }, [flowStatuses, mobileActiveStatus]);
+
   // ── ドラッグ処理 ──────────────────────────────────
   const onDragStart = useCallback((e, cid) => {
     e.dataTransfer.setData("customerId", String(cid));
@@ -1119,13 +1167,9 @@ export default function KanbanBoard({
       setWonModal({ customerId: cid, newStatus, prevStatus, scenarioId, customerProperties });
       return;
     }
-    // 休眠系（dormant）→ 再アプローチ確認モーダル
+    // 休眠系（dormant）→ 再アプローチモーダル
     if (statusDef?.terminalType === "dormant") {
-      setDormantModal({
-        customerId: cid, newStatus, prevStatus,
-        reapproachMonths:     statusDef.reapproachMonths || 0,
-        reapproachScenarioId: statusDef.reapproachScenarioId || "",
-      });
+      setDormantModal({ customerId: cid, newStatus, prevStatus });
       return;
     }
     // 除外 → シンプル更新（モーダルなし）
@@ -1141,6 +1185,17 @@ export default function KanbanBoard({
       execUpdate(cid, newStatus, prevStatus, "");
     }
   }, [localCustomers, statuses, flowStatuses, properties]);
+
+  // ── モバイル：ステータス選択シートでの選択を、既存 onDrop と同じロジックに橋渡し ──
+  // HTML5 DnD の dataTransfer の代わりに、合成イベントを作って onDrop を直接呼ぶ
+  const handleMobileStatusSelect = useCallback((cid, newStatus) => {
+    setStatusSheetCustomer(null);
+    const fakeEvent = {
+      preventDefault: () => {},
+      dataTransfer: { getData: () => String(cid) },
+    };
+    onDrop(fakeEvent, newStatus);
+  }, [onDrop]);
 
   const execUpdate = useCallback(async (cid, newStatus, prevStatus, scenarioId) => {
     // ── 楽観的更新：ストアとpendingの両方に登録 ──
@@ -1260,7 +1315,229 @@ export default function KanbanBoard({
   const termCount = (st) => localCustomers.filter(c => (c["対応ステータス"] || "").trim() === st.name.trim()).length;
 
   // ─────────────────────────────────────────────────
-  // レンダリング
+  // レンダリング（モバイル：1カラム表示＋タップでステータス変更シート）
+  // ─────────────────────────────────────────────────
+  if (isMobile) {
+    const activeCards = mobileActiveStatus
+      ? filtered.filter(c => {
+          const cur = (c["対応ステータス"] || "").trim();
+          if (cur === mobileActiveStatus.trim()) return true;
+          const idx = flowStatuses.findIndex(s => s.name === mobileActiveStatus);
+          const known = statuses.some(s => s.name.trim() === cur);
+          return idx === 0 && (!cur || !known);
+        })
+      : [];
+
+    return (
+      <>
+        <div style={MS.main}>
+          {/* ヘッダー */}
+          <header style={MS.header}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <h1 style={{ fontSize: 17, fontWeight: 900, color: THEME.textMain, margin: 0 }}>案件進捗管理</h1>
+              {syncing && <Loader2 className="animate-spin" size={14} color={THEME.primary} />}
+            </div>
+            <div style={{ display: "flex", gap: 8, alignItems: "center", position: "relative" }}>
+              <button
+                onClick={() => navigate("/status-settings")}
+                title="ステータス調整"
+                style={{ width: 34, height: 34, padding: 0, display: "flex", alignItems: "center", justifyContent: "center", border: `1px solid ${THEME.border}`, borderRadius: 10, backgroundColor: "white", cursor: "pointer" }}
+              >
+                <ListTodo size={15} color={THEME.textMain} />
+              </button>
+              <button
+                onClick={() => setMobileFilterOpen(o => !o)}
+                title="担当者フィルタ"
+                style={{
+                  width: 34, height: 34, padding: 0, display: "flex", alignItems: "center", justifyContent: "center",
+                  border: `1px solid ${filterStaff ? THEME.primary : THEME.border}`, borderRadius: 10,
+                  backgroundColor: filterStaff ? "#EEF2FF" : "white", cursor: "pointer", position: "relative",
+                }}
+              >
+                <Filter size={15} color={filterStaff ? THEME.primary : THEME.textMain} />
+                {filterStaff && (
+                  <span style={{ position: "absolute", top: -2, right: -2, width: 8, height: 8, borderRadius: "50%", backgroundColor: THEME.primary, border: "2px solid white" }} />
+                )}
+              </button>
+              {mobileFilterOpen && (
+                <div style={{ position: "absolute", top: "calc(100% + 8px)", right: 0, zIndex: 60, backgroundColor: "white", borderRadius: 12, border: `1px solid ${THEME.border}`, boxShadow: "0 12px 28px rgba(0,0,0,0.12)", padding: 10, minWidth: 220 }}>
+                  <StaffDropdown staffList={staffList} value={filterStaff} onChange={(v) => { setFilterStaff(v); setMobileFilterOpen(false); }} />
+                </div>
+              )}
+            </div>
+          </header>
+
+          {/* カラムタブ */}
+          <div style={MS.tabs}>
+            {allStatusesFlat.map((st) => {
+              const isFlowCol = flowStatuses.some(f => f.name === st.name);
+              const count = isFlowCol ? colCustomers(st, flowStatuses.findIndex(f => f.name === st.name)).length : termCount(st);
+              return (
+                <button
+                  key={st.name}
+                  onClick={() => setMobileActiveStatus(st.name)}
+                  style={MS.tab(mobileActiveStatus === st.name)}
+                >
+                  {st.name}（{count}）
+                </button>
+              );
+            })}
+          </div>
+
+          {/* カードリスト */}
+          <div style={MS.cardList}>
+            {activeCards.map((c) => {
+              const staff = staffList.find(s => s.email === c["担当者メール"]);
+              const days  = calcDaysInStatus(c);
+              const color = daysColor(days);
+              const cProps = properties.filter(p => String(p.customerId) === String(c.id));
+              const wonProps = cProps.filter(p => p.status === "成約");
+              const activeProps = cProps.filter(p => p.status === "検討中");
+              const formatPrice = (p) => {
+                const n = Number(String(p).replace(/[^0-9.]/g, ""));
+                if (!n) return null;
+                if (n >= 10000) return `${(n / 10000).toFixed(1).replace(/\.0$/, "")}億`;
+                return `${n.toLocaleString()}万`;
+              };
+              const wonTotal = wonProps.reduce((s, p) => s + (Number(String(p.contractPrice || "").replace(/[^0-9.]/g, "")) || 0), 0);
+              const maxActive = activeProps.length > 0
+                ? Math.max(...activeProps.map(p => Number(String(p.assessmentPrice || "").replace(/[^0-9.]/g, "")) || 0))
+                : 0;
+
+              return (
+                <div
+                  key={c.id}
+                  onClick={() => setStatusSheetCustomer(c)}
+                  style={MS.card}
+                >
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
+                    <Link
+                      to={`/detail/${c.id}`}
+                      onClick={e => e.stopPropagation()}
+                      style={{ fontWeight: 900, fontSize: 15, color: THEME.primary, textDecoration: "none", lineHeight: 1.3 }}
+                    >
+                      {c["姓"]} {c["名"]} 様
+                    </Link>
+                    <Link
+                      to={`/direct-sms/${c.id}`}
+                      onClick={e => e.stopPropagation()}
+                      style={{ color: THEME.primary, backgroundColor: "#EEF2FF", padding: 7, borderRadius: 8, display: "flex", flexShrink: 0 }}
+                    >
+                      <MessageSquare size={14} />
+                    </Link>
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 8 }}>
+                    <div style={{ fontSize: 11, color: THEME.textMuted, display: "flex", alignItems: "center", gap: 5, fontWeight: 700 }}>
+                      <UserCircle size={13} color={THEME.primary} />
+                      {staff ? `${staff.lastName} ${staff.firstName}` : "未割当"}
+                    </div>
+                    {days !== null && color && (
+                      <span style={{ fontSize: 11, fontWeight: 800, backgroundColor: color.bg, color: color.text, padding: "2px 9px", borderRadius: 99 }}>
+                        {days === 0 ? "本日" : `${days}日滞留中`}
+                      </span>
+                    )}
+                  </div>
+                  {cProps.length > 0 && (
+                    <div style={{ marginTop: 8, paddingTop: 8, borderTop: "1px solid #F1F5F9", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                        {wonProps.length > 0 && (
+                          <span style={{ fontSize: 10, fontWeight: 800, backgroundColor: "#DCFCE7", color: "#166534", padding: "2px 7px", borderRadius: 99 }}>
+                            成約{wonProps.length}件
+                          </span>
+                        )}
+                        {activeProps.length > 0 && (
+                          <span style={{ fontSize: 10, fontWeight: 800, backgroundColor: "#EEF2FF", color: THEME.primary, padding: "2px 7px", borderRadius: 99 }}>
+                            検討{activeProps.length}件
+                          </span>
+                        )}
+                      </div>
+                      <span style={{ fontSize: 11, fontWeight: 800, color: wonTotal > 0 ? "#166534" : THEME.textMain }}>
+                        {wonTotal > 0 ? `¥${formatPrice(wonTotal)}` : maxActive > 0 ? `〜¥${formatPrice(maxActive)}` : ""}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+            {activeCards.length === 0 && (
+              <div style={{ textAlign: "center", padding: "48px 16px", color: THEME.textMuted, fontSize: 13 }}>
+                このステータスの案件はありません
+              </div>
+            )}
+            <p style={{ textAlign: "center", fontSize: 11, color: THEME.textMuted, margin: "8px 0 0" }}>
+              カードをタップしてステータスを変更
+            </p>
+          </div>
+        </div>
+
+        {/* ステータス選択ボトムシート */}
+        {statusSheetCustomer && (
+          <div style={MS.sheetOverlay} onClick={() => setStatusSheetCustomer(null)}>
+            <div style={MS.sheet} onClick={e => e.stopPropagation()}>
+              <div style={{ width: 36, height: 4, backgroundColor: THEME.border, borderRadius: 2, margin: "0 auto 16px" }} />
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+                <div>
+                  <p style={{ fontSize: 12, color: THEME.textMuted, margin: "0 0 2px" }}>
+                    {statusSheetCustomer["姓"]} {statusSheetCustomer["名"]} 様
+                  </p>
+                  <p style={{ fontSize: 15, fontWeight: 900, color: THEME.textMain, margin: 0 }}>ステータスを選択</p>
+                </div>
+                <button
+                  onClick={() => setStatusSheetCustomer(null)}
+                  style={{ width: 32, height: 32, padding: 0, display: "flex", alignItems: "center", justifyContent: "center", background: "#F8FAFC", border: "none", borderRadius: 8, cursor: "pointer" }}
+                >
+                  <X size={16} color={THEME.textMuted} />
+                </button>
+              </div>
+              <div>
+                {allStatusesFlat.map((st) => {
+                  const current = (statusSheetCustomer["対応ステータス"] || "").trim() === st.name.trim();
+                  return (
+                    <button
+                      key={st.name}
+                      onClick={() => !current && handleMobileStatusSelect(statusSheetCustomer.id, st.name)}
+                      disabled={current}
+                      style={MS.sheetOption(current)}
+                    >
+                      <span>{st.name}{current ? "（現在）" : ""}</span>
+                      {current && <Check size={15} />}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* モーダル群（PC版と共通） */}
+        <ScenarioConfirmModal info={scenarioModal} onConfirm={handleScenarioConfirm} onCancel={() => setScenarioModal(null)} />
+        <DormantModal info={dormantModal} scenarios={scenarios} gasUrl={gasUrl} onDone={handleModalDone} onCancel={() => setDormantModal(null)} />
+        <LostModal info={lostModal} gasUrl={gasUrl} onDone={handleModalDone} onCancel={() => setLostModal(null)} />
+        {wonModal && (
+          <WonModal info={wonModal} gasUrl={gasUrl} onDone={handleWonDone} onCancel={() => setWonModal(null)} />
+        )}
+        {uketsukeModal && (
+          <UketsukeModal
+            info={uketsukeModal} gasUrl={gasUrl} contractTypes={contractTypes} staffList={staffList}
+            onDone={handleUketsukeDone} onCancel={() => setUketsukeModal(null)}
+          />
+        )}
+        <UketsukeBackModal info={uketsukeBackModal} onConfirm={handleUketsukeBackConfirm} onCancel={() => setUketsukeBackModal(null)} />
+        {promptModal && (
+          <PromptFieldsModal
+            newStatus={localCustomers.find(c => String(c.id) === promptModal.customerId)?.["対応ステータス"] || ""}
+            promptFields={promptModal.promptFields}
+            sources={sources} contractTypes={contractTypes} staffList={staffList}
+            onConfirm={handlePromptConfirm}
+            onSkip={() => { setPromptModal(null); onRefresh(); }}
+          />
+        )}
+      </>
+    );
+  }
+
+  // ─────────────────────────────────────────────────
+  // レンダリング（PC/タブレット：従来通り）
   // ─────────────────────────────────────────────────
   return (
     <>
@@ -1531,7 +1808,7 @@ export default function KanbanBoard({
 
       {/* モーダル群 */}
       <ScenarioConfirmModal info={scenarioModal} onConfirm={handleScenarioConfirm} onCancel={() => setScenarioModal(null)} />
-      <DormantModal info={dormantModal} gasUrl={gasUrl} onDone={handleModalDone} onCancel={() => setDormantModal(null)} />
+      <DormantModal info={dormantModal} scenarios={scenarios} gasUrl={gasUrl} onDone={handleModalDone} onCancel={() => setDormantModal(null)} />
       <LostModal info={lostModal} gasUrl={gasUrl} onDone={handleModalDone} onCancel={() => setLostModal(null)} />
       {wonModal && (
         <WonModal

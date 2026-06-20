@@ -3,13 +3,14 @@ import { Link, useNavigate, useLocation } from "react-router-dom";
 import axios from "axios";
 import {
   Search, SlidersHorizontal, Download, Send,
-  Trash2, AlertCircle, ArrowUpDown, ChevronDown, Loader2,
-  UserRound, Check, ExternalLink,
+  Trash2, AlertCircle, ArrowUpDown, ChevronDown, ChevronUp, Loader2,
+  UserRound, Check, ExternalLink, Filter, ArrowDownUp,
 } from "lucide-react";
 import { THEME } from "../lib/constants";
 import { parseLocalDate, downloadCSV, customerStore } from "../lib/utils";
 import DateRangePicker from "../components/DateRangePicker";
 import { useToast } from "../ToastContext";
+import { useWindowWidth } from "../lib/useWindowWidth";
 
 // ==========================================
 // 📋 CustomerList - 顧客ダッシュボード
@@ -133,10 +134,13 @@ export default function CustomerList({
   const showToast = useToast();
   const navigate = useNavigate();
   const location = useLocation();
+  const { isMobile } = useWindowWidth();
 
   const [search, setSearch] = useState({});
   const [dateRange, setDateRange] = useState({});
   const [sort, setSort] = useState({ key: "登録日", dir: "desc" });
+  const [filterPanelOpen, setFilterPanelOpen] = useState(false); // モバイル: 検索パネルの折りたたみ
+  const [sortMenuOpen, setSortMenuOpen] = useState(false);       // モバイル: 並び替えメニュー
 
   const [confirmModal, setConfirmModal] = useState({ open: false, customer: null, field: "", newValue: "", oldValue: "" });
   const [deleteModal, setDeleteModal] = useState({ open: false, customer: null });
@@ -584,13 +588,18 @@ export default function CustomerList({
 
   return (
     <div style={localStyles.main}>
-      <div style={localStyles.wrapper}>
+      <div style={{ ...localStyles.wrapper, ...(isMobile ? { padding: "16px 16px 80px" } : {}) }}>
 
-        <header style={{ marginBottom: "40px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <header style={{
+          marginBottom: isMobile ? "20px" : "40px",
+          display: "flex", justifyContent: "space-between", alignItems: "center",
+        }}>
           <div>
-            <h1 style={{ fontSize: "32px", fontWeight: "900", color: THEME.textMain, margin: 0 }}>顧客ダッシュボード</h1>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8 }}>
-              <p style={{ color: THEME.textMuted, fontSize: "14px", margin: 0 }}>全 {filtered.length} 名をリスト表示中</p>
+            <h1 style={{ fontSize: isMobile ? "20px" : "32px", fontWeight: "900", color: THEME.textMain, margin: 0 }}>
+              {isMobile ? "顧客一覧" : "顧客ダッシュボード"}
+            </h1>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: isMobile ? 4 : 8 }}>
+              <p style={{ color: THEME.textMuted, fontSize: isMobile ? "12px" : "14px", margin: 0 }}>全 {filtered.length} 名をリスト表示中</p>
               {syncing && (
                 <span style={{ color: THEME.primary, fontSize: "12px", fontWeight: "800", display: "flex", alignItems: "center", gap: 4 }}>
                   <Loader2 size={12} className="animate-spin" /> 同期中...
@@ -598,34 +607,249 @@ export default function CustomerList({
               )}
             </div>
           </div>
-          <div style={{ display: "flex", gap: "12px" }}>
-            <button onClick={() => navigate("/column-settings")} style={{ ...localStyles.input, display: "flex", alignItems: "center", gap: 8, fontWeight: "800", cursor: "pointer" }}>
-              <SlidersHorizontal size={16} /> 表示設定
-            </button>
-            <button onClick={handleExportCSV} style={{ ...localStyles.input, backgroundColor: THEME.primary, color: "white", border: "none", fontWeight: "800", cursor: "pointer", display: "flex", alignItems: "center", gap: 8 }}>
-              <Download size={16} /> CSV出力
-            </button>
+          <div style={{ display: "flex", gap: isMobile ? "8px" : "12px" }}>
+            {isMobile ? (
+              <>
+                <button
+                  onClick={() => navigate("/column-settings")}
+                  title="表示設定"
+                  style={{ width: 36, height: 36, padding: 0, display: "flex", alignItems: "center", justifyContent: "center", border: `1px solid ${THEME.border}`, borderRadius: 10, backgroundColor: "white", cursor: "pointer" }}
+                >
+                  <SlidersHorizontal size={16} color={THEME.textMain} />
+                </button>
+                <button
+                  onClick={handleExportCSV}
+                  title="CSV出力"
+                  style={{ width: 36, height: 36, padding: 0, display: "flex", alignItems: "center", justifyContent: "center", border: "none", borderRadius: 10, backgroundColor: THEME.primary, cursor: "pointer" }}
+                >
+                  <Download size={16} color="white" />
+                </button>
+              </>
+            ) : (
+              <>
+                <button onClick={() => navigate("/column-settings")} style={{ ...localStyles.input, display: "flex", alignItems: "center", gap: 8, fontWeight: "800", cursor: "pointer" }}>
+                  <SlidersHorizontal size={16} /> 表示設定
+                </button>
+                <button onClick={handleExportCSV} style={{ ...localStyles.input, backgroundColor: THEME.primary, color: "white", border: "none", fontWeight: "800", cursor: "pointer", display: "flex", alignItems: "center", gap: 8 }}>
+                  <Download size={16} /> CSV出力
+                </button>
+              </>
+            )}
           </div>
         </header>
 
         {/* 検索パネル */}
-        <div style={localStyles.card}>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "24px", alignItems: "end" }}>
-            {sCols.map((col) => (
-              <div key={col}>{renderSearchField(col)}</div>
-            ))}
-            <div>
-              <button
-                onClick={() => { setSearch({}); setDateRange({}); }}
-                style={{ background: "none", border: "none", color: THEME.primary, fontWeight: "900", cursor: "pointer", fontSize: 14 }}
-              >
-                条件クリア
-              </button>
+        {isMobile ? (
+          <div style={{ marginBottom: 16 }}>
+            <button
+              onClick={() => setFilterPanelOpen((o) => !o)}
+              style={{
+                width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between",
+                padding: "12px 16px", backgroundColor: "white", border: `1px solid ${THEME.border}`,
+                borderRadius: 12, cursor: "pointer", boxSizing: "border-box",
+              }}
+            >
+              <span style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, fontWeight: 700, color: THEME.textMain }}>
+                <Filter size={15} color={THEME.textMuted} /> 絞り込み条件
+                {(Object.values(search).some(Boolean) || Object.values(dateRange).some(r => r?.start || r?.end)) && (
+                  <span style={{ width: 6, height: 6, borderRadius: "50%", backgroundColor: THEME.primary }} />
+                )}
+              </span>
+              {filterPanelOpen ? <ChevronUp size={16} color={THEME.textMuted} /> : <ChevronDown size={16} color={THEME.textMuted} />}
+            </button>
+            {filterPanelOpen && (
+              <div style={{ ...localStyles.card, marginTop: 8, marginBottom: 0 }}>
+                <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+                  {sCols.map((col) => (
+                    <div key={col}>{renderSearchField(col)}</div>
+                  ))}
+                  <button
+                    onClick={() => { setSearch({}); setDateRange({}); }}
+                    style={{ background: "none", border: "none", color: THEME.primary, fontWeight: "900", cursor: "pointer", fontSize: 14, padding: "8px 0", textAlign: "left" }}
+                  >
+                    条件クリア
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        ) : (
+          <div style={localStyles.card}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "24px", alignItems: "end" }}>
+              {sCols.map((col) => (
+                <div key={col}>{renderSearchField(col)}</div>
+              ))}
+              <div>
+                <button
+                  onClick={() => { setSearch({}); setDateRange({}); }}
+                  style={{ background: "none", border: "none", color: THEME.primary, fontWeight: "900", cursor: "pointer", fontSize: 14 }}
+                >
+                  条件クリア
+                </button>
+              </div>
             </div>
           </div>
-        </div>
+        )}
 
-        {/* テーブル */}
+        {/* 一覧表示：PC/タブレットはテーブル、モバイルはカードリスト */}
+        {isMobile ? (
+          <>
+            {/* 並び替えボタン（モバイル専用） */}
+            <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 10, position: "relative" }}>
+              <button
+                onClick={() => setSortMenuOpen((o) => !o)}
+                style={{
+                  display: "flex", alignItems: "center", gap: 6, padding: "8px 12px",
+                  backgroundColor: "white", border: `1px solid ${THEME.border}`, borderRadius: 10,
+                  fontSize: 12, fontWeight: 700, color: THEME.textMain, cursor: "pointer",
+                }}
+              >
+                <ArrowDownUp size={13} />
+                並び替え：{sort.key === "氏名" ? "氏名" : sort.key === "担当者メール" ? "担当者" : sort.key === "シナリオID" ? "適用シナリオ" : sort.key}
+                {sort.dir === "asc" ? "（昇順）" : "（降順）"}
+              </button>
+              {sortMenuOpen && (
+                <div style={{
+                  position: "absolute", top: "calc(100% + 6px)", right: 0, zIndex: 50,
+                  backgroundColor: "white", borderRadius: 12, border: `1px solid ${THEME.border}`,
+                  boxShadow: "0 12px 28px rgba(0,0,0,0.12)", minWidth: 200, overflow: "hidden",
+                }}>
+                  <div style={{ padding: 6 }}>
+                    {vCols.map((col) => (
+                      <button
+                        key={col}
+                        onClick={() => {
+                          setSort({ key: col, dir: sort.key === col && sort.dir === "asc" ? "desc" : "asc" });
+                          setSortMenuOpen(false);
+                        }}
+                        style={{
+                          width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between",
+                          padding: "9px 12px", border: "none", borderRadius: 8, cursor: "pointer",
+                          backgroundColor: sort.key === col ? "#EEF2FF" : "transparent",
+                          color: sort.key === col ? THEME.primary : THEME.textMain,
+                          fontWeight: sort.key === col ? 900 : 700, fontSize: 13, textAlign: "left",
+                        }}
+                      >
+                        {col === "担当者メール" ? "担当者" : col === "シナリオID" ? "適用シナリオ" : col}
+                        {sort.key === col && (sort.dir === "asc" ? <ChevronUp size={13} /> : <ChevronDown size={13} />)}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* カードリスト */}
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              {filtered.map((c) => {
+                const cProps = (properties || []).filter(p => String(p.customerId) === String(c.id));
+                const hasProps = cProps.length > 0;
+                const name = `${c["姓"] || ""} ${c["名"] || ""}`.trim() || "-";
+
+                // カード上部に出す補足情報（登録日・流入元等）。氏名・ステータス・担当者は別枠で扱う
+                const subCols = vCols.filter((col) => !["氏名", "対応ステータス", "担当者メール"].includes(col));
+
+                return (
+                  <div
+                    key={c.id}
+                    style={{
+                      backgroundColor: c._optimistic ? "#F0FDF4" : "white",
+                      border: `1px solid ${THEME.border}`,
+                      borderRadius: 14,
+                      padding: "14px 16px",
+                      outline: c._optimistic ? "2px solid #86EFAC" : "none",
+                      outlineOffset: "-2px",
+                      boxSizing: "border-box",
+                    }}
+                  >
+                    {/* 氏名 + ステータス */}
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
+                      <Link
+                        to={`/detail/${c.id}`}
+                        style={{ color: THEME.primary, fontWeight: 900, fontSize: 16, textDecoration: "none" }}
+                      >
+                        {name}
+                      </Link>
+                      {vCols.includes("対応ステータス") && (
+                        <div style={{ flexShrink: 0 }}>{renderCell(c, "対応ステータス")}</div>
+                      )}
+                    </div>
+
+                    {/* 補足情報行 */}
+                    {subCols.length > 0 && (
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: "6px 14px", marginTop: 8 }}>
+                        {subCols.map((col) => (
+                          <div key={col} style={{ fontSize: 12, color: THEME.textMuted, display: "flex", alignItems: "center", gap: 4 }}>
+                            <span style={{ opacity: 0.7 }}>
+                              {col === "担当者メール" ? "担当者" : col === "シナリオID" ? "シナリオ" : col}：
+                            </span>
+                            <span style={{ color: THEME.textMain, fontWeight: 600 }}>
+                              {col === "担当者メール" ? renderCell(c, col) : renderCell(c, col)}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* 物件あり表示（簡略・詳細誘導） */}
+                    {hasProps && (
+                      <Link
+                        to={`/detail/${c.id}`}
+                        style={{
+                          display: "inline-flex", alignItems: "center", gap: 4, marginTop: 8,
+                          fontSize: 11, fontWeight: 700, color: THEME.primary, textDecoration: "none",
+                        }}
+                      >
+                        物件情報あり（{cProps.length}件）→ 詳細で確認
+                      </Link>
+                    )}
+
+                    {/* 操作ボタン */}
+                    <div style={{ display: "flex", gap: 8, marginTop: 12, paddingTop: 10, borderTop: `1px solid ${THEME.border}` }}>
+                      <Link
+                        to={`/detail/${c.id}`}
+                        style={{
+                          flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 5,
+                          padding: "9px", backgroundColor: "#EEF2FF", color: THEME.primary, borderRadius: 8,
+                          fontWeight: 800, fontSize: 12, textDecoration: "none",
+                        }}
+                      >
+                        <ExternalLink size={14} /> 詳細
+                      </Link>
+                      <Link
+                        to={`/direct-sms/${c.id}`}
+                        style={{
+                          flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 5,
+                          padding: "9px", backgroundColor: "#F0FDF4", color: "#16A34A", borderRadius: 8,
+                          fontWeight: 800, fontSize: 12, textDecoration: "none",
+                        }}
+                      >
+                        <Send size={14} /> SMS
+                      </Link>
+                      <button
+                        title="削除"
+                        onClick={() => handleDelete(c)}
+                        style={{
+                          width: 38, display: "flex", alignItems: "center", justifyContent: "center",
+                          padding: "9px", backgroundColor: "#FEF2F2", color: THEME.danger,
+                          border: "none", borderRadius: 8, cursor: "pointer",
+                        }}
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+
+              {filtered.length === 0 && (
+                <div style={{ ...localStyles.card, textAlign: "center", padding: 48, color: THEME.textMuted, fontSize: 14 }}>
+                  該当する顧客が見つかりませんでした
+                </div>
+              )}
+            </div>
+          </>
+        ) : (
         <div style={{ ...localStyles.card, padding: 0, overflow: "hidden" }}>
           <div style={{ overflowX: "auto" }}>
             <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: 0 }}>
@@ -790,6 +1014,7 @@ export default function CustomerList({
             </table>
           </div>
         </div>
+        )}
 
       </div>
 
@@ -797,8 +1022,8 @@ export default function CustomerList({
       {deleteModal.open && (() => {
         const c = deleteModal.customer;
         return (
-          <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(15,23,42,0.6)", display: "flex", justifyContent: "center", alignItems: "center", zIndex: 1000, backdropFilter: "blur(4px)" }}>
-            <div style={{ ...localStyles.card, width: 420, textAlign: "center", marginBottom: 0, padding: "40px 36px 32px" }}>
+          <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(15,23,42,0.6)", display: "flex", justifyContent: "center", alignItems: "center", zIndex: 1000, backdropFilter: "blur(4px)", padding: isMobile ? 16 : 0, boxSizing: "border-box" }}>
+            <div style={{ ...localStyles.card, width: isMobile ? "100%" : 420, maxWidth: 420, textAlign: "center", marginBottom: 0, padding: isMobile ? "32px 24px 24px" : "40px 36px 32px", boxSizing: "border-box" }}>
               {/* アイコン */}
               <div style={{ backgroundColor: "#FEF2F2", width: 64, height: 64, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 20px" }}>
                 <Trash2 size={30} color={THEME.danger} />
@@ -853,8 +1078,8 @@ export default function CustomerList({
         const accentBg    = isWon ? "#DCFCE7"  : isDormant ? "#FEF3C7"  : "#EEF2FF";
 
         return (
-          <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(15,23,42,0.6)", display: "flex", justifyContent: "center", alignItems: "center", zIndex: 1000, backdropFilter: "blur(4px)" }}>
-            <div style={{ ...localStyles.card, width: 460, textAlign: "center", marginBottom: 0, padding: "40px 36px 32px" }}>
+          <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(15,23,42,0.6)", display: "flex", justifyContent: "center", alignItems: "center", zIndex: 1000, backdropFilter: "blur(4px)", padding: isMobile ? 16 : 0, boxSizing: "border-box" }}>
+            <div style={{ ...localStyles.card, width: isMobile ? "100%" : 460, maxWidth: 460, textAlign: "center", marginBottom: 0, padding: isMobile ? "32px 24px 24px" : "40px 36px 32px", boxSizing: "border-box" }}>
 
               {/* アイコン */}
               <div style={{ backgroundColor: accentBg, width: 64, height: 64, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 20px" }}>

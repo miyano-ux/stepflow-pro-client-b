@@ -13,6 +13,7 @@ import Page from "../components/Page";
 import StaffGroupSelect from "../components/StaffGroupSelect";
 import DynamicField from "../components/DynamicField";
 import { useToast } from "../ToastContext";
+import { useWindowWidth } from "../lib/useWindowWidth";
 
 // ==========================================
 // ➕ CustomerForm - 新規顧客登録ページ
@@ -29,6 +30,7 @@ import { useToast } from "../ToastContext";
 function CustomerForm({ formSettings = [], scenarios = [], statuses = [], staffList = [], sources = [], groups = [], contractTypes = [], onRefresh }) {
   const showToast = useToast();
   const navigate = useNavigate();
+  const { isMobile } = useWindowWidth();
 
   const [ln, setLn] = useState("");
   const [fn, setFn] = useState("");
@@ -270,19 +272,6 @@ function CustomerForm({ formSettings = [], scenarios = [], statuses = [], staffL
     ws.getColumn(8).width = 16;
     ws.getColumn(9).width = 18;
     customHeaders.forEach((_, i) => { ws.getColumn(10 + i).width = 18; });
-
-    // ── 電話番号列を文字列書式に設定（先頭ゼロ落ち防止） ──────
-    // 固定の「電話番号」列（3列目）
-    ws.getColumn(3).numFmt = "@";
-    // phone型のカスタム項目列も同様に設定
-    allHeaders.forEach((h, colIdx) => {
-      if (h.field?.type === "phone" || h.key?.includes("電話")) {
-        ws.getColumn(colIdx + 1).numFmt = "@";
-      }
-    });
-    // サンプルデータ行の電話番号セルも明示的に文字列として設定
-    ws.getCell(2, 3).value = "09012345678";
-    ws.getCell(2, 3).numFmt = "@";
 
     // コメント（ノート）
     allHeaders.forEach((h, i) => {
@@ -563,30 +552,32 @@ function CustomerForm({ formSettings = [], scenarios = [], statuses = [], staffL
     <Page
       title="新規顧客登録"
       topButton={
-        <div style={{ display: "flex", gap: "12px" }}>
-          <button
-            onClick={handleDownloadTemplate}
-            style={{ ...styles.btn, ...styles.btnSecondary }}
-          >
-            <FileSpreadsheet size={18} />
-            登録テンプレートDL
-          </button>
-          <button
-            onClick={() => navigate("/form-settings")}
-            style={{ ...styles.btn, ...styles.btnPrimary }}
-          >
-            <SlidersHorizontal size={18} />
-            登録項目の調整
-          </button>
-        </div>
+        isMobile ? null : (
+          <div style={{ display: "flex", flexDirection: "row", gap: "12px" }}>
+            <button
+              onClick={handleDownloadTemplate}
+              style={{ ...styles.btn, ...styles.btnSecondary }}
+            >
+              <FileSpreadsheet size={18} />
+              登録テンプレートDL
+            </button>
+            <button
+              onClick={() => navigate("/form-settings")}
+              style={{ ...styles.btn, ...styles.btnPrimary }}
+            >
+              <SlidersHorizontal size={18} />
+              登録項目の調整
+            </button>
+          </div>
+        )
       }
     >
-      <div style={{ ...styles.card, maxWidth: "700px", margin: "0 auto" }}>
+      <div style={{ ...styles.card, maxWidth: "700px", margin: "0 auto", ...(isMobile ? { padding: 20 } : {}) }}>
         <form onSubmit={handleSubmit}>
 
           {/* 姓・名 */}
-          <div style={{ display: "flex", gap: "20px", marginBottom: "20px" }}>
-            <div style={{ flex: 1 }}>
+          <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", gap: isMobile ? 0 : "20px", marginBottom: isMobile ? 0 : "20px" }}>
+            <div style={{ flex: 1, marginBottom: isMobile ? "20px" : 0 }}>
               <label style={{ fontWeight: "700" }}>姓 *</label>
               <input
                 style={styles.input}
@@ -628,10 +619,10 @@ function CustomerForm({ formSettings = [], scenarios = [], statuses = [], staffL
           <div
             style={{
               display: "grid",
-              gridTemplateColumns: "1fr 1fr",
-              gap: 20,
+              gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr",
+              gap: isMobile ? 14 : 20,
               marginBottom: 20,
-              padding: 20,
+              padding: isMobile ? 16 : 20,
               background: "#F8FAFC",
               borderRadius: 12,
               border: `1px solid ${THEME.border}`,
@@ -747,22 +738,24 @@ function CustomerForm({ formSettings = [], scenarios = [], statuses = [], staffL
           </button>
         </form>
 
-        {/* CSVインポート */}
-        <div
-          style={{
-            marginTop: "24px",
-            borderTop: `1px solid ${THEME.border}`,
-            paddingTop: "24px",
-          }}
-        >
-          <button
-            onClick={handleOpenFileDialog}
-            style={{ ...styles.btn, ...styles.btnSecondary, width: "100%" }}
+        {/* CSVインポート（モバイルでは利用シーンが乏しいため非表示） */}
+        {!isMobile && (
+          <div
+            style={{
+              marginTop: "24px",
+              borderTop: `1px solid ${THEME.border}`,
+              paddingTop: "24px",
+            }}
           >
-            <Upload size={18} />
-            CSVファイルから一括インポート
-          </button>
-        </div>
+            <button
+              onClick={handleOpenFileDialog}
+              style={{ ...styles.btn, ...styles.btnSecondary, width: "100%" }}
+            >
+              <Upload size={18} />
+              CSVファイルから一括インポート
+            </button>
+          </div>
+        )}
       </div>
     </Page>
     </>
