@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { ToastProvider, useToast } from "./ToastContext";
-import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
+import { BrowserRouter as Router, Routes, Route, useLocation } from "react-router-dom";
 import axios from "axios";
 import { Loader2, AlertTriangle, RefreshCw } from "lucide-react";
 import { GoogleOAuthProvider, GoogleLogin } from "@react-oauth/google";
@@ -57,8 +57,6 @@ function App() {
   const { isMobile } = useWindowWidth();
 
   // ── 公開メンバーページ ───────────────────────────
-  // /m/:slug への直接アクセスは、認証・データ取得を一切経由せず描画する。
-  // （ログイン不要で誰でも閲覧できる外部公開ページ）
   if (typeof window !== "undefined" && window.location.pathname.startsWith("/m/")) {
     return (
       <Router>
@@ -88,24 +86,20 @@ function App() {
     properties: [],
   });
 
-  // displaySettings: ユーザー個別に localStorage で管理
-  // キー: sf_display_${user.email} → 同じブラウザでも別ユーザーは別設定
   const getDisplaySettings = useCallback(() => {
     const email = JSON.parse(localStorage.getItem("sf_user") || "{}")?.email || "default";
     try {
       const raw = localStorage.getItem(`sf_display_${email}`);
-      return raw ? JSON.parse(raw) : null; // null = 未設定（GASのデフォルトを使う）
+      return raw ? JSON.parse(raw) : null;
     } catch { return null; }
   }, []);
 
   const [displaySettings, setDisplaySettings] = useState(() => getDisplaySettings() || []);
 
   const saveDisplaySettings = useCallback(async (settings) => {
-    // ① React state とlocalStorageを即時更新（画面の即時反映）
     const email = JSON.parse(localStorage.getItem("sf_user") || "{}")?.email || "default";
     localStorage.setItem(`sf_display_${email}`, JSON.stringify(settings));
     setDisplaySettings(settings);
-    // ② GAS（スプレッドシート）にも保存してlocalStorageと常に一致させる
     try {
       await axios.post(
         GAS_URL,
@@ -116,21 +110,17 @@ function App() {
       console.warn("[saveDisplaySettings] GAS sync failed (localStorage は保存済み):", e);
     }
   }, []);
+
   const [load, setLoad] = useState(true);
-  // GAS への接続失敗を保持（true のときエラー画面を表示）
   const [loadError, setLoadError] = useState(false);
   const [user, setUser] = useState(() => {
     const sUser = localStorage.getItem("sf_user");
     return sUser ? JSON.parse(sUser) : null;
   });
-  // setUser は非同期のため refresh() 内で user を直接参照すると
-  // setState直後の呼び出しで null になる。ref で即時参照できるようにする。
   const userRef = useRef(
     (() => { try { return JSON.parse(localStorage.getItem("sf_user")); } catch { return null; } })()
   );
 
-  // ── スタッフ一覧: App.jsx で一元管理・キャッシュ ──────────────
-  // 各コンポーネントが個別に fetch しないよう、ここで取得して props で渡す
   const [authError, setAuthError] = useState("");
   const [staffList, setStaffList] = useState(() => {
     try {
@@ -145,7 +135,6 @@ function App() {
       const res = await axios.get(`${MASTER_WHITELIST_API}?action=list&company=${CLIENT_COMPANY_NAME}&_t=${Date.now()}`);
       const list = res?.data?.users || [];
       setStaffList(list);
-      // 次回起動時の初期表示用にキャッシュ（古くても画面は即表示、裏で更新）
       localStorage.setItem("sf_staff_cache", JSON.stringify(list));
     } catch (e) { console.error("スタッフ取得エラー", e); }
   }, []);
@@ -155,23 +144,19 @@ function App() {
     try {
       const [gasRes] = await Promise.all([
         axios.get(`${GAS_URL}?_t=${Date.now()}`),
-        refreshStaff(), // GASデータと並列で取得
+        refreshStaff(),
       ]);
       const data = gasRes?.data || {};
-      // statuses をシート行順ではなく order 値でソートして全コンポーネントに渡す
       if (data.statuses) {
         data.statuses = [...data.statuses].sort((a, b) => (Number(a.order) || 0) - (Number(b.order) || 0));
       }
       setD(data);
       setLoadError(false);
-      // displaySettings はlocalStorageが未設定の場合のみGAS値を初期値として使う
       const local = getDisplaySettings();
       if (!local && data.displaySettings?.length > 0) {
         setDisplaySettings(data.displaySettings);
       }
     } catch (e) {
-      // GAS への接続に失敗（CORS / ネットワーク / GAS デプロイ設定など）。
-      // 画面を真っ白にせず、原因と再読み込みボタンを表示する。
       console.error("[refresh] データ取得に失敗しました", e);
       setLoadError(true);
     } finally {
@@ -179,8 +164,6 @@ function App() {
     }
   }, [getDisplaySettings, refreshStaff]);
 
-  // 顧客データのみを高速再取得（カンバン↔顧客リスト間の即時同期用）
-  // doGet の全シート読み込み（2〜5秒）と違い、顧客シートだけ読むため高速
   const lightRefresh = useCallback(async () => {
     if (!GAS_URL) return;
     try {
@@ -194,7 +177,6 @@ function App() {
     }
   }, [refresh]);
 
-  // シナリオの楽観的UI更新（新規追加・編集後にGAS再取得を待たずに即時反映）
   const optimisticAddScenario = useCallback((scenarioID, steps) => {
     const newRows = steps.map((step, i) => ({
       シナリオID:  scenarioID,
@@ -207,7 +189,6 @@ function App() {
     setD(prev => ({
       ...prev,
       scenarios: [
-        // 編集の場合は既存ステップを除去してから追加（新規の場合はそのまま追加）
         ...prev.scenarios.filter(s => s["シナリオID"] !== scenarioID),
         ...newRows,
       ],
@@ -220,58 +201,37 @@ function App() {
   // ── 未ログイン：ログイン画面 ──────────────────
   if (!user) {
     return (
-      <div
-        style={{
-          height: "100vh",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          backgroundColor: THEME.bg,
-        }}
-      >
+      <div style={{ height: "100vh", display: "flex", alignItems: "center", justifyContent: "center", backgroundColor: THEME.bg }}>
         <style>{globalStyle}</style>
-        <div
-          style={{
-            ...styles.card,
-            textAlign: "center",
-            width: "400px",
-            padding: "48px",
-          }}
-        >
+        <div style={{ ...styles.card, textAlign: "center", width: "400px", padding: "48px" }}>
           <div style={{ margin: "0 auto 40px", display: "flex", justifyContent: "center" }}>
-            <img
-              src="/logo_beta.png"
-              alt="SMOOSy"
-              style={{ height: "80px", width: "auto", objectFit: "contain" }}
-            />
+            <img src="/logo_beta.png" alt="SMOOSy" style={{ height: "80px", width: "auto", objectFit: "contain" }} />
           </div>
           <GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID}>
             <div style={{ display: "flex", justifyContent: "center" }}>
-            <GoogleLogin
-              onSuccess={async (res) => {
-                const dec = jwtDecode(res.credential);
-                const email = dec.email || "";
-                // ── 許可リストチェック（会社名×メール） ──────────
-                try {
-                  const url = `${MASTER_WHITELIST_API}?action=checkAllowUser&email=${encodeURIComponent(email)}&company=${encodeURIComponent(CLIENT_COMPANY_NAME)}`;
-                  const check = await axios.get(url);
-                  if (!check.data?.allowed) {
-                    setAuthError(`${email} はこの環境へのアクセス権がありません。管理者に連絡してください。`);
+              <GoogleLogin
+                onSuccess={async (res) => {
+                  const dec = jwtDecode(res.credential);
+                  const email = dec.email || "";
+                  try {
+                    const url = `${MASTER_WHITELIST_API}?action=checkAllowUser&email=${encodeURIComponent(email)}&company=${encodeURIComponent(CLIENT_COMPANY_NAME)}`;
+                    const check = await axios.get(url);
+                    if (!check.data?.allowed) {
+                      setAuthError(`${email} はこの環境へのアクセス権がありません。管理者に連絡してください。`);
+                      return;
+                    }
+                  } catch (e) {
+                    console.error("[checkAllowUser] 通信エラー", e);
+                    setAuthError("認証サーバーとの通信に失敗しました。しばらく経ってから再度お試しください。");
                     return;
                   }
-                } catch (e) {
-                  console.error("[checkAllowUser] 通信エラー", e);
-                  setAuthError("認証サーバーとの通信に失敗しました。しばらく経ってから再度お試しください。");
-                  return;
-                }
-                // ── 認証OK ─────────────────────────────────────
-                userRef.current = dec; // setState前に ref を更新して refresh() が通るようにする
-                setUser(dec);
-                localStorage.setItem("sf_user", JSON.stringify(dec));
-                refresh();
-              }}
-              onError={() => setAuthError("Googleログインに失敗しました。再度お試しください。")}
-            />
+                  userRef.current = dec;
+                  setUser(dec);
+                  localStorage.setItem("sf_user", JSON.stringify(dec));
+                  refresh();
+                }}
+                onError={() => setAuthError("Googleログインに失敗しました。再度お試しください。")}
+              />
             </div>
           </GoogleOAuthProvider>
           {authError && (
@@ -284,59 +244,21 @@ function App() {
     );
   }
 
-  // ── ローディング ──────────────────────────────
-  if (load) {
-    return (
-      <div
-        style={{
-          height: "100vh",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          backgroundColor: THEME.bg,
-        }}
-      >
-        <Loader2 size={48} className="animate-spin" color={THEME.primary} />
-      </div>
-    );
-  }
-
   // ── GAS 接続エラー画面 ────────────────────────
-  // データ取得に失敗したとき、白紙ではなく原因と再読み込みを表示する。
   if (loadError) {
     return (
-      <div style={{
-        height: "100vh", display: "flex", alignItems: "center",
-        justifyContent: "center", backgroundColor: THEME.bg, padding: 24,
-      }}>
-        <div style={{
-          maxWidth: 480, width: "100%", backgroundColor: "white",
-          borderRadius: 16, padding: "40px 32px", textAlign: "center",
-          boxShadow: "0 10px 25px -5px rgba(0,0,0,0.1)",
-        }}>
-          <div style={{
-            width: 64, height: 64, borderRadius: "50%",
-            backgroundColor: "#FEF3C7", display: "flex",
-            alignItems: "center", justifyContent: "center", margin: "0 auto 20px",
-          }}>
+      <div style={{ height: "100vh", display: "flex", alignItems: "center", justifyContent: "center", backgroundColor: THEME.bg, padding: 24 }}>
+        <div style={{ maxWidth: 480, width: "100%", backgroundColor: "white", borderRadius: 16, padding: "40px 32px", textAlign: "center", boxShadow: "0 10px 25px -5px rgba(0,0,0,0.1)" }}>
+          <div style={{ width: 64, height: 64, borderRadius: "50%", backgroundColor: "#FEF3C7", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 20px" }}>
             <AlertTriangle size={30} color="#D97706" />
           </div>
-          <h2 style={{ margin: "0 0 10px", fontSize: 20, fontWeight: 900, color: THEME.textMain }}>
-            サーバーに接続できません
-          </h2>
+          <h2 style={{ margin: "0 0 10px", fontSize: 20, fontWeight: 900, color: THEME.textMain }}>サーバーに接続できません</h2>
           <p style={{ margin: "0 0 24px", fontSize: 14, color: THEME.textMuted, lineHeight: 1.7 }}>
-            データの取得に失敗しました。インターネット接続をご確認のうえ、
-            再読み込みをお試しください。改善しない場合は、サーバー（GAS）の
-            デプロイ設定が原因の可能性があります。
+            データの取得に失敗しました。インターネット接続をご確認のうえ、再読み込みをお試しください。改善しない場合は、サーバー（GAS）のデプロイ設定が原因の可能性があります。
           </p>
           <button
             onClick={() => { setLoad(true); setLoadError(false); refresh(); }}
-            style={{
-              display: "inline-flex", alignItems: "center", gap: 8,
-              backgroundColor: THEME.primary, color: "white", border: "none",
-              borderRadius: 10, padding: "12px 28px", fontSize: 14, fontWeight: 800,
-              cursor: "pointer",
-            }}
+            style={{ display: "inline-flex", alignItems: "center", gap: 8, backgroundColor: THEME.primary, color: "white", border: "none", borderRadius: 10, padding: "12px 28px", fontSize: 14, fontWeight: 800, cursor: "pointer" }}
           >
             <RefreshCw size={16} /> 再読み込み
           </button>
@@ -346,6 +268,8 @@ function App() {
   }
 
   // ── メインレイアウト ──────────────────────────
+  // ※ load=true の間も描画を継続し、CustomerList の isLoading={load} で
+  //   Skeleton アニメーションを表示する（if(load) return は削除済み）
   return (
     <ToastProvider>
     <GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID}>
@@ -353,7 +277,7 @@ function App() {
       <Router>
         <div style={{ display: "flex", minHeight: "100vh", width: "100%" }}>
 
-          {/* サイドバー（PC: 260px固定 / モバイル: ハンバーガー+スライドメニュー） */}
+          {/* サイドバー */}
           <Sidebar
             onLogout={() => {
               setUser(null);
@@ -362,21 +286,11 @@ function App() {
           />
 
           {/* メインコンテンツ */}
-          <main
-            style={{
-              flex: 1,
-              minWidth: 0,
-              width: "100%",
-              boxSizing: "border-box",
-              backgroundColor: THEME.bg,
-              minHeight: "100vh",
-              paddingTop: isMobile ? "56px" : 0,
-            }}
-          >
+          <AnimatedMain isMobile={isMobile}>
             <Routes>
               {/* 顧客管理 */}
-              <Route path="/" element={<CustomerList customers={d?.customers} displaySettings={displaySettings} formSettings={d?.formSettings} scenarios={d?.scenarios} statuses={d?.statuses} staffList={staffList} scenarioSettings={d?.scenarioSettings} sources={d?.sources} properties={d?.properties} gasUrl={GAS_URL} onRefresh={refresh} onLightRefresh={lightRefresh} />} />
-              <Route path="/customers" element={<CustomerList customers={d?.customers} displaySettings={displaySettings} formSettings={d?.formSettings} scenarios={d?.scenarios} statuses={d?.statuses} staffList={staffList} scenarioSettings={d?.scenarioSettings} sources={d?.sources} properties={d?.properties} gasUrl={GAS_URL} onRefresh={refresh} onLightRefresh={lightRefresh} />} />
+              <Route path="/" element={<CustomerList isLoading={load} customers={d?.customers} displaySettings={displaySettings} formSettings={d?.formSettings} scenarios={d?.scenarios} statuses={d?.statuses} staffList={staffList} scenarioSettings={d?.scenarioSettings} sources={d?.sources} properties={d?.properties} gasUrl={GAS_URL} onRefresh={refresh} onLightRefresh={lightRefresh} />} />
+              <Route path="/customers" element={<CustomerList isLoading={load} customers={d?.customers} displaySettings={displaySettings} formSettings={d?.formSettings} scenarios={d?.scenarios} statuses={d?.statuses} staffList={staffList} scenarioSettings={d?.scenarioSettings} sources={d?.sources} properties={d?.properties} gasUrl={GAS_URL} onRefresh={refresh} onLightRefresh={lightRefresh} />} />
               <Route path="/add" element={<CustomerForm scenarios={d?.scenarios} formSettings={d?.formSettings} statuses={d?.statuses} staffList={staffList} sources={d?.sources} groups={d?.groups} contractTypes={d?.contractTypes} onRefresh={refresh} />} />
               <Route path="/schedule/:id" element={<CustomerSchedule customers={d?.customers} deliveryLogs={d?.deliveryLogs} onRefresh={refresh} />} />
               <Route path="/detail/:id" element={<CustomerDetail customers={d?.customers} formSettings={d?.formSettings} statuses={d?.statuses} sources={d?.sources} contractTypes={d?.contractTypes} trackingLogs={d?.trackingLogs} staffList={staffList} groups={d?.groups} statusHistory={d?.statusHistory} properties={d?.properties} scenarios={d?.scenarios} gasUrl={GAS_URL} onRefresh={refresh} />} />
@@ -425,12 +339,36 @@ function App() {
               {/* カンバン */}
               <Route path="/kanban" element={<KanbanBoard customers={d?.customers} statuses={d?.statuses} scenarios={d?.scenarios} scenarioSettings={d?.scenarioSettings} staffList={staffList} properties={d?.properties} onRefresh={refresh} onLightRefresh={lightRefresh} gasUrl={GAS_URL} sources={d?.sources} contractTypes={d?.contractTypes} />} />
             </Routes>
-          </main>
+          </AnimatedMain>
 
         </div>
       </Router>
     </GoogleOAuthProvider>
     </ToastProvider>
+  );
+}
+
+// ── ページ遷移アニメーション用コンポーネント ──────────
+// useLocation は <Router> の内側でのみ使用可能なため、
+// main を切り出して pathname が変わるたびに key を更新する。
+function AnimatedMain({ isMobile, children }) {
+  const location = useLocation();
+  return (
+    <main
+      key={location.pathname}
+      style={{
+        flex: 1,
+        minWidth: 0,
+        width: "100%",
+        boxSizing: "border-box",
+        backgroundColor: THEME.bg,
+        minHeight: "100vh",
+        paddingTop: isMobile ? "56px" : 0,
+        animation: "fadeSlideIn 0.25s ease-out",
+      }}
+    >
+      {children}
+    </main>
   );
 }
 
