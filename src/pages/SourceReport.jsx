@@ -2,6 +2,7 @@ import React, { useMemo, useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { GitBranch, ChevronLeft } from "lucide-react";
 import { THEME as APP_THEME } from "../lib/constants";
+import { useWindowWidth } from "../lib/useWindowWidth";
 
 const THEME = APP_THEME;
 const COLORS = ["#4F46E5","#0891B2","#059669","#D97706","#DC2626","#7C3AED","#DB2777","#EA580C"];
@@ -203,6 +204,7 @@ export default function SourceReport({
   properties = [],
 }) {
   const navigate = useNavigate();
+  const { isMobile } = useWindowWidth();
   const [periodCP, setPeriodCP]     = useState({ from: "", to: "" });  // 契約獲得力
   const [periodROI, setPeriodROI]   = useState({ from: "", to: "" });  // 成約金額ROI
   const [periodCost, setPeriodCost] = useState({ from: "", to: "" });  // 費用対効果
@@ -475,8 +477,8 @@ export default function SourceReport({
   };
 
   return (
-    <div style={{ minHeight: "100vh", backgroundColor: THEME.bg, padding: "40px 56px" }}>
-      <div style={{ maxWidth: 1100, margin: "0 auto" }}>
+    <div style={{ minHeight: "100vh", backgroundColor: THEME.bg, overflowX: isMobile ? "auto" : undefined, WebkitOverflowScrolling: isMobile ? "touch" : undefined }}>
+      <div style={{ minWidth: isMobile ? 1100 : undefined, padding: "40px 56px", maxWidth: "1100px", margin: "0 auto" }}>
 
         {/* ── ヘッダー ── */}
         <header style={{ marginBottom: 36 }}>
@@ -489,7 +491,7 @@ export default function SourceReport({
           </button>
           <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 6 }}>
             <GitBranch size={26} color="#0891B2" />
-            <h1 style={{ fontSize: 26, fontWeight: 900, color: THEME.textMain, margin: 0 }}>流入経路評価</h1>
+            <h1 style={{ fontSize: isMobile ? 20 : 26, fontWeight: 900, color: THEME.textMain, margin: 0 }}>流入経路評価</h1>
           </div>
           <p style={{ color: THEME.textMuted, fontSize: 13, margin: 0 }}>
             流入元ごとのステータス到達数・費用対効果・成約金額ROI・契約獲得力

@@ -3,6 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { Activity, Timer, X, ChevronLeft } from "lucide-react";
 import { THEME as APP_THEME } from "../lib/constants";
 import { StaffDropdown } from "../components/StaffDropdown";
+import { useWindowWidth } from "../lib/useWindowWidth";
 
 const THEME = { ...APP_THEME, colors: ["#4F46E5","#6366F1","#818CF8","#A5B4FC","#C7D2FE","#E0E7FF"] };
 
@@ -153,6 +154,7 @@ export default function AnalysisReport({ customers = [], statuses = [], tracking
   const [filterStaff, setFilterStaff] = useState("");
   const [drillStatus, setDrillStatus] = useState(null);
   const navigate = useNavigate();
+  const { isMobile } = useWindowWidth();
 
   const filtered = useMemo(() =>
     customers.filter(c => !filterStaff || c["担当者メール"] === filterStaff),
@@ -256,58 +258,59 @@ export default function AnalysisReport({ customers = [], statuses = [], tracking
   return (
     <>
       <div style={S.main}>
-        <div style={S.wrapper}>
+        <div style={{ padding: isMobile ? "20px 16px" : "40px 64px", maxWidth: "1400px", margin: "0 auto", boxSizing: "border-box" }}>
 
           {/* ヘッダー */}
-          <header style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 40 }}>
+          <header style={{ display: "flex", flexDirection: isMobile ? "column" : "row", justifyContent: "space-between", alignItems: isMobile ? "stretch" : "flex-end", gap: isMobile ? 14 : 0, marginBottom: isMobile ? 24 : 40 }}>
             <div>
               <button onClick={() => navigate("/analysis")} style={{ display: "flex", alignItems: "center", gap: 6, background: "none", border: "none", cursor: "pointer", color: THEME.textMuted, fontWeight: 800, fontSize: 13, marginBottom: 12, padding: 0 }}>
                 <ChevronLeft size={16} /> レポート一覧に戻る
               </button>
               <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 6 }}>
                 <Activity size={28} color={THEME.primary} />
-                <h1 style={{ fontSize: 28, fontWeight: 900, color: THEME.textMain, margin: 0 }}>営業進捗レポート</h1>
+                <h1 style={{ fontSize: isMobile ? 20 : 28, fontWeight: 900, color: THEME.textMain, margin: 0 }}>営業進捗レポート</h1>
               </div>
-              <p style={{ color: THEME.textMuted, fontSize: 14, margin: 0 }}>棒グラフをクリックすると顧客一覧が表示されます</p>
+              <p style={{ color: THEME.textMuted, fontSize: 14, margin: 0 }}>{isMobile ? "グラフをタップすると顧客一覧が表示されます" : "棒グラフをクリックすると顧客一覧が表示されます"}</p>
             </div>
             <StaffDropdown staffList={staffList} value={filterStaff} onChange={setFilterStaff} />
           </header>
 
-          {/* 棒グラフ */}
-          <div style={S.card}>
-            <h3 style={{ fontSize: 17, fontWeight: 900, marginBottom: 28, display: "flex", alignItems: "center", gap: 8 }}>
+          {/* 棒グラフ（横スクロール対応） */}
+          <div style={{ ...S.card, padding: isMobile ? "18px 16px" : "32px" }}>
+            <h3 style={{ fontSize: isMobile ? 15 : 17, fontWeight: 900, marginBottom: 28, display: "flex", alignItems: "center", gap: 8 }}>
               <Activity size={18} color={THEME.primary} /> 案件分布
-              <span style={{ fontSize: 12, fontWeight: 700, color: THEME.textMuted, marginLeft: 8 }}>— バーをクリックで顧客リスト（停滞色分け）表示</span>
             </h3>
-            <div style={{ height: 280, display: "flex", alignItems: "flex-end", gap: 12, paddingBottom: 16, borderBottom: `2px solid ${THEME.border}` }}>
-              {chartData.map(d => {
-                const isTerminal = !!d.terminalType;
-                const ts = isTerminal ? terminalStyle(d.terminalType) : null;
-                const barColor = isTerminal ? ts.color : d.color;
-                return (
-                  <div key={d.name} style={{ flex: 1, display: "flex", flexDirection: "column", height: "100%", cursor: d.count > 0 ? "pointer" : "default" }}
-                    onClick={() => d.count > 0 && setDrillStatus(d.name)}
-                  >
-                    <div style={{ flex: 1, display: "flex", alignItems: "flex-end", justifyContent: "center", marginBottom: 10 }}>
-                      <div style={{
-                        width: "60%", borderRadius: "8px 8px 2px 2px",
-                        backgroundColor: barColor, position: "relative",
-                        height: `${Math.max((d.count / maxCount) * 100, d.count > 0 ? 4 : 0)}%`,
-                        transition: "height 0.8s ease, filter 0.15s",
-                        minHeight: d.count > 0 ? 8 : 0,
-                        opacity: isTerminal ? 0.85 : 1,
-                      }}
-                        onMouseEnter={e => { if (d.count > 0) e.currentTarget.style.filter = "brightness(0.88)"; }}
-                        onMouseLeave={e => e.currentTarget.style.filter = "none"}
+            <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
+              <div style={{ minWidth: Math.max(chartData.length * 60, 800) }}>
+                <div style={{ height: 280, display: "flex", alignItems: "flex-end", gap: 12, paddingBottom: 16, borderBottom: `2px solid ${THEME.border}` }}>
+                  {chartData.map(d => {
+                    const isTerminal = !!d.terminalType;
+                    const ts = isTerminal ? terminalStyle(d.terminalType) : null;
+                    const barColor = isTerminal ? ts.color : d.color;
+                    return (
+                      <div key={d.name} style={{ flex: 1, display: "flex", flexDirection: "column", height: "100%", cursor: d.count > 0 ? "pointer" : "default" }}
+                        onClick={() => d.count > 0 && setDrillStatus(d.name)}
                       >
-                        {d.count > 0 && (
-                          <span style={{ position: "absolute", top: -24, left: "50%", transform: "translateX(-50%)", fontWeight: 900, color: barColor, fontSize: 14 }}>
-                            {d.count}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                    <div style={{ textAlign: "center" }}>
+                        <div style={{ flex: 1, display: "flex", alignItems: "flex-end", justifyContent: "center", marginBottom: 10 }}>
+                          <div style={{
+                            width: "60%", borderRadius: "8px 8px 2px 2px",
+                            backgroundColor: barColor, position: "relative",
+                            height: `${Math.max((d.count / maxCount) * 100, d.count > 0 ? 4 : 0)}%`,
+                            transition: "height 0.8s ease, filter 0.15s",
+                            minHeight: d.count > 0 ? 8 : 0,
+                            opacity: isTerminal ? 0.85 : 1,
+                          }}
+                            onMouseEnter={e => { if (d.count > 0) e.currentTarget.style.filter = "brightness(0.88)"; }}
+                            onMouseLeave={e => e.currentTarget.style.filter = "none"}
+                          >
+                            {d.count > 0 && (
+                              <span style={{ position: "absolute", top: -24, left: "50%", transform: "translateX(-50%)", fontWeight: 900, color: barColor, fontSize: 14 }}>
+                                {d.count}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        <div style={{ textAlign: "center" }}>
                       {isTerminal && <div style={{ fontSize: 13, lineHeight: 1, marginBottom: 2 }}>{ts.emoji}</div>}
                       <div style={{ fontSize: 11, fontWeight: 800, color: isTerminal ? ts.color : THEME.textMain, lineHeight: 1.3 }}>
                         {d.name}
@@ -317,13 +320,14 @@ export default function AnalysisReport({ customers = [], statuses = [], tracking
                 );
               })}
             </div>
+            </div>{/* 横スクロール内側 */}
+            </div>{/* overflowX:auto */}
           </div>
 
           {/* フェーズ別平均滞在日数 */}
-          <div style={S.card}>
-            <h3 style={{ fontSize: 17, fontWeight: 900, marginBottom: 24, display: "flex", alignItems: "center", gap: 8 }}>
+          <div style={{ ...S.card, padding: isMobile ? "18px 16px" : "32px" }}>
+            <h3 style={{ fontSize: isMobile ? 15 : 17, fontWeight: 900, marginBottom: 24, display: "flex", alignItems: "center", gap: 8 }}>
               <Timer size={18} color={THEME.primary} /> フェーズ別平均滞在日数
-              <span style={{ fontSize: 12, fontWeight: 700, color: THEME.textMuted, marginLeft: 8 }}>— 顧客が次のステータスへ進むまでの平均日数</span>
             </h3>
 
             <div style={{ display: "flex", alignItems: "stretch", overflowX: "auto", paddingBottom: 8, gap: 0 }}>

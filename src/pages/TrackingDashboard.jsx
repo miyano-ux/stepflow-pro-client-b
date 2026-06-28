@@ -1,28 +1,28 @@
 import React, { useState, useEffect } from "react";
-import { Link } from "react-router-dom"; // 🆕 遷移用にインポート
+import { Link } from "react-router-dom";
 import axios from "axios";
-import { Activity, MousePointerClick, Users, Zap, ExternalLink, Clock, Loader2, ChevronRight } from "lucide-react";
+import { Activity, MousePointerClick, Users, Zap, Clock, Loader2, ChevronRight } from "lucide-react";
+import { useWindowWidth } from "../lib/useWindowWidth";
 
 const THEME = {
-  primary: "#4F46E5", bg: "#F8FAFC", card: "#FFFFFF", textMain: "#1E293B", 
+  primary: "#4F46E5", bg: "#F8FAFC", card: "#FFFFFF", textMain: "#1E293B",
   textMuted: "#64748B", border: "#E2E8F0", success: "#10B981", danger: "#EF4444"
 };
 
 const styles = {
   main: { minHeight: "100vh", backgroundColor: THEME.bg },
-  wrapper: { padding: "48px 64px", maxWidth: "1440px", margin: "0 auto" },
-  grid: { display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "24px", marginBottom: "40px" },
   statCard: { backgroundColor: THEME.card, padding: "24px", borderRadius: "16px", border: `1px solid ${THEME.border}`, boxShadow: "0 4px 6px -1px rgba(0,0,0,0.05)" },
-  feedItem: { 
-    display: "flex", alignItems: "center", gap: "16px", padding: "20px", 
+  feedItem: {
+    display: "flex", alignItems: "center", gap: "16px", padding: "20px",
     backgroundColor: THEME.card, borderRadius: "12px", marginBottom: "12px",
-    border: `1px solid ${THEME.border}`, transition: "0.3s"
+    border: `1px solid ${THEME.border}`, transition: "0.3s",
   }
 };
 
 export default function TrackingDashboard() {
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
+  const { isMobile } = useWindowWidth();
 
   const fetchStats = async () => {
     try {
@@ -87,27 +87,28 @@ export default function TrackingDashboard() {
 
   return (
     <div style={styles.main}>
-      <div style={styles.wrapper}>
-        <header style={{ marginBottom: "40px" }}>
-          <h1 style={{ fontSize: "32px", fontWeight: "900", color: THEME.textMain, margin: 0, display: "flex", alignItems: "center", gap: "12px" }}>
+      <div style={{ padding: isMobile ? "20px 16px" : "48px 64px", maxWidth: "1440px", margin: "0 auto", boxSizing: "border-box" }}>
+        <header style={{ marginBottom: isMobile ? "24px" : "40px" }}>
+          <h1 style={{ fontSize: isMobile ? "22px" : "32px", fontWeight: "900", color: THEME.textMain, margin: 0, display: "flex", alignItems: "center", gap: "12px" }}>
             <Activity color={THEME.success} /> トラッキング実況
           </h1>
         </header>
 
-        <div style={styles.grid}>
-          <div style={styles.statCard}>
+        {/* KPIカードグリッド：モバイルで2列 */}
+        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(4, 1fr)", gap: isMobile ? "12px" : "24px", marginBottom: isMobile ? "24px" : "40px" }}>
+          <div style={{ ...styles.statCard, padding: isMobile ? "16px" : "24px" }}>
             <div style={{ color: THEME.textMuted, fontSize: "11px", fontWeight: "800", marginBottom: "8px" }}>総送信リンク数</div>
-            <div style={{ fontSize: "28px", fontWeight: "900" }}>{totalSent} <span style={{ fontSize: "14px" }}>件</span></div>
+            <div style={{ fontSize: isMobile ? "22px" : "28px", fontWeight: "900" }}>{totalSent} <span style={{ fontSize: "14px" }}>件</span></div>
           </div>
-          <div style={styles.statCard}>
+          <div style={{ ...styles.statCard, padding: isMobile ? "16px" : "24px" }}>
             <div style={{ color: THEME.textMuted, fontSize: "11px", fontWeight: "800", marginBottom: "8px" }}>ユニーク顧客数</div>
-            <div style={{ fontSize: "28px", fontWeight: "900" }}>{totalClicked} <span style={{ fontSize: "14px" }}>名</span></div>
+            <div style={{ fontSize: isMobile ? "22px" : "28px", fontWeight: "900" }}>{totalClicked} <span style={{ fontSize: "14px" }}>名</span></div>
           </div>
-          <div style={styles.statCard}>
+          <div style={{ ...styles.statCard, padding: isMobile ? "16px" : "24px" }}>
             <div style={{ color: THEME.textMuted, fontSize: "11px", fontWeight: "800", marginBottom: "8px" }}>顧客反応率 (CTR)</div>
-            <div style={{ fontSize: "28px", fontWeight: "900", color: THEME.primary }}>{ctr} <span style={{ fontSize: "14px" }}>%</span></div>
+            <div style={{ fontSize: isMobile ? "22px" : "28px", fontWeight: "900", color: THEME.primary }}>{ctr} <span style={{ fontSize: "14px" }}>%</span></div>
           </div>
-          <div style={styles.statCard}>
+          <div style={{ ...styles.statCard, padding: isMobile ? "16px" : "24px" }}>
             <div style={{ color: THEME.textMuted, fontSize: "11px", fontWeight: "800", marginBottom: "8px" }}>システム状態</div>
             <div style={{ color: THEME.success, fontWeight: "800", display: "flex", alignItems: "center", gap: 6, fontSize: "18px" }}>
               <Zap size={16} fill={THEME.success} /> 稼働中
@@ -116,29 +117,28 @@ export default function TrackingDashboard() {
         </div>
 
         <div style={{ maxWidth: "1000px" }}>
-          <h2 style={{ fontSize: "18px", fontWeight: "800", marginBottom: "20px" }}>顧客ごとの最新リアクション</h2>
+          <h2 style={{ fontSize: isMobile ? "16px" : "18px", fontWeight: "800", marginBottom: "20px" }}>顧客ごとの最新リアクション</h2>
           {customerStats.map(stat => {
             const hot = isHot(stat.lastClickedAt);
             return (
-              <div key={stat.id} style={{ ...styles.feedItem, borderLeft: hot ? `4px solid ${THEME.danger}` : `4px solid ${THEME.border}` }}>
-                <div style={{ backgroundColor: hot ? THEME.danger : "#F1F5F9", padding: "12px", borderRadius: "12px" }}>
-                  <MousePointerClick size={24} color={hot ? "white" : THEME.primary} />
+              <div key={stat.id} style={{ ...styles.feedItem, borderLeft: hot ? `4px solid ${THEME.danger}` : `4px solid ${THEME.border}`, gap: isMobile ? "12px" : "16px", padding: isMobile ? "14px 16px" : "20px" }}>
+                <div style={{ backgroundColor: hot ? THEME.danger : "#F1F5F9", padding: isMobile ? "8px" : "12px", borderRadius: "12px", flexShrink: 0 }}>
+                  <MousePointerClick size={isMobile ? 18 : 24} color={hot ? "white" : THEME.primary} />
                 </div>
-                <div style={{ flex: 1 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                    {/* 🆕 顧客名をクリックで詳細へ */}
-                    <Link to={`/detail/${stat.id}`} style={{ fontWeight: "900", fontSize: "18px", color: THEME.primary, textDecoration: "none" }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
+                    <Link to={`/detail/${stat.id}`} style={{ fontWeight: "900", fontSize: isMobile ? "15px" : "18px", color: THEME.primary, textDecoration: "none" }}>
                       {stat.name} 様
                     </Link>
-                    {hot && <span style={{ backgroundColor: THEME.danger, color: "white", fontSize: "10px", padding: "2px 8px", borderRadius: "4px", fontWeight: "900" }}>HOT!</span>}
+                    {hot && <span style={{ backgroundColor: THEME.danger, color: "white", fontSize: "10px", padding: "2px 8px", borderRadius: "4px", fontWeight: "900", flexShrink: 0 }}>HOT!</span>}
                   </div>
-                  <div style={{ color: THEME.textMuted, fontSize: "13px", marginTop: "4px", display: "flex", gap: "16px" }}>
-                    <span style={{ display: "flex", alignItems: "center", gap: 4 }}><Clock size={14} /> 最終クリック: {stat.lastClickedAt}</span>
-                    <span style={{ display: "flex", alignItems: "center", gap: 4 }}><Users size={14} /> 累計 {stat.totalClicks} 回クリック</span>
+                  <div style={{ color: THEME.textMuted, fontSize: "12px", marginTop: "4px", display: "flex", flexDirection: isMobile ? "column" : "row", gap: isMobile ? 2 : "16px" }}>
+                    <span style={{ display: "flex", alignItems: "center", gap: 4 }}><Clock size={13} /> {stat.lastClickedAt}</span>
+                    <span style={{ display: "flex", alignItems: "center", gap: 4 }}><Users size={13} /> 累計 {stat.totalClicks} 回</span>
                   </div>
                 </div>
-                <Link to={`/detail/${stat.id}`} style={{ color: THEME.textMuted }}>
-                  <ChevronRight size={24} />
+                <Link to={`/detail/${stat.id}`} style={{ color: THEME.textMuted, flexShrink: 0 }}>
+                  <ChevronRight size={20} />
                 </Link>
               </div>
             );

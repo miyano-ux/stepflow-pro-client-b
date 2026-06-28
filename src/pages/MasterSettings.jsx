@@ -2,32 +2,47 @@ import React from "react";
 import { Link } from "react-router-dom";
 import { Settings, Globe, FileText, MessageSquare, ChevronRight, ClipboardList } from "lucide-react";
 import { THEME } from "../lib/constants";
+import { useWindowWidth } from "../lib/useWindowWidth";
 
 // ==========================================
 // 🗂 MasterSettings - 管理項目設定ハブ
 // ==========================================
 
 function Section({ icon, title, linkTo, linkLabel, children }) {
+  const { isMobile } = useWindowWidth();
   return (
     <div style={{
       backgroundColor: "white", borderRadius: 16, border: `1px solid ${THEME.border}`,
       boxShadow: "0 2px 8px rgba(0,0,0,0.04)", marginBottom: 20, overflow: "hidden",
     }}>
       {/* ヘッダー */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "18px 24px", borderBottom: `1px solid ${THEME.border}`, backgroundColor: "#FAFBFF" }}>
+      <div style={{
+        display: "flex",
+        flexDirection: isMobile ? "column" : "row",
+        alignItems: isMobile ? "stretch" : "center",
+        justifyContent: "space-between",
+        gap: isMobile ? 10 : 0,
+        padding: isMobile ? "16px 18px" : "18px 24px",
+        borderBottom: `1px solid ${THEME.border}`, backgroundColor: "#FAFBFF",
+      }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <span style={{ color: THEME.primary }}>{icon}</span>
           <span style={{ fontSize: 16, fontWeight: 900, color: THEME.textMain }}>{title}</span>
         </div>
         <Link
           to={linkTo}
-          style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 800, color: THEME.primary, textDecoration: "none", padding: "7px 16px", backgroundColor: "#EEF2FF", borderRadius: 99 }}
+          style={{
+            display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+            fontSize: 13, fontWeight: 800, color: THEME.primary, textDecoration: "none",
+            padding: "7px 16px", backgroundColor: "#EEF2FF", borderRadius: 99,
+            ...(isMobile ? { width: "100%", boxSizing: "border-box" } : {}),
+          }}
         >
           {linkLabel} <ChevronRight size={14} />
         </Link>
       </div>
       {/* 本文 */}
-      <div style={{ padding: "16px 24px" }}>
+      <div style={{ padding: isMobile ? "14px 18px" : "16px 24px" }}>
         {children}
       </div>
     </div>
@@ -50,15 +65,16 @@ function TagList({ items, color = THEME.primary, emptyText = "未設定" }) {
 }
 
 export default function MasterSettings({ statuses = [], sources = [], contractTypes = [], scenarios = [] }) {
+  const { isMobile } = useWindowWidth();
   const flowStatuses = statuses.filter(s => s.terminalType !== "dormant" && s.terminalType !== "lost");
   const terminalStatuses = statuses.filter(s => s.terminalType === "dormant" || s.terminalType === "lost");
   const scenarioIds = [...new Set(scenarios.map(s => s["シナリオID"]).filter(Boolean))];
 
   return (
-    <div style={{ minHeight: "100vh", backgroundColor: THEME.bg, padding: "40px 48px" }}>
+    <div style={{ minHeight: "100vh", backgroundColor: THEME.bg, padding: isMobile ? "20px 16px" : "40px 48px", boxSizing: "border-box" }}>
       <div style={{ maxWidth: 760, margin: "0 auto" }}>
-        <h1 style={{ fontSize: 28, fontWeight: 900, color: THEME.textMain, margin: "0 0 8px" }}>管理項目設定</h1>
-        <p style={{ fontSize: 14, color: THEME.textMuted, margin: "0 0 32px" }}>各設定の現在の内容を確認し、編集画面に移動できます。</p>
+        <h1 style={{ fontSize: isMobile ? 20 : 28, fontWeight: 900, color: THEME.textMain, margin: "0 0 8px" }}>管理項目設定</h1>
+        <p style={{ fontSize: isMobile ? 13 : 14, color: THEME.textMuted, margin: isMobile ? "0 0 24px" : "0 0 32px" }}>各設定の現在の内容を確認し、編集画面に移動できます。</p>
 
         {/* ステータス設定 */}
         <Section icon={<Settings size={18} />} title="ステータス設定" linkTo="/status-settings" linkLabel="設定を編集">
@@ -85,11 +101,16 @@ export default function MasterSettings({ statuses = [], sources = [], contractTy
           to="/form-settings"
           state={{ from: "master-settings" }}
           style={{
-            display: "flex", alignItems: "center", justifyContent: "space-between",
-            padding: "14px 20px", marginBottom: 20,
+            display: "flex",
+            flexDirection: isMobile ? "column" : "row",
+            alignItems: isMobile ? "stretch" : "center",
+            justifyContent: "space-between",
+            gap: isMobile ? 12 : 0,
+            padding: isMobile ? "16px 18px" : "14px 20px", marginBottom: 20,
             backgroundColor: "white", borderRadius: 12,
             border: `1px solid ${THEME.border}`,
             textDecoration: "none", transition: "box-shadow 0.15s, border-color 0.15s",
+            boxSizing: "border-box",
           }}
           onMouseEnter={e => {
             e.currentTarget.style.borderColor = THEME.primary;
@@ -101,7 +122,7 @@ export default function MasterSettings({ statuses = [], sources = [], contractTy
           }}
         >
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <span style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 32, height: 32, backgroundColor: "#EEF2FF", borderRadius: 8 }}>
+            <span style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 32, height: 32, backgroundColor: "#EEF2FF", borderRadius: 8, flexShrink: 0 }}>
               <ClipboardList size={16} color={THEME.primary} />
             </span>
             <div>
@@ -109,7 +130,12 @@ export default function MasterSettings({ statuses = [], sources = [], contractTy
               <div style={{ fontSize: 12, color: THEME.textMuted, marginTop: 1 }}>顧客登録フォームのカスタム項目を設定</div>
             </div>
           </div>
-          <span style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, fontWeight: 800, color: THEME.primary, padding: "7px 16px", backgroundColor: "#EEF2FF", borderRadius: 99 }}>
+          <span style={{
+            display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+            fontSize: 13, fontWeight: 800, color: THEME.primary,
+            padding: "7px 16px", backgroundColor: "#EEF2FF", borderRadius: 99,
+            ...(isMobile ? { width: "100%", boxSizing: "border-box" } : {}),
+          }}>
             設定を編集 <ChevronRight size={14} />
           </span>
         </Link>

@@ -3,6 +3,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import axios from "axios";
 import { Plus, Trash2, Calendar, Clock, Save, Loader2, ArrowLeft, CheckCircle2 } from "lucide-react";
 import { useToast } from "../ToastContext";
+import { useWindowWidth } from "../lib/useWindowWidth";
 
 const THEME = {
   primary: "#4F46E5", bg: "#F8FAFC", card: "#FFFFFF",
@@ -201,6 +202,7 @@ export default function ScenarioForm({ scenarios = [], customers = [], staffList
   const showToast = useToast();
   const { id } = useParams();
   const navigate = useNavigate();
+  const { isMobile } = useWindowWidth();
 
   const [name, setName]       = useState("");
   const [st, setSt]           = useState([{ elapsedDays: 1, deliveryHour: 10, deliveryMinute: 0, message: "" }]);
@@ -353,9 +355,16 @@ export default function ScenarioForm({ scenarios = [], customers = [], staffList
         onClose={() => { setSuccessModal(false); navigate("/scenarios"); }}
       />
 
-      <div style={formStyles.main}>
+      <div style={{ ...formStyles.main, padding: isMobile ? "20px 16px" : "40px 64px", boxSizing: "border-box" }}>
         {/* ヘッダー */}
-        <header style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "40px" }}>
+        <header style={{
+          display: "flex",
+          flexDirection: isMobile ? "column" : "row",
+          justifyContent: "space-between",
+          alignItems: isMobile ? "stretch" : "center",
+          gap: isMobile ? 16 : 0,
+          marginBottom: isMobile ? "24px" : "40px",
+        }}>
           <div>
             <button
               onClick={() => navigate("/scenarios")}
@@ -363,7 +372,7 @@ export default function ScenarioForm({ scenarios = [], customers = [], staffList
             >
               <ArrowLeft size={18} /> 戻る
             </button>
-            <h1 style={{ fontSize: "32px", fontWeight: "900", color: THEME.textMain, margin: 0 }}>
+            <h1 style={{ fontSize: isMobile ? "22px" : "32px", fontWeight: "900", color: THEME.textMain, margin: 0 }}>
               {id ? "シナリオ編集" : "新規シナリオ作成"}
             </h1>
           </div>
@@ -375,8 +384,9 @@ export default function ScenarioForm({ scenarios = [], customers = [], staffList
               color: "white", padding: "14px 28px", borderRadius: "12px",
               border: "none", fontWeight: "900",
               cursor: saving ? "not-allowed" : "pointer",
-              display: "flex", gap: 10, alignItems: "center",
+              display: "flex", gap: 10, alignItems: "center", justifyContent: "center",
               transition: "background-color 0.2s",
+              ...(isMobile ? { width: "100%", boxSizing: "border-box" } : {}),
             }}
           >
             <Save size={20} /> 保存
@@ -385,7 +395,7 @@ export default function ScenarioForm({ scenarios = [], customers = [], staffList
 
         <div style={{ maxWidth: "850px" }}>
           {/* シナリオ名 */}
-          <div style={formStyles.card}>
+          <div style={{ ...formStyles.card, padding: isMobile ? "20px" : "32px" }}>
             <label style={{ fontSize: "13px", fontWeight: "900", color: THEME.textMuted, display: "block", marginBottom: "12px" }}>
               シナリオ名（ID）
             </label>
@@ -412,9 +422,9 @@ export default function ScenarioForm({ scenarios = [], customers = [], staffList
                 </button>
               </div>
 
-              <div style={{ padding: "28px 32px" }}>
+              <div style={{ padding: isMobile ? "20px 18px" : "28px 32px" }}>
                 {/* 経過日数 ＋ 配信時刻 */}
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 2fr", gap: "24px", marginBottom: "28px" }}>
+                <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 2fr", gap: isMobile ? 18 : "24px", marginBottom: isMobile ? 20 : "28px" }}>
                   <div>
                     <label style={{ fontWeight: 900, fontSize: 12, display: "flex", gap: 6, alignItems: "center", marginBottom: 8, color: THEME.textMain }}>
                       <Calendar size={14} /> 経過日数
@@ -433,7 +443,7 @@ export default function ScenarioForm({ scenarios = [], customers = [], staffList
                     <label style={{ fontWeight: 900, fontSize: 12, display: "flex", gap: 6, alignItems: "center", marginBottom: 8, color: THEME.textMain }}>
                       <Clock size={14} /> 配信時刻
                     </label>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                       <select
                         style={formStyles.select}
                         value={item.deliveryHour}

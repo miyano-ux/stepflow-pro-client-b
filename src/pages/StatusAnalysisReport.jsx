@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { Activity, ChevronLeft } from "lucide-react";
 import { THEME as APP_THEME } from "../lib/constants";
 import { StaffDropdown } from "../components/StaffDropdown";
+import { useWindowWidth } from "../lib/useWindowWidth";
 
 const THEME = APP_THEME;
 const COLORS = ["#4F46E5","#0891B2","#059669","#D97706","#DC2626","#7C3AED","#DB2777","#EA580C"];
@@ -102,6 +103,8 @@ export default function StatusAnalysisReport({
       .map(email => ({ email, lastName: email, firstName: "" }));
   }, [staffList, customers]);
 
+  const { isMobile } = useWindowWidth();
+
   const colHd = (align = "left") => ({
     fontSize: 13, fontWeight: 800, color: THEME.textMain,
     paddingBottom: 8, borderBottom: `2px solid ${THEME.border}`, textAlign: align,
@@ -109,11 +112,11 @@ export default function StatusAnalysisReport({
 
   const card = {
     backgroundColor: "white", borderRadius: 16, border: `1px solid ${THEME.border}`,
-    padding: "28px 32px", marginBottom: 24, boxShadow: "0 2px 8px rgba(0,0,0,0.04)",
+    padding: isMobile ? "18px 16px" : "28px 32px", marginBottom: 24, boxShadow: "0 2px 8px rgba(0,0,0,0.04)",
   };
 
   return (
-    <div style={{ minHeight: "100vh", backgroundColor: THEME.bg, padding: "40px 56px" }}>
+    <div style={{ minHeight: "100vh", backgroundColor: THEME.bg, padding: isMobile ? "20px 16px" : "40px 56px", boxSizing: "border-box" }}>
       <div style={{ maxWidth: 1100, margin: "0 auto" }}>
 
         {/* ヘッダー */}
@@ -124,18 +127,16 @@ export default function StatusAnalysisReport({
         >
           <ChevronLeft size={16} /> レポート一覧に戻る
         </button>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 36 }}>
+        <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", alignItems: isMobile ? "stretch" : "center", justifyContent: "space-between", gap: isMobile ? 14 : 0, marginBottom: 36 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
             <Activity size={26} color="#0891B2" />
             <div>
-              <h1 style={{ fontSize: 26, fontWeight: 900, color: THEME.textMain, margin: 0 }}>営業ステータス分析</h1>
+              <h1 style={{ fontSize: isMobile ? 20 : 26, fontWeight: 900, color: THEME.textMain, margin: 0 }}>営業ステータス分析</h1>
               <p style={{ color: THEME.textMuted, fontSize: 13, margin: "4px 0 0" }}>
                 流入元ごとのステータス到達数・到達割合・平均到達日数
-                <span style={{ marginLeft: 10, fontSize: 11 }}>（「レポート集計」有効ステータスのみ）</span>
               </p>
             </div>
           </div>
-          {/* 担当者フィルター */}
           {effectiveStaffList.length > 0 && (
             <StaffDropdown
               staffList={effectiveStaffList}
@@ -161,53 +162,58 @@ export default function StatusAnalysisReport({
                 </span>
               </SectionTitle>
 
-              {/* カラムヘッダー */}
-              <div style={{ display: "grid", gridTemplateColumns: "140px 1fr 1fr 96px", columnGap: 16, marginBottom: 4 }}>
-                <div />
-                <div style={colHd()}>到達件数</div>
-                <div style={colHd()}>到達割合（流入総数比）</div>
-                <div style={{ ...colHd("right") }}>平均到達日数</div>
-              </div>
-
-              {/* データ行 */}
-              {sg.rows.map((d, ri) => {
-                const pctOfTotal = sg.grandTotal > 0 ? (d.count / sg.grandTotal) * 100 : 0;
-                const isEven = ri % 2 === 0;
-                const rowBg = isEven ? THEME.bg : "white";
-                const cs = { backgroundColor: rowBg, padding: "12px 12px", display: "flex", alignItems: "center" };
-                return (
-                  <div key={d.src} style={{
-                    display: "grid", gridTemplateColumns: "140px 1fr 1fr 96px",
-                    columnGap: 0, marginBottom: 2, borderRadius: 8, overflow: "hidden",
-                    border: isEven ? `1px solid ${THEME.border}` : "1px solid transparent",
-                  }}>
-                    <div style={{ ...cs, justifyContent: "flex-end", borderRadius: "8px 0 0 8px" }}>
-                      <span style={{ fontSize: 12, fontWeight: 700, color: THEME.textMain,
-                        whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 120 }}>
-                        {d.src}
-                      </span>
-                    </div>
-                    <div style={{ ...cs, paddingLeft: 16 }}>
-                      <HBar value={d.count} maxVal={sg.maxCount} color={sg.color} suffix="件" />
-                    </div>
-                    <div style={{ ...cs, paddingLeft: 8 }}>
-                      <HBar value={Math.round(pctOfTotal)} maxVal={100} color={sg.color} suffix="%" />
-                    </div>
-                    <div style={{ ...cs, justifyContent: "flex-end", borderRadius: "0 8px 8px 0", paddingRight: 16 }}>
-                      {d.avgDays != null ? (
-                        <div style={{ textAlign: "right" }}>
-                          <span style={{ fontSize: 22, fontWeight: 900, color: sg.color, lineHeight: 1 }}>
-                            {d.avgDays.toFixed(1)}
-                          </span>
-                          <span style={{ fontSize: 12, fontWeight: 700, color: THEME.textMuted, marginLeft: 4 }}>日</span>
-                        </div>
-                      ) : (
-                        <span style={{ fontSize: 18, color: THEME.textMuted }}>–</span>
-                      )}
-                    </div>
+              {/* データテーブル（モバイルは横スクロール） */}
+              <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
+                <div style={{ minWidth: 600 }}>
+                  {/* カラムヘッダー */}
+                  <div style={{ display: "grid", gridTemplateColumns: "140px 1fr 1fr 96px", columnGap: 16, marginBottom: 4 }}>
+                    <div />
+                    <div style={colHd()}>到達件数</div>
+                    <div style={colHd()}>到達割合（流入総数比）</div>
+                    <div style={{ ...colHd("right") }}>平均到達日数</div>
                   </div>
-                );
-              })}
+
+                  {/* データ行 */}
+                  {sg.rows.map((d, ri) => {
+                    const pctOfTotal = sg.grandTotal > 0 ? (d.count / sg.grandTotal) * 100 : 0;
+                    const isEven = ri % 2 === 0;
+                    const rowBg = isEven ? THEME.bg : "white";
+                    const cs = { backgroundColor: rowBg, padding: "12px 12px", display: "flex", alignItems: "center" };
+                    return (
+                      <div key={d.src} style={{
+                        display: "grid", gridTemplateColumns: "140px 1fr 1fr 96px",
+                        columnGap: 0, marginBottom: 2, borderRadius: 8, overflow: "hidden",
+                        border: isEven ? `1px solid ${THEME.border}` : "1px solid transparent",
+                      }}>
+                        <div style={{ ...cs, justifyContent: "flex-end", borderRadius: "8px 0 0 8px" }}>
+                          <span style={{ fontSize: 12, fontWeight: 700, color: THEME.textMain,
+                            whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", maxWidth: 120 }}>
+                            {d.src}
+                          </span>
+                        </div>
+                        <div style={{ ...cs, paddingLeft: 16 }}>
+                          <HBar value={d.count} maxVal={sg.maxCount} color={sg.color} suffix="件" />
+                        </div>
+                        <div style={{ ...cs, paddingLeft: 8 }}>
+                          <HBar value={Math.round(pctOfTotal)} maxVal={100} color={sg.color} suffix="%" />
+                        </div>
+                        <div style={{ ...cs, justifyContent: "flex-end", borderRadius: "0 8px 8px 0", paddingRight: 16 }}>
+                          {d.avgDays != null ? (
+                            <div style={{ textAlign: "right" }}>
+                              <span style={{ fontSize: 22, fontWeight: 900, color: sg.color, lineHeight: 1 }}>
+                                {d.avgDays.toFixed(1)}
+                              </span>
+                              <span style={{ fontSize: 12, fontWeight: 700, color: THEME.textMuted, marginLeft: 4 }}>日</span>
+                            </div>
+                          ) : (
+                            <span style={{ fontSize: 18, color: THEME.textMuted }}>–</span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
             </div>
           ))
         )}

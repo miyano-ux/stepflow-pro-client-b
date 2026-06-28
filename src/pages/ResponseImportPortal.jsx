@@ -4,6 +4,7 @@ import { Settings, AlertCircle, ChevronRight } from "lucide-react";
 import { THEME } from "../lib/constants";
 import { styles } from "../lib/styles";
 import Page from "../components/Page";
+import { useWindowWidth } from "../lib/useWindowWidth";
 
 // ==========================================
 // 📥 ResponseImportPortal - 反響取り込み管理ポータル
@@ -14,6 +15,7 @@ import Page from "../components/Page";
  */
 function ResponseImportPortal() {
   const navigate = useNavigate();
+  const { isMobile } = useWindowWidth();
 
   const menuItems = [
     {
@@ -40,8 +42,8 @@ function ResponseImportPortal() {
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "1fr 1fr",
-          gap: "32px",
+          gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr",
+          gap: isMobile ? "16px" : "32px",
           maxWidth: "900px",
           marginTop: "24px",
         }}
@@ -52,7 +54,7 @@ function ResponseImportPortal() {
             onClick={() => navigate(item.path)}
             style={{
               ...styles.card,
-              padding: "40px",
+              padding: isMobile ? "28px 24px" : "40px",
               cursor: "pointer",
               textAlign: "center",
               transition: "0.2s",

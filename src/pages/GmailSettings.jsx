@@ -11,6 +11,7 @@ import { apiCall } from "../lib/utils";
 import Page from "../components/Page";
 import ConfirmModal from "../components/ConfirmModal";
 import { useToast } from "../ToastContext";
+import { useWindowWidth } from "../lib/useWindowWidth";
 
 // ============================================================
 // 📧 GmailSettings - カスタム取り込みルール設定（楽観的UI）
@@ -112,6 +113,7 @@ export default function GmailSettings({
 }) {
   const showToast = useToast();
   const navigate  = useNavigate();
+  const { isMobile } = useWindowWidth();
 
   // ── state / ref 宣言（useEffectより前に全部置く・TDZエラー防止）──
   // IDはコンポーネントライフタイムで単調増加するカウンターで管理する。
@@ -458,7 +460,7 @@ export default function GmailSettings({
         </div>
 
         {/* ルール一覧 */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(420px, 1fr))", gap: 24, marginBottom: 32 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: isMobile ? 16 : 24, marginBottom: 32 }}>
           {localSettings.map((rule) => {
             const ck   = parseCustomKeysForDisplay(rule["カスタム項目キー"]);
             const mgmt = [
@@ -522,11 +524,21 @@ export default function GmailSettings({
 
       {/* ── 編集 / 新規モーダル ─────────────────────────────── */}
       {modal.open && (
-        <div style={{ position: "fixed", inset: 0, backgroundColor: "rgba(15,23,42,0.6)", backdropFilter: "blur(4px)", display: "flex", justifyContent: "center", alignItems: "center", zIndex: 2000, padding: 24 }}>
-          <div style={{ backgroundColor: "white", borderRadius: 20, width: "100%", maxWidth: 980, maxHeight: "92vh", overflowY: "auto", display: "grid", gridTemplateColumns: "1fr 320px", boxShadow: "0 24px 48px rgba(0,0,0,0.15)" }}>
+        <div style={{ position: "fixed", inset: 0, backgroundColor: "rgba(15,23,42,0.6)", backdropFilter: "blur(4px)", display: "flex", justifyContent: "center", alignItems: "center", zIndex: 2000, padding: isMobile ? 0 : 24 }}>
+          <div style={{
+            backgroundColor: "white",
+            borderRadius: isMobile ? 0 : 20,
+            width: "100%", maxWidth: 980,
+            height: isMobile ? "100%" : "auto",
+            maxHeight: isMobile ? "100%" : "92vh",
+            overflowY: "auto",
+            display: "grid",
+            gridTemplateColumns: isMobile ? "1fr" : "1fr 320px",
+            boxShadow: "0 24px 48px rgba(0,0,0,0.15)",
+          }}>
 
             {/* 左：設定フォーム */}
-            <div style={{ padding: 36 }}>
+            <div style={{ padding: isMobile ? "20px 16px" : 36 }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 28 }}>
                 <h2 style={{ margin: 0, fontSize: 22, fontWeight: 900, color: THEME.textMain }}>
                   {modal.mode === "add" ? "取り込みルールの作成" : "ルールの編集"}
@@ -549,19 +561,25 @@ export default function GmailSettings({
               <div style={{ padding: 20, background: "#F8FAFC", borderRadius: 14, border: `1px solid ${THEME.border}`, marginBottom: 20 }}>
                 <div style={{ fontSize: 12, fontWeight: 800, color: THEME.textMuted, marginBottom: 14 }}>抽出キーワード設定（その文字の「後ろ」を取得します）</div>
 
-                {/* 全フィールド共通ヘッダー */}
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 32px", gap: 8, marginBottom: 8 }}>
-                  <span style={{ fontSize: 11, fontWeight: 800, color: THEME.textMuted }}>取り込み先項目</span>
-                  <span style={{ fontSize: 11, fontWeight: 800, color: THEME.textMuted }}>抽出キーワード</span>
-                  <span />
-                </div>
+                {/* 全フィールド共通ヘッダー（PC/タブレットのみ） */}
+                {!isMobile && (
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 32px", gap: 8, marginBottom: 8 }}>
+                    <span style={{ fontSize: 11, fontWeight: 800, color: THEME.textMuted }}>取り込み先項目</span>
+                    <span style={{ fontSize: 11, fontWeight: 800, color: THEME.textMuted }}>抽出キーワード</span>
+                    <span />
+                  </div>
+                )}
 
                 {/* 固定フィールド：氏名・電話番号（必須・固定ラベル） */}
                 {[
                   { label: "氏名", key: "nameKey" },
                   { label: "電話番号", key: "phoneKey" },
                 ].map(({ label, key }) => (
-                  <div key={key} style={{ display: "grid", gridTemplateColumns: "1fr 1fr 32px", gap: 8, marginBottom: 8, alignItems: "center" }}>
+                  <div key={key} style={{
+                    display: "grid",
+                    gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr 32px",
+                    gap: isMobile ? 6 : 8, marginBottom: isMobile ? 12 : 8, alignItems: "center",
+                  }}>
                     {/* 取り込み先：固定ラベル（プルダウン風の見た目） */}
                     <div style={{
                       display: "flex", alignItems: "center", justifyContent: "space-between",
@@ -580,8 +598,8 @@ export default function GmailSettings({
                       onChange={e => setData({ [key]: e.target.value })}
                       placeholder={`例: ${label}：`}
                     />
-                    {/* 削除ボタン不要のためダミースペース */}
-                    <span />
+                    {/* 削除ボタン不要のためダミースペース（PCのみ） */}
+                    {!isMobile && <span />}
                   </div>
                 ))}
 
@@ -612,22 +630,32 @@ export default function GmailSettings({
                         ] : []),
                       ];
                       return (
-                        <div key={idx} style={{ display: "grid", gridTemplateColumns: "1fr 1fr 32px", gap: 8, marginBottom: 8, alignItems: "center" }}>
-                          <CustomSelect
-                            value={row.fieldName}
-                            onChange={v => updateCustomKeyRow(idx, { fieldName: v })}
-                            options={fieldOptions}
-                            placeholder="項目を選択..."
-                          />
-                          <input
-                            style={styles.input}
-                            value={row.keyword}
-                            onChange={e => updateCustomKeyRow(idx, { keyword: e.target.value })}
-                            placeholder={row.fieldName ? `例: ${row.fieldName}：` : "例: フィールド名："}
-                          />
+                        <div key={idx} style={{
+                          display: "grid",
+                          gridTemplateColumns: isMobile ? "1fr auto" : "1fr 1fr 32px",
+                          gridTemplateAreas: isMobile ? `"field delete" "keyword keyword"` : undefined,
+                          gap: isMobile ? 6 : 8, alignItems: "center", marginBottom: isMobile ? 12 : 8,
+                          ...(isMobile ? { padding: 10, backgroundColor: "white", border: `1px solid ${THEME.border}`, borderRadius: 10 } : {}),
+                        }}>
+                          <div style={isMobile ? { gridArea: "field" } : undefined}>
+                            <CustomSelect
+                              value={row.fieldName}
+                              onChange={v => updateCustomKeyRow(idx, { fieldName: v })}
+                              options={fieldOptions}
+                              placeholder="項目を選択..."
+                            />
+                          </div>
+                          <div style={isMobile ? { gridArea: "keyword" } : undefined}>
+                            <input
+                              style={{ ...styles.input, width: "100%", boxSizing: "border-box" }}
+                              value={row.keyword}
+                              onChange={e => updateCustomKeyRow(idx, { keyword: e.target.value })}
+                              placeholder={row.fieldName ? `例: ${row.fieldName}：` : "例: フィールド名："}
+                            />
+                          </div>
                           <button
                             onClick={() => removeCustomKeyRow(idx)}
-                            style={{ width: 32, height: 32, border: "none", background: "none", cursor: "pointer", color: THEME.danger, display: "flex", alignItems: "center", justifyContent: "center", borderRadius: 6, flexShrink: 0 }}
+                            style={{ width: 32, height: 32, border: "none", background: "none", cursor: "pointer", color: THEME.danger, display: "flex", alignItems: "center", justifyContent: "center", borderRadius: 6, flexShrink: 0, ...(isMobile ? { gridArea: "delete" } : {}) }}
                           >
                             <X size={16} />
                           </button>
@@ -657,7 +685,7 @@ export default function GmailSettings({
               {/* 管理項目 */}
               <div style={{ padding: 20, background: "#EEF2FF", borderRadius: 14, border: "1px solid #C7D2FE", marginBottom: 28 }}>
                 <div style={{ fontSize: 12, fontWeight: 800, color: THEME.primary, marginBottom: 14 }}>管理項目（取り込み時に自動セットする値）</div>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+                <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 14 }}>
                   <FieldBox>
                     <LabelText>対応ステータス</LabelText>
                     <CustomSelect value={modal.data.status} onChange={handleStatusChange} placeholder="未設定（デフォルト）" options={[{ value: "", label: "未設定（デフォルト）" }, ...statuses.map(st => ({ value: st.name, label: st.name }))]} />
@@ -714,11 +742,16 @@ export default function GmailSettings({
                   </div>
                 )}
                 {(modal.data.notifyUsers || []).map((u, idx) => (
-                  <div key={idx} style={{ display: "grid", gridTemplateColumns: "1fr 1fr auto", gap: 8, alignItems: "center", marginBottom: 8 }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 14px", borderRadius: 8, backgroundColor: "#EEF2FF", border: "1px solid #C7D2FE", fontSize: 13, fontWeight: 600, color: THEME.primary }}>
+                  <div key={idx} style={{
+                    display: "grid",
+                    gridTemplateColumns: isMobile ? "1fr auto" : "1fr 1fr auto",
+                    gridTemplateAreas: isMobile ? `"name name" "phone delete"` : undefined,
+                    gap: 8, alignItems: "center", marginBottom: 8,
+                  }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 14px", borderRadius: 8, backgroundColor: "#EEF2FF", border: "1px solid #C7D2FE", fontSize: 13, fontWeight: 600, color: THEME.primary, ...(isMobile ? { gridArea: "name" } : {}) }}>
                       <UserCircle size={14} /> {u.name}
                     </div>
-                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, ...(isMobile ? { gridArea: "phone" } : {}) }}>
                       <Phone size={13} color={THEME.textMuted} style={{ flexShrink: 0 }} />
                       <input
                         style={{ ...styles.input, flex: 1, fontSize: 13 }}
@@ -733,7 +766,7 @@ export default function GmailSettings({
                     </div>
                     <button
                       onClick={() => setData({ notifyUsers: (modal.data.notifyUsers || []).filter((_, i) => i !== idx) })}
-                      style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 32, height: 32, borderRadius: 8, border: "none", backgroundColor: "#FEE2E2", color: "#DC2626", cursor: "pointer", flexShrink: 0 }}
+                      style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 32, height: 32, borderRadius: 8, border: "none", backgroundColor: "#FEE2E2", color: "#DC2626", cursor: "pointer", flexShrink: 0, ...(isMobile ? { gridArea: "delete" } : {}) }}
                       title="削除"
                     >
                       <X size={14} />
@@ -785,18 +818,24 @@ export default function GmailSettings({
               </div>
 
               {/* 保存・キャンセル */}
-              <div style={{ display: "flex", gap: 12 }}>
-                <button onClick={handleSave} disabled={saving} style={{ flex: 1, padding: "13px", borderRadius: 12, border: "none", backgroundColor: saving ? "#818CF8" : THEME.primary, color: "white", fontWeight: 900, fontSize: 15, cursor: saving ? "not-allowed" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, transition: "background-color 0.2s" }}>
+              <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", gap: 12 }}>
+                <button onClick={handleSave} disabled={saving} style={{ flex: 1, padding: "13px", borderRadius: 12, border: "none", backgroundColor: saving ? "#818CF8" : THEME.primary, color: "white", fontWeight: 900, fontSize: 15, cursor: saving ? "not-allowed" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, transition: "background-color 0.2s", order: isMobile ? 1 : 0 }}>
                   {saving ? <><Loader2 size={18} style={{ animation: "spin 1s linear infinite" }} /> 保存中...</> : <><Save size={18} /> 保存する</>}
                 </button>
-                <button onClick={closeModal} disabled={saving} style={{ flex: 1, padding: "13px", borderRadius: 12, border: `1px solid ${THEME.border}`, backgroundColor: "#F1F5F9", color: THEME.textMuted, fontWeight: 800, fontSize: 15, cursor: "pointer" }}>
+                <button onClick={closeModal} disabled={saving} style={{ flex: 1, padding: "13px", borderRadius: 12, border: `1px solid ${THEME.border}`, backgroundColor: "#F1F5F9", color: THEME.textMuted, fontWeight: 800, fontSize: 15, cursor: "pointer", order: isMobile ? 2 : 0 }}>
                   キャンセル
                 </button>
               </div>
             </div>
 
-            {/* 右：テストパネル */}
-            <div style={{ background: "#F8FAFC", borderRadius: "0 20px 20px 0", padding: 32, borderLeft: `1px solid ${THEME.border}` }}>
+            {/* 右：テストパネル（モバイルでは下に積む。フルスクリーンモーダルの最後尾） */}
+            <div style={{
+              background: "#F8FAFC",
+              borderRadius: isMobile ? 0 : "0 20px 20px 0",
+              padding: isMobile ? "20px 16px 32px" : 32,
+              borderLeft: isMobile ? "none" : `1px solid ${THEME.border}`,
+              borderTop: isMobile ? `1px solid ${THEME.border}` : "none",
+            }}>
               <h4 style={{ margin: "0 0 16px", display: "flex", alignItems: "center", gap: 8, fontSize: 15, color: THEME.textMain }}>
                 <AlertCircle size={17} color={THEME.primary} /> テスト
               </h4>

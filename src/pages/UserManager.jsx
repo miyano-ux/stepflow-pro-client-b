@@ -9,6 +9,7 @@ import { THEME, GAS_URL } from "../lib/constants";
 import { styles } from "../lib/styles";
 import ConfirmModal from "../components/ConfirmModal";
 import { useToast } from "../ToastContext";
+import { useWindowWidth } from "../lib/useWindowWidth";
 
 // ==========================================
 // 👥 UserManager - ユーザー管理 + グループ管理
@@ -287,6 +288,7 @@ export default function UserManager({
   const [successModal, setSuccessModal] = useState({ open: false, message: "" });
   const showToast = useToast();
   const navigate = useNavigate();
+  const { isMobile } = useWindowWidth();
   const [refreshing,      setRefreshing]      = useState(false);
   const [addingGroup,     setAddingGroup]      = useState(false);
   const [newGroupName,    setNewGroupName]     = useState("");
@@ -468,25 +470,66 @@ export default function UserManager({
         onClose={() => setSuccessModal({ open: false, message: "" })}
       />
       <div style={lS.main}>
-      <div style={lS.wrapper}>
+      <div style={{ ...lS.wrapper, padding: isMobile ? "20px 16px" : "48px 64px", boxSizing: "border-box" }}>
 
         {/* ── ユーザー一覧 ── */}
-        <header style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 32 }}>
+        <header style={{ display: "flex", flexDirection: isMobile ? "column" : "row", justifyContent: "space-between", alignItems: isMobile ? "stretch" : "flex-end", gap: isMobile ? 14 : 0, marginBottom: 32 }}>
           <div>
             <h1 style={lS.secTitle}>ユーザー管理</h1>
             <p style={lS.secSub}>システムの利用権限を持つスタッフアカウントの一覧</p>
           </div>
-          <div style={{ display: "flex", gap: 12 }}>
-            <button onClick={handleRefresh} disabled={refreshing} style={{ ...styles.btn, ...styles.btnSecondary, gap: 8 }}>
+          <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", gap: 12 }}>
+            <button onClick={handleRefresh} disabled={refreshing} style={{ ...styles.btn, ...styles.btnSecondary, gap: 8, ...(isMobile ? { width: "100%", justifyContent: "center" } : {}) }}>
               <RefreshCw size={16} className={refreshing ? "animate-spin" : ""} />
               {refreshing ? "更新中..." : "更新"}
             </button>
-            <button onClick={() => navigate("/users/add")} style={{ ...styles.btn, ...styles.btnPrimary }}>
+            <button onClick={() => navigate("/users/add")} style={{ ...styles.btn, ...styles.btnPrimary, ...(isMobile ? { width: "100%", justifyContent: "center" } : {}) }}>
               <UserPlus size={18} /> 新規ユーザー登録
             </button>
           </div>
         </header>
 
+        {/* ユーザー一覧：PC/タブレットはテーブル、モバイルはカード */}
+        {isMobile ? (
+          <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 48 }}>
+            {staffList.length === 0 ? (
+              <div style={{ ...lS.card, textAlign: "center", padding: 40, color: THEME.textMuted }}>
+                登録データが見つかりません
+              </div>
+            ) : (
+              staffList.map(u => (
+                <div key={u.email} style={{ ...lS.card, padding: "16px 18px" }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                      <div style={{ width: 36, height: 36, borderRadius: "50%", backgroundColor: "#E0E7FF", display: "flex", alignItems: "center", justifyContent: "center", color: THEME.primary, flexShrink: 0 }}>
+                        <UserCircle size={20} />
+                      </div>
+                      <span style={{ fontWeight: 900, fontSize: 15 }}>{u.lastName} {u.firstName}</span>
+                    </div>
+                    <div style={{ display: "flex", gap: 4 }}>
+                      <button onClick={() => navigate(`/users/edit/${encodeURIComponent(u.email)}`, { state: { user: u } })} style={{ background: "none", border: "none", color: THEME.primary, cursor: "pointer", padding: 8 }}>
+                        <Edit3 size={18} />
+                      </button>
+                      <button onClick={() => handleDeleteUser(u.email)} style={{ background: "none", border: "none", color: THEME.danger, cursor: "pointer", padding: 8 }}>
+                        <Trash2 size={18} />
+                      </button>
+                    </div>
+                  </div>
+                  <div style={{ fontSize: 12, color: THEME.textMuted, display: "flex", flexDirection: "column", gap: 4, paddingLeft: 46 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}><Mail size={12} /> {u.email}</div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}><Phone size={12} /> {String(u.phone || "-").replace(/'/g, "")}</div>
+                    {u.published && u.slug && (
+                      <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                        <span style={{ fontSize: 11, fontWeight: 800, color: THEME.primary, backgroundColor: "#EEF2FF", padding: "2px 7px", borderRadius: 99 }}>公開中</span>
+                        <span style={{ fontSize: 12 }}>/m/{u.slug}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        ) : (
         <div style={{ ...lS.card, marginBottom: 48 }}>
           <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: 0 }}>
             <thead>
@@ -573,16 +616,17 @@ export default function UserManager({
             </tbody>
           </table>
         </div>
+        )}
 
         {/* ── グループ管理 ── */}
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 20 }}>
+        <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", justifyContent: "space-between", alignItems: isMobile ? "stretch" : "flex-end", gap: isMobile ? 14 : 0, marginBottom: 20 }}>
           <div>
             <h2 style={lS.secTitle}>グループ管理</h2>
             <p style={lS.secSub}>担当者をグループにまとめ、顧客登録時に自動割り当てできます</p>
           </div>
           <button
             onClick={() => setAddingGroup(true)}
-            style={{ ...styles.btn, ...styles.btnPrimary }}
+            style={{ ...styles.btn, ...styles.btnPrimary, ...(isMobile ? { width: "100%", justifyContent: "center" } : {}) }}
           >
             <Plus size={16} /> グループを追加
           </button>
