@@ -1,8 +1,8 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { ToastProvider, useToast } from "./ToastContext";
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
 import axios from "axios";
-import { MessageSquare, Loader2 } from "lucide-react";
+import { Loader2, AlertTriangle, RefreshCw } from "lucide-react";
 import { GoogleOAuthProvider, GoogleLogin } from "@react-oauth/google";
 import { jwtDecode } from "jwt-decode";
 
@@ -46,10 +46,29 @@ import MasterSettings        from "./pages/MasterSettings";
 import SourceIntegrationIndex  from "./pages/SourceIntegrationIndex";
 import SourceIntegrationDetail from "./pages/SourceIntegrationDetail";
 
+// ── pages (公開ページ) ────────────────────────────
+import PublicMemberPage       from "./pages/PublicMemberPage.jsx";
+import { useWindowWidth } from "./lib/useWindowWidth";
+
 // ==========================================
 // 🚀 App - 認証 & ルーティング
 // ==========================================
 function App() {
+  const { isMobile } = useWindowWidth();
+
+  // ── 公開メンバーページ ───────────────────────────
+  // /m/:slug への直接アクセスは、認証・データ取得を一切経由せず描画する。
+  // （ログイン不要で誰でも閲覧できる外部公開ページ）
+  if (typeof window !== "undefined" && window.location.pathname.startsWith("/m/")) {
+    return (
+      <Router>
+        <Routes>
+          <Route path="/m/:slug" element={<PublicMemberPage />} />
+        </Routes>
+      </Router>
+    );
+  }
+
   const [d, setD] = useState({
     customers: [],
     scenarios: [],
@@ -98,10 +117,17 @@ function App() {
     }
   }, []);
   const [load, setLoad] = useState(true);
+  // GAS への接続失敗を保持（true のときエラー画面を表示）
+  const [loadError, setLoadError] = useState(false);
   const [user, setUser] = useState(() => {
     const sUser = localStorage.getItem("sf_user");
     return sUser ? JSON.parse(sUser) : null;
   });
+  // setUser は非同期のため refresh() 内で user を直接参照すると
+  // setState直後の呼び出しで null になる。ref で即時参照できるようにする。
+  const userRef = useRef(
+    (() => { try { return JSON.parse(localStorage.getItem("sf_user")); } catch { return null; } })()
+  );
 
   // ── スタッフ一覧: App.jsx で一元管理・キャッシュ ──────────────
   // 各コンポーネントが個別に fetch しないよう、ここで取得して props で渡す
@@ -125,7 +151,7 @@ function App() {
   }, []);
 
   const refresh = useCallback(async () => {
-    if (!user) return;
+    if (!userRef.current) return;
     try {
       const [gasRes] = await Promise.all([
         axios.get(`${GAS_URL}?_t=${Date.now()}`),
@@ -137,15 +163,21 @@ function App() {
         data.statuses = [...data.statuses].sort((a, b) => (Number(a.order) || 0) - (Number(b.order) || 0));
       }
       setD(data);
+      setLoadError(false);
       // displaySettings はlocalStorageが未設定の場合のみGAS値を初期値として使う
       const local = getDisplaySettings();
       if (!local && data.displaySettings?.length > 0) {
         setDisplaySettings(data.displaySettings);
       }
+    } catch (e) {
+      // GAS への接続に失敗（CORS / ネットワーク / GAS デプロイ設定など）。
+      // 画面を真っ白にせず、原因と再読み込みボタンを表示する。
+      console.error("[refresh] データ取得に失敗しました", e);
+      setLoadError(true);
     } finally {
       setLoad(false);
     }
-  }, [user, getDisplaySettings, refreshStaff]);
+  }, [getDisplaySettings, refreshStaff]);
 
   // 顧客データのみを高速再取得（カンバン↔顧客リスト間の即時同期用）
   // doGet の全シート読み込み（2〜5秒）と違い、顧客シートだけ読むため高速
@@ -158,8 +190,7 @@ function App() {
       const customers = res?.data?.customers;
       if (customers) setD(prev => ({ ...prev, customers }));
     } catch (e) {
-      console.warn("[lightRefresh] 失敗 → フルリフレッシュにフォールバック", e);
-      refresh();
+      console.warn("[lightRefresh] 失敗", e);
     }
   }, [refresh]);
 
@@ -183,9 +214,8 @@ function App() {
     }));
   }, []);
 
-  useEffect(() => {
-    refresh();
-  }, [refresh]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { refresh(); }, []);
 
   // ── 未ログイン：ログイン画面 ──────────────────
   if (!user) {
@@ -208,28 +238,15 @@ function App() {
             padding: "48px",
           }}
         >
-          <div
-            style={{
-              backgroundColor: THEME.primary,
-              width: "64px",
-              height: "64px",
-              borderRadius: "18px",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              margin: "0 auto 32px",
-              boxShadow: "0 10px 25px -5px rgba(79, 70, 229, 0.4)",
-            }}
-          >
-            <MessageSquare color="white" size={32} />
+          <div style={{ margin: "0 auto 40px", display: "flex", justifyContent: "center" }}>
+            <img
+              src="/logo_beta.png"
+              alt="SMOOSy"
+              style={{ height: "80px", width: "auto", objectFit: "contain" }}
+            />
           </div>
-          <h1 style={{ fontSize: 28, fontWeight: 900, marginBottom: 10 }}>
-            StepFlow
-          </h1>
-          <p style={{ fontSize: 14, color: THEME.textMuted, marginBottom: 40 }}>
-            マーケティングSMS・配信管理 [V34.0]
-          </p>
           <GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID}>
+            <div style={{ display: "flex", justifyContent: "center" }}>
             <GoogleLogin
               onSuccess={async (res) => {
                 const dec = jwtDecode(res.credential);
@@ -248,11 +265,14 @@ function App() {
                   return;
                 }
                 // ── 認証OK ─────────────────────────────────────
+                userRef.current = dec; // setState前に ref を更新して refresh() が通るようにする
                 setUser(dec);
                 localStorage.setItem("sf_user", JSON.stringify(dec));
+                refresh();
               }}
               onError={() => setAuthError("Googleログインに失敗しました。再度お試しください。")}
             />
+            </div>
           </GoogleOAuthProvider>
           {authError && (
             <div style={{ marginTop: 16, padding: "12px 16px", backgroundColor: "#FEE2E2", borderRadius: 10, fontSize: 13, color: "#991B1B", fontWeight: 600, lineHeight: 1.6 }}>
@@ -281,15 +301,59 @@ function App() {
     );
   }
 
+  // ── GAS 接続エラー画面 ────────────────────────
+  // データ取得に失敗したとき、白紙ではなく原因と再読み込みを表示する。
+  if (loadError) {
+    return (
+      <div style={{
+        height: "100vh", display: "flex", alignItems: "center",
+        justifyContent: "center", backgroundColor: THEME.bg, padding: 24,
+      }}>
+        <div style={{
+          maxWidth: 480, width: "100%", backgroundColor: "white",
+          borderRadius: 16, padding: "40px 32px", textAlign: "center",
+          boxShadow: "0 10px 25px -5px rgba(0,0,0,0.1)",
+        }}>
+          <div style={{
+            width: 64, height: 64, borderRadius: "50%",
+            backgroundColor: "#FEF3C7", display: "flex",
+            alignItems: "center", justifyContent: "center", margin: "0 auto 20px",
+          }}>
+            <AlertTriangle size={30} color="#D97706" />
+          </div>
+          <h2 style={{ margin: "0 0 10px", fontSize: 20, fontWeight: 900, color: THEME.textMain }}>
+            サーバーに接続できません
+          </h2>
+          <p style={{ margin: "0 0 24px", fontSize: 14, color: THEME.textMuted, lineHeight: 1.7 }}>
+            データの取得に失敗しました。インターネット接続をご確認のうえ、
+            再読み込みをお試しください。改善しない場合は、サーバー（GAS）の
+            デプロイ設定が原因の可能性があります。
+          </p>
+          <button
+            onClick={() => { setLoad(true); setLoadError(false); refresh(); }}
+            style={{
+              display: "inline-flex", alignItems: "center", gap: 8,
+              backgroundColor: THEME.primary, color: "white", border: "none",
+              borderRadius: 10, padding: "12px 28px", fontSize: 14, fontWeight: 800,
+              cursor: "pointer",
+            }}
+          >
+            <RefreshCw size={16} /> 再読み込み
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   // ── メインレイアウト ──────────────────────────
   return (
     <ToastProvider>
     <GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID}>
       <style>{globalStyle}</style>
       <Router>
-        <div style={{ display: "flex", minHeight: "100vh" }}>
+        <div style={{ display: "flex", minHeight: "100vh", width: "100%" }}>
 
-          {/* サイドバー（260px 固定） */}
+          {/* サイドバー（PC: 260px固定 / モバイル: ハンバーガー+スライドメニュー） */}
           <Sidebar
             onLogout={() => {
               setUser(null);
@@ -302,8 +366,11 @@ function App() {
             style={{
               flex: 1,
               minWidth: 0,
+              width: "100%",
+              boxSizing: "border-box",
               backgroundColor: THEME.bg,
               minHeight: "100vh",
+              paddingTop: isMobile ? "56px" : 0,
             }}
           >
             <Routes>
@@ -313,7 +380,7 @@ function App() {
               <Route path="/add" element={<CustomerForm scenarios={d?.scenarios} formSettings={d?.formSettings} statuses={d?.statuses} staffList={staffList} sources={d?.sources} groups={d?.groups} contractTypes={d?.contractTypes} onRefresh={refresh} />} />
               <Route path="/schedule/:id" element={<CustomerSchedule customers={d?.customers} deliveryLogs={d?.deliveryLogs} onRefresh={refresh} />} />
               <Route path="/detail/:id" element={<CustomerDetail customers={d?.customers} formSettings={d?.formSettings} statuses={d?.statuses} sources={d?.sources} contractTypes={d?.contractTypes} trackingLogs={d?.trackingLogs} staffList={staffList} groups={d?.groups} statusHistory={d?.statusHistory} properties={d?.properties} scenarios={d?.scenarios} gasUrl={GAS_URL} onRefresh={refresh} />} />
-              <Route path="/direct-sms/:id" element={<DirectSms customers={d?.customers} templates={d?.templates} onRefresh={refresh} masterUrl={MASTER_WHITELIST_API} currentUserEmail={user?.email} />} />
+              <Route path="/direct-sms/:id" element={<DirectSms customers={d?.customers} templates={d?.templates} staffList={staffList} onRefresh={refresh} masterUrl={MASTER_WHITELIST_API} currentUserEmail={user?.email} />} />
 
               {/* 設定 */}
               <Route path="/column-settings" element={<ColumnSettings displaySettings={displaySettings} formSettings={d?.formSettings} onSaveDisplaySettings={saveDisplaySettings} onRefresh={refresh} gasUrl={GAS_URL} />} />
@@ -340,14 +407,14 @@ function App() {
 
               {/* ユーザー管理 */}
               <Route path="/users" element={<UserManager staffList={staffList} groups={d?.groups} statuses={d?.statuses} onRefreshStaff={refreshStaff} onRefresh={refresh} masterUrl={MASTER_WHITELIST_API} companyName={CLIENT_COMPANY_NAME} gasUrl={GAS_URL} />} />
-              <Route path="/users/add" element={<UserForm masterUrl={MASTER_WHITELIST_API} onRefreshStaff={refreshStaff} />} />
+              <Route path="/users/add" element={<UserForm masterUrl={MASTER_WHITELIST_API} onRefreshStaff={refreshStaff} staffList={staffList} />} />
               <Route path="/users/edit/:id" element={<UserForm masterUrl={MASTER_WHITELIST_API} onRefreshStaff={refreshStaff} />} />
 
               {/* 分析・トラッキング */}
               <Route path="/analysis" element={<ReportIndex />} />
               <Route path="/analysis/sales" element={<AnalysisReport customers={d?.customers} statuses={d?.statuses} trackingLogs={d?.trackingLogs} staffList={staffList} statusHistory={d?.statusHistory} />} />
               <Route path="/analysis/source" element={<SourceReport customers={d?.customers} statuses={d?.statuses} sources={d?.sources} contractTypes={d?.contractTypes} statusHistory={d?.statusHistory} properties={d?.properties} />} />
-              <Route path="/analysis/status" element={<StatusAnalysisReport customers={d?.customers} statuses={d?.statuses} sources={d?.sources} />} />
+              <Route path="/analysis/status" element={<StatusAnalysisReport customers={d?.customers} statuses={d?.statuses} sources={d?.sources} staffList={staffList} />} />
               <Route path="/analysis/lost" element={<LostReport customers={d?.customers} statuses={d?.statuses} staffList={staffList} />} />
               <Route path="/tracking" element={<TrackingDashboard />} />
 

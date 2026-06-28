@@ -1,13 +1,15 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import { useNavigate, useParams, useLocation } from "react-router-dom";
-import { ArrowLeft, Loader2, UserCheck, Zap, Send, Calendar, MessageSquare, X, CheckCircle2 } from "lucide-react";
+import { ArrowLeft, Loader2, UserCheck, Zap, Send, Calendar, MessageSquare, X, CheckCircle2, FileText, ChevronDown, ChevronUp } from "lucide-react";
 import axios from "axios";
 import { THEME, CLIENT_COMPANY_NAME, GAS_URL } from "../lib/constants";
 import { styles } from "../lib/styles";
 import { apiCall, replaceVariables } from "../lib/utils";
 import Page from "../components/Page";
+import CustomSelect from "../components/CustomSelect";
 import SmartDateTimePicker from "../components/SmartDateTimePicker";
 import { useToast } from "../ToastContext";
+import { useWindowWidth } from "../lib/useWindowWidth";
 
 // ==========================================
 // 💬 DirectSms - 個別メッセージ送信ページ
@@ -22,17 +24,144 @@ const formatScheduledTime = (iso) => {
   return `${d.getFullYear()}年${p(d.getMonth() + 1)}月${p(d.getDate())}日（${weekdays[d.getDay()]}）${p(d.getHours())}:${p(d.getMinutes())}`;
 };
 
-function DirectSms({ customers = [], templates = [], onRefresh, masterUrl, currentUserEmail }) {
+// ── 挿入できる変数一覧（ScenarioForm / TemplateManager と共通）────────────
+const VARIABLE_GROUPS = [
+  {
+    label: "顧客情報",
+    color: THEME.primary,
+    bg: "#EEF2FF",
+    vars: [
+      { label: "姓",            value: "{{姓}}"            },
+      { label: "名",            value: "{{名}}"            },
+      { label: "電話番号",       value: "{{電話番号}}"       },
+      { label: "メールアドレス", value: "{{メールアドレス}}" },
+    ],
+  },
+  {
+    label: "担当者",
+    color: "#0284C7",
+    bg: "#E0F2FE",
+    vars: [
+      { label: "担当者姓",     value: "{{担当者姓}}"     },
+      { label: "担当者名",     value: "{{担当者名}}"     },
+      { label: "担当者電話",   value: "{{担当者電話}}"   },
+      { label: "担当者メール", value: "{{担当者メール}}"  },
+    ],
+  },
+];
+
+// ── 変数をハイライト表示するプレビュー（実データ置換対応）──
+function renderPreview(text, varMap = {}) {
+  if (!text) return <span style={{ color: THEME.textMuted, fontStyle: "italic" }}>本文プレビュー</span>;
+  const parts = text.split(/({{[^}]+}})/g);
+  return parts.map((part, i) => {
+    if (/^{{.+}}$/.test(part)) {
+      const key = part.slice(2, -2);
+      const val = varMap[key];
+      if (val) {
+        // 実データあり → 緑ハイライトで実値を表示
+        return (
+          <mark key={i} title={`変数: ${part}`} style={{
+            backgroundColor: "#ECFDF5", color: "#059669",
+            borderRadius: 4, padding: "1px 5px",
+            fontWeight: 800, fontStyle: "normal",
+            border: "1px solid #A7F3D0",
+          }}>
+            {val}
+          </mark>
+        );
+      }
+      // データなし → パープルハイライトで変数名そのまま
+      return (
+        <mark key={i} style={{
+          backgroundColor: "#EEF2FF", color: THEME.primary,
+          borderRadius: 4, padding: "1px 5px",
+          fontWeight: 800, fontStyle: "normal",
+        }}>
+          {part}
+        </mark>
+      );
+    }
+    return <span key={i}>{part}</span>;
+  });
+}
+
+// ── 変数挿入パネル（textarea 上部に接続表示）──
+function VariablePanel({ lastInserted, onInsert }) {
+  return (
+    <div style={{
+      backgroundColor: "#F8FAFC",
+      border: `1px solid ${THEME.border}`,
+      borderRadius: "12px 12px 0 0",
+      padding: "12px 16px",
+      borderBottom: "none",
+    }}>
+      <p style={{
+        fontSize: 11, fontWeight: 800, color: THEME.textMuted,
+        margin: "0 0 10px", letterSpacing: "0.05em",
+      }}>
+        変数を挿入　―　クリックするとカーソル位置に挿入されます
+      </p>
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        {VARIABLE_GROUPS.map((group) => (
+          <div key={group.label} style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+            <span style={{ fontSize: 11, fontWeight: 800, color: group.color, minWidth: 56, flexShrink: 0 }}>
+              {group.label}
+            </span>
+            {group.vars.map((v) => {
+              const justInserted = lastInserted === v.value;
+              return (
+                <button
+                  key={v.value}
+                  type="button"
+                  onClick={() => onInsert(v.value)}
+                  style={{
+                    padding: "4px 11px", borderRadius: 20,
+                    border: `1.5px solid ${justInserted ? group.color : group.color + "60"}`,
+                    backgroundColor: justInserted ? group.color : group.bg,
+                    color: justInserted ? "white" : group.color,
+                    fontSize: 12, fontWeight: 800, cursor: "pointer",
+                    transition: "all 0.15s", fontFamily: "monospace",
+                  }}
+                  onMouseEnter={(e) => {
+                    if (!justInserted) {
+                      e.currentTarget.style.backgroundColor = group.color;
+                      e.currentTarget.style.color = "white";
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    if (!justInserted) {
+                      e.currentTarget.style.backgroundColor = group.bg;
+                      e.currentTarget.style.color = group.color;
+                    }
+                  }}
+                  title={`クリックで ${v.value} を挿入`}
+                >
+                  {v.label}
+                </button>
+              );
+            })}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function DirectSms({ customers = [], templates = [], staffList = [], onRefresh, masterUrl, currentUserEmail }) {
   const showToast = useToast();
   const { id } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
+  const { isMobile } = useWindowWidth();
+  const [mobileTemplatesOpen, setMobileTemplatesOpen] = useState(false);
 
   const c = customers?.find((x) => String(x.id) === String(id));
 
   const [msg, setMsg] = useState(location.state?.prefilledMessage || "");
   const [isConverting, setIsConverting] = useState(false);
-  const [staffList, setStaffList] = useState([]);
+  // App.jsx から渡される staffList が空のとき（初回キャッシュ未生成時）のみ使うフォールバック
+  const [fallbackStaff, setFallbackStaff] = useState([]);
   const [selectedStaff, setSelectedStaff] = useState(null);
   const [time, setTime] = useState(() => {
     const d = new Date(Date.now() + 30 * 60000);
@@ -52,29 +181,84 @@ function DirectSms({ customers = [], templates = [], onRefresh, masterUrl, curre
   const urlRegex = /(https?:\/\/[^\s]+)/g;
   const hasUrl = urlRegex.test(msg);
 
-  // スタッフ一覧を取得し、ログイン中ユーザーを初期選択
+  // App.jsx が一元管理する staffList を優先利用。空のときだけ自前取得にフォールバック。
+  const effectiveStaffList = staffList.length > 0 ? staffList : fallbackStaff;
+
+  // フォールバック取得: props の staffList が空のときだけ GAS から取りに行く
   useEffect(() => {
-    const fetchStaff = async () => {
+    if (staffList.length > 0 || !masterUrl) return;
+    let cancelled = false;
+    (async () => {
       try {
         const res = await axios.get(
           `${masterUrl}?action=list&company=${CLIENT_COMPANY_NAME}`
         );
-        const list = res?.data?.users || [];
-        setStaffList(list);
-        const myProfile = list.find(
-          (s) => String(s.email).toLowerCase() === String(currentUserEmail).toLowerCase()
-        );
-        if (myProfile) {
-          setSelectedStaff(myProfile);
-        } else if (list.length > 0) {
-          setSelectedStaff(list[0]);
-        }
+        if (!cancelled) setFallbackStaff(res?.data?.users || []);
       } catch (e) {
         console.error(e);
       }
-    };
-    if (masterUrl) fetchStaff();
-  }, [masterUrl, currentUserEmail]);
+    })();
+    return () => { cancelled = true; };
+  }, [staffList, masterUrl]);
+
+  // スタッフ一覧が揃ったら、ログイン中ユーザーを初期選択（未選択時のみ）
+  useEffect(() => {
+    if (selectedStaff || effectiveStaffList.length === 0) return;
+    const myProfile = effectiveStaffList.find(
+      (s) => String(s.email).toLowerCase() === String(currentUserEmail).toLowerCase()
+    );
+    setSelectedStaff(myProfile || effectiveStaffList[0]);
+  }, [effectiveStaffList, currentUserEmail, selectedStaff]);
+
+  // ── 変数差し込み ──────────────────────────────────────────────
+  const textareaRef = useRef(null);
+  // 直近挿入した変数（フラッシュ表示用）
+  const [lastInserted, setLastInserted] = useState(null);
+
+  // プレビュー・送信時の変数置換マップ（この顧客＋選択中の担当者の実データ）
+  const varMap = useMemo(() => {
+    const map = {};
+    if (c) {
+      map["姓"]            = c["姓"]            || "";
+      map["名"]            = c["名"]            || "";
+      map["電話番号"]       = c["電話番号"]       || "";
+      map["メールアドレス"] = c["メールアドレス"] || "";
+    }
+    if (selectedStaff) {
+      map["担当者姓"]     = selectedStaff.lastName  || "";
+      map["担当者名"]     = selectedStaff.firstName || "";
+      map["担当者電話"]   = selectedStaff.phone     || "";
+      map["担当者メール"] = selectedStaff.email     || "";
+    }
+    return map;
+  }, [c, selectedStaff]);
+
+  // 変数を実データに置換した、実際に送信される本文
+  const resolvedMsg = useMemo(
+    () => replaceVariables(msg, c, selectedStaff),
+    [msg, c, selectedStaff]
+  );
+
+  // 変数をカーソル位置に挿入
+  const insertVariable = (varValue) => {
+    const ta = textareaRef.current;
+    if (!ta) {
+      setMsg((m) => m + varValue);
+    } else {
+      const start = ta.selectionStart;
+      const end   = ta.selectionEnd;
+      setMsg((m) => m.slice(0, start) + varValue + m.slice(end));
+      // カーソルを挿入後の位置に戻す
+      requestAnimationFrame(() => {
+        ta.focus();
+        const pos = start + varValue.length;
+        ta.setSelectionRange(pos, pos);
+      });
+    }
+    // フラッシュフィードバック
+    setLastInserted(varValue);
+    setTimeout(() => setLastInserted(null), 1200);
+  };
 
   // URLをトラッキングURLに変換
   const handleConvertToTracking = async () => {
@@ -116,9 +300,11 @@ function DirectSms({ customers = [], templates = [], onRefresh, masterUrl, curre
       await apiCall.post(GAS_URL, {
         action: "sendDirectSms",
         phone: c["電話番号"],
+        customerId: c.id,
         customerName: `${c["姓"]} ${c["名"]}`,
         scheduledTime: time,
-        message: msg,
+        // 変数（{{姓}}等）を実データに置換してから送信
+        message: resolvedMsg,
         parentId: parentId,
         stepName: parentStepName,
       });
@@ -156,7 +342,7 @@ function DirectSms({ customers = [], templates = [], onRefresh, masterUrl, curre
         >
           <ArrowLeft size={16} /> {c["姓"]} {c["名"]} 様の詳細に戻る
         </button>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 350px", gap: "32px" }}>
+        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 350px", gap: isMobile ? "20px" : "32px" }}>
 
           {/* ── 左カラム：送信設定 */}
           <div>
@@ -166,21 +352,17 @@ function DirectSms({ customers = [], templates = [], onRefresh, masterUrl, curre
               <label style={{ ...styles.label, display: "flex", alignItems: "center", gap: 8, color: THEME.primary }}>
                 <UserCheck size={14} /> 送信担当者
               </label>
-              <div style={{ position: "relative" }}>
-                <select
-                  style={styles.select}
-                  value={selectedStaff?.email || ""}
-                  onChange={(e) =>
-                    setSelectedStaff(staffList.find((s) => s.email === e.target.value))
-                  }
-                >
-                  {staffList.map((s) => (
-                    <option key={s.email} value={s.email}>
-                      {s.lastName} {s.firstName}
-                    </option>
-                  ))}
-                </select>
-              </div>
+              <CustomSelect
+                value={selectedStaff?.email || ""}
+                placeholder="担当者を選択"
+                options={effectiveStaffList.map((s) => ({
+                  value: s.email,
+                  label: `${s.lastName} ${s.firstName}`,
+                }))}
+                onChange={(email) =>
+                  setSelectedStaff(effectiveStaffList.find((s) => s.email === email))
+                }
+              />
             </div>
 
             {/* 配信日時 */}
@@ -191,35 +373,124 @@ function DirectSms({ customers = [], templates = [], onRefresh, masterUrl, curre
 
             {/* 配信内容 */}
             <div>
-              {/* ラベル行：左にタイトル、右にトラッキングボタン */}
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+              {/* ラベル行：左にタイトル、右にテンプレート選択／トラッキングボタン */}
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8, flexWrap: "wrap", gap: 8 }}>
                 <label style={{ ...styles.label, marginBottom: 0 }}>配信内容</label>
-                {hasUrl && (
-                  <button
-                    onClick={handleConvertToTracking}
-                    disabled={isConverting}
-                    style={{
-                      ...styles.btn,
-                      backgroundColor: "white",
-                      color: THEME.primary,
-                      border: `1px solid ${THEME.primary}`,
-                      padding: "4px 12px",
-                      height: "30px",
-                      fontSize: "12px",
-                    }}
-                  >
-                    {isConverting ? <Loader2 size={14} className="animate-spin" /> : <Zap size={14} />}
-                    URLをトラッキング化
-                  </button>
-                )}
+                <div style={{ display: "flex", gap: 8 }}>
+                  {isMobile && templates.length > 0 && (
+                    <button
+                      onClick={() => setMobileTemplatesOpen((o) => !o)}
+                      style={{
+                        ...styles.btn,
+                        backgroundColor: mobileTemplatesOpen ? "#EEF2FF" : "white",
+                        color: THEME.primary,
+                        border: `1px solid ${THEME.primary}`,
+                        padding: "4px 12px",
+                        height: "30px",
+                        fontSize: "12px",
+                      }}
+                    >
+                      <FileText size={14} />
+                      テンプレートから選ぶ
+                      {mobileTemplatesOpen ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+                    </button>
+                  )}
+                  {hasUrl && (
+                    <button
+                      onClick={handleConvertToTracking}
+                      disabled={isConverting}
+                      style={{
+                        ...styles.btn,
+                        backgroundColor: "white",
+                        color: THEME.primary,
+                        border: `1px solid ${THEME.primary}`,
+                        padding: "4px 12px",
+                        height: "30px",
+                        fontSize: "12px",
+                      }}
+                    >
+                      {isConverting ? <Loader2 size={14} className="animate-spin" /> : <Zap size={14} />}
+                      URLをトラッキング化
+                    </button>
+                  )}
+                </div>
               </div>
 
+              {/* テンプレート選択パネル（モバイル限定・折りたたみ） */}
+              {isMobile && mobileTemplatesOpen && (
+                <div style={{ ...styles.card, padding: 12, marginBottom: 10, border: `1px solid ${THEME.primary}40` }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                    <p style={{ margin: 0, fontSize: 13, fontWeight: 800, color: THEME.textMain }}>テンプレートを選択</p>
+                    <button
+                      onClick={() => setMobileTemplatesOpen(false)}
+                      style={{ background: "none", border: "none", cursor: "pointer", color: THEME.textMuted, padding: 4, display: "flex" }}
+                    >
+                      <X size={16} />
+                    </button>
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 240, overflowY: "auto" }}>
+                    {templates.map((t) => (
+                      <div
+                        key={t.id}
+                        onClick={() => { setMsg(t.content); setMobileTemplatesOpen(false); }}
+                        style={{
+                          backgroundColor: "#F8FAFC", borderRadius: 10, padding: "10px 12px",
+                          fontSize: 13, color: THEME.textMain, cursor: "pointer",
+                        }}
+                      >
+                        {t.name}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* 変数挿入パネル（textarea 上部に接続） */}
+              <VariablePanel lastInserted={lastInserted} onInsert={insertVariable} />
+
               <textarea
-                style={{ ...styles.input, height: "280px", resize: "none" }}
+                ref={textareaRef}
+                style={{
+                  ...styles.input,
+                  height: "240px",
+                  resize: "none",
+                  borderRadius: "0 0 12px 12px",
+                  lineHeight: 1.7,
+                }}
                 value={msg}
                 onChange={(e) => setMsg(e.target.value)}
-                placeholder="メッセージを入力してください。URLを入力して上のボタンを押すとクリック計測が可能になります。"
+                placeholder="メッセージを入力、または上のボタンで変数を挿入してください。URLを入力してトラッキング化ボタンを押すとクリック計測が可能になります。"
               />
+
+              {/* プレビュー（変数を実データに置換して表示） */}
+              {msg && (
+                <div style={{ marginTop: 12 }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6, flexWrap: "wrap", gap: 6 }}>
+                    <p style={{ fontSize: 11, fontWeight: 800, color: THEME.textMuted, margin: 0, letterSpacing: "0.05em" }}>
+                      プレビュー（実際の送信内容）
+                    </p>
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                      <span style={{ fontSize: 11, color: "#059669", backgroundColor: "#ECFDF5", border: "1px solid #A7F3D0", padding: "2px 8px", borderRadius: 99, fontWeight: 700 }}>
+                        顧客: {c["姓"]} {c["名"]}
+                      </span>
+                      {selectedStaff && (
+                        <span style={{ fontSize: 11, color: "#0284C7", backgroundColor: "#E0F2FE", border: "1px solid #BAE6FD", padding: "2px 8px", borderRadius: 99, fontWeight: 700 }}>
+                          担当者: {selectedStaff.lastName} {selectedStaff.firstName}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <pre style={{
+                    fontSize: 13, color: THEME.textMain,
+                    whiteSpace: "pre-wrap", wordBreak: "break-all", lineHeight: 1.7,
+                    background: "#F8FAFC", padding: "14px 16px",
+                    borderRadius: 12, border: `1px solid ${THEME.border}`,
+                    margin: 0, fontFamily: "sans-serif",
+                  }}>
+                    {renderPreview(msg, varMap)}
+                  </pre>
+                </div>
+              )}
             </div>
 
             {/* 配信予約ボタン */}
@@ -232,21 +503,23 @@ function DirectSms({ customers = [], templates = [], onRefresh, masterUrl, curre
             </button>
           </div>
 
-          {/* ── 右カラム：テンプレート一覧 */}
-          <div>
-            <h3 style={{ margin: "0 0 16px 0", fontSize: "15px", fontWeight: "800" }}>テンプレート</h3>
-            <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-              {templates.map((t) => (
-                <div
-                  key={t.id}
-                  onClick={() => setMsg(replaceVariables(t.content, c, selectedStaff))}
-                  style={{ ...styles.card, padding: "16px", cursor: "pointer" }}
-                >
-                  {t.name}
-                </div>
-              ))}
+          {/* ── 右カラム：テンプレート一覧（PC/タブレットのみ。モバイルは先頭に表示済み） ── */}
+          {!isMobile && (
+            <div>
+              <h3 style={{ margin: "0 0 16px 0", fontSize: "15px", fontWeight: "800" }}>テンプレート</h3>
+              <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+                {templates.map((t) => (
+                  <div
+                    key={t.id}
+                    onClick={() => setMsg(t.content)}
+                    style={{ ...styles.card, padding: "16px", cursor: "pointer" }}
+                  >
+                    {t.name}
+                  </div>
+                ))}
+              </div>
             </div>
-          </div>
+          )}
 
         </div>
       </Page>
@@ -338,7 +611,7 @@ function DirectSms({ customers = [], templates = [], onRefresh, masterUrl, curre
                     whiteSpace: "pre-wrap", wordBreak: "break-all",
                     lineHeight: 1.7,
                   }}>
-                    {msg}
+                    {resolvedMsg}
                   </p>
                 </div>
               </div>

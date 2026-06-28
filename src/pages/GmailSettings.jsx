@@ -11,10 +11,20 @@ import { apiCall } from "../lib/utils";
 import Page from "../components/Page";
 import ConfirmModal from "../components/ConfirmModal";
 import { useToast } from "../ToastContext";
+import { useWindowWidth } from "../lib/useWindowWidth";
 
 // ============================================================
 // 📧 GmailSettings - カスタム取り込みルール設定（楽観的UI）
 // ============================================================
+
+// ── 顧客情報：固定フィールド一覧（氏名・電話は抽出キーワードで別管理のため除外）──
+const CUSTOMER_FIXED_FIELDS = [
+  "メールアドレス",
+  "姓（カナ）",
+  "名（カナ）",
+  "住所",
+  "郵便番号",
+];
 
 // ── コンテンツフィンガープリント（照合専用・IDには使わない）────
 // 同じ内容のルールが複数存在しうるため、フィンガープリントをIDに使うと
@@ -36,7 +46,7 @@ function makeFingerprint(rule) {
 
 const EMPTY_DATA = {
   subject: "", nameKey: "氏名：", phoneKey: "電話番号：",
-  status: "", source: "", staffEmail: "", scenarioID: "", customKeys: {},
+  status: "", source: "", staffEmail: "", scenarioID: "", customKeys: [],
   notifyUsers: [], notifyMessage: "",
 };
 
@@ -103,6 +113,7 @@ export default function GmailSettings({
 }) {
   const showToast = useToast();
   const navigate  = useNavigate();
+  const { isMobile } = useWindowWidth();
 
   // ── state / ref 宣言（useEffectより前に全部置く・TDZエラー防止）──
   // IDはコンポーネントライフタイムで単調増加するカウンターで管理する。
@@ -125,34 +136,15 @@ export default function GmailSettings({
   const addNotifyUserRef = useRef(null);
 
   // 削除済みIDを記録するRef（GASキャッシュ遅延対策）
-  // GASは書き込み直後のGETで古いデータを返すことがある。
-  // onRefresh()がstaleデータを返しても、このSetでフィルターして復活を防ぐ。
-  // エラー時は delete(id) で取り消す。
   const deletedIdsRef = useRef(new Set());
-
-  // 削除済みルールのフィンガープリントも追跡する（IDと両方でガード）
-  // deletedIdsRef だけでは「GASキャッシュで戻ってきた同内容ルールに
-  // 新しいIDが発行されて素通りする」ケースを防げないため必要。
   const deletedFingerprintsRef = useRef(new Set());
 
-  // 親の gmailSettings が変化したとき、削除済みIDを除外してローカルに反映。
-  // ⚠️ prev関数形式必須。丸ごと上書きするとAPIが完了する前に親が再レンダリング
-  //    したとき仮エントリ(_isTemp)が消える。
-  // ⚠️ _localId の付与ルール:
-  //    - 既存ローカルエントリと内容が一致するものは _localId を引き継ぐ
-  //      （同内容ルールが複数ある場合は順番に1対1対応させる）
-  //    - 新規サーバーエントリには nextId() で新しい安定IDを発行
-  //    こうすることで削除済みIDが別ルールに誤マッチするのを防ぐ
   useEffect(() => {
     setLocalSettings((prev) => {
-      // 仮エントリを先に退避
       const pendingTemps = prev.filter(x => x._isTemp);
-
-      // サーバーデータに安定IDを付与（既存ローカルエントリと照合して引き継ぐ）
       const usedLocalIds = new Set();
       const merged = gmailSettings.map((s, i) => {
         const fp = makeFingerprint(s);
-        // 同内容の未使用ローカルエントリを探して _localId を引き継ぐ
         const existing = prev.find(p =>
           !p._isTemp &&
           !usedLocalIds.has(p._localId) &&
@@ -163,13 +155,8 @@ export default function GmailSettings({
         return { ...s, _localId: localId, _serverIdx: i };
       }).filter(s =>
         !deletedIdsRef.current.has(s._localId) &&
-        !deletedFingerprintsRef.current.has(makeFingerprint(s))  // ← 追加
+        !deletedFingerprintsRef.current.has(makeFingerprint(s))
       );
-
-      // まだ正式エントリが届いていない仮エントリだけ先頭に残す。
-      // ⚠️ _localId ではなくフィンガープリントで比較すること。
-      //    tempアイテムのIDとサーバーから返るrealアイテムのIDは絶対に
-      //    一致しないため、_localIdで比較するとtempが永遠に残り続ける。
       const stillPending = pendingTemps.filter(
         t => !merged.some(m => makeFingerprint(m) === makeFingerprint(t))
       );
@@ -185,10 +172,64 @@ export default function GmailSettings({
   const linkedScenarioId        = selectedStatusDef?.scenarioId || null;
 
   // ── ヘルパー ──────────────────────────────────────────────
-  const safeParseCustomKeys = (str) => { try { return str ? JSON.parse(str) : {}; } catch { return {}; } };
-  const setData      = (patch) => setModal(m => ({ ...m, data: { ...m.data, ...patch } }));
-  const setCustomKey = (name, val) => setData({ customKeys: { ...modal.data.customKeys, [name]: val } });
+  // customKeys UI形式: { fieldName, keyword }[]
+  // DB保存形式: { fieldName: keyword } (JSON文字列)
+  //
+  // safeParseCustomKeys: スプレッドシートのJSON文字列 → UI配列形式に変換
+  //   対応する3パターン:
+  //   1. 新形式オブジェクト {"項目名":"キーワード"} → UI配列に変換
+  //   2. 旧形式配列 [{fieldName,keyword},...] → そのまま返す（すでにUI配列形式）
+  //   3. 旧旧形式配列 [{fieldName,keyword},...] の一部にオブジェクト混在 → フィルタして返す
+  const safeParseCustomKeys = (str) => {
+    try {
+      if (!str) return [];
+      const parsed = JSON.parse(str);
+      // 配列形式: [{fieldName, keyword},...] → そのまま返す（UI形式と一致）
+      if (Array.isArray(parsed)) {
+        return parsed
+          .filter(item => item && typeof item === "object" && !Array.isArray(item))
+          .map(item => ({
+            fieldName: String(item.fieldName || ""),
+            keyword:   String(item.keyword   || ""),
+          }));
+      }
+      // オブジェクト形式: {"項目名":"キーワード"} → UI配列形式に変換
+      if (parsed && typeof parsed === "object") {
+        return Object.entries(parsed).map(([fieldName, keyword]) => ({
+          fieldName,
+          keyword: String(keyword || ""),
+        }));
+      }
+      return [];
+    } catch { return []; }
+  };
+
+  // customKeysToObject: UI配列形式 → DB保存用オブジェクト {"項目名":"キーワード"}
+  const customKeysToObject = (arr) => {
+    const obj = {};
+    (arr || []).forEach(({ fieldName, keyword }) => { if (fieldName) obj[fieldName] = keyword || ""; });
+    return obj;
+  };
+
+  const setData = (patch) => setModal(m => ({ ...m, data: { ...m.data, ...patch } }));
+  const addCustomKeyRow    = () => setData({ customKeys: [...(modal.data.customKeys || []), { fieldName: "", keyword: "" }] });
+  const removeCustomKeyRow = (idx) => setData({ customKeys: (modal.data.customKeys || []).filter((_, i) => i !== idx) });
+  const updateCustomKeyRow = (idx, patch) => setData({
+    customKeys: (modal.data.customKeys || []).map((row, i) => i === idx ? { ...row, ...patch } : row),
+  });
   const getStaffName = (email) => { const s = staffList.find(s => s.email === email); return s ? `${s.lastName} ${s.firstName}` : email; };
+
+  // 通知ユーザー追加ドロップダウン外クリックで閉じる
+  useEffect(() => {
+    if (!showAddNotifyUser) return;
+    const handler = (e) => {
+      if (addNotifyUserRef.current && !addNotifyUserRef.current.contains(e.target)) {
+        setShowAddNotifyUser(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [showAddNotifyUser]);
 
   // ── ステータス変更（シナリオ連動確認）──────────────────────
   const handleStatusChange = (v) => {
@@ -228,25 +269,13 @@ export default function GmailSettings({
   };
   const closeModal = () => { setModal(m => ({ ...m, open: false })); setShowAddNotifyUser(false); };
 
-  // 通知ユーザー追加ドロップダウン外クリックで閉じる
-  useEffect(() => {
-    if (!showAddNotifyUser) return;
-    const handler = (e) => {
-      if (addNotifyUserRef.current && !addNotifyUserRef.current.contains(e.target)) {
-        setShowAddNotifyUser(false);
-      }
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, [showAddNotifyUser]);
-
   // ── テスト実行 ────────────────────────────────────────────
   const handleTest = () => {
     if (!testBody) return showToast("テスト用の本文を入力してください", "warning");
     try {
       const extract = (key) => { if (!key) return "－"; const m = testBody.match(new RegExp(key + "\\s*(.+)")); return m ? m[1].trim() : "抽出失敗"; };
       const customs = {};
-      Object.entries(modal.data.customKeys).forEach(([k, v]) => { if (v) customs[k] = extract(v); });
+      (modal.data.customKeys || []).forEach(({ fieldName, keyword }) => { if (fieldName && keyword) customs[fieldName] = extract(keyword); });
       setParsePreview({ name: extract(modal.data.nameKey), phone: extract(modal.data.phoneKey), customs });
     } catch { showToast("キーの形式が正しくありません", "info"); }
   };
@@ -256,10 +285,9 @@ export default function GmailSettings({
     const isEdit   = modal.mode === "edit";
     const formData = { ...modal.data };
 
-    // 件名キーワードの重複チェック（編集中の自分自身は除外）
     const subjectKey = formData.subject.trim();
     const isDuplicate = localSettings.some(s => {
-      if (isEdit && s._localId === modal.editLocalId) return false; // 自分自身は除外
+      if (isEdit && s._localId === modal.editLocalId) return false;
       return (s["件名"] || "").trim() === subjectKey;
     });
     if (isDuplicate) {
@@ -271,11 +299,9 @@ export default function GmailSettings({
 
     setSaving(true);
 
-    // 編集時はサーバーインデックスを取得
     const serverItem = isEdit ? localSettings.find(s => s._localId === modal.editLocalId) : null;
     const serverIdx  = serverItem?._serverIdx ?? -1;
 
-    // ローカル表現として使う新しいルールオブジェクト
     const newRule = {
       "件名":             formData.subject,
       "氏名キー":         formData.nameKey,
@@ -284,12 +310,11 @@ export default function GmailSettings({
       "流入元":           formData.source,
       "担当者メール":     formData.staffEmail,
       "シナリオID":       formData.scenarioID,
-      "カスタム項目キー": JSON.stringify(formData.customKeys),
+      "カスタム項目キー": JSON.stringify(customKeysToObject(formData.customKeys)),
       "通知先ユーザー":   JSON.stringify(formData.notifyUsers || []),
       "通知文言":         formData.notifyMessage || "",
     };
 
-    // 1) 楽観的更新（即座にUIに反映）
     if (isEdit) {
       const newLocalId = makeFingerprint(newRule);
       setLocalSettings(prev => prev.map(s =>
@@ -302,12 +327,10 @@ export default function GmailSettings({
       setLocalSettings(prev => [{ ...newRule, _localId: tempId, _serverIdx: -1, _isTemp: true }, ...prev]);
     }
 
-    // 2) モーダルを即座に閉じて成功表示
     closeModal();
     setSaving(false);
     setSuccessModal({ open: true, message: isEdit ? "ルールを更新しました。" : "ルールを追加しました。" });
 
-    // 3) バックグラウンドでAPI → リフレッシュ
     setSyncing(true);
     try {
       await apiCall.post(GAS_URL, {
@@ -320,13 +343,12 @@ export default function GmailSettings({
         source:        formData.source,
         staffEmail:    formData.staffEmail,
         scenarioID:    formData.scenarioID,
-        customKeys:    JSON.stringify(formData.customKeys),
+        customKeys:    JSON.stringify(customKeysToObject(formData.customKeys)),
         notifyUsers:   JSON.stringify(formData.notifyUsers || []),
         notifyMessage: formData.notifyMessage || "",
       });
-      onRefresh(); // 正式IDで仮IDを置き換える
+      onRefresh();
     } catch {
-      // ロールバック：props の最新状態に戻す（削除済みはフィルター）
       setLocalSettings(
         gmailSettings
           .map((s, i) => ({ ...s, _localId: makeFingerprint(s), _serverIdx: i }))
@@ -346,25 +368,16 @@ export default function GmailSettings({
       note: "この操作は取り消せません。",
       onConfirm: async () => {
         setConfirmModal(null);
-
-        // 1) 削除済みIDとフィンガープリントの両方を記録（GASキャッシュ staleデータ対策）
-        //    - deletedIdsRef:          既存エントリが同じIDで戻ってくるケースをガード
-        //    - deletedFingerprintsRef: 同内容エントリが新しいIDで戻ってくるケースをガード
         deletedIdsRef.current.add(rule._localId);
         deletedFingerprintsRef.current.add(makeFingerprint(rule));
         const prevSettings = localSettings;
-
-        // 2) 楽観的更新：即座にリストから除去
         setLocalSettings(prev => prev.filter(s => s._localId !== rule._localId));
         setSuccessModal({ open: true, message: "ルールを削除しました。" });
-
-        // 3) バックグラウンドAPI
         setSyncing(true);
         try {
           await apiCall.post(GAS_URL, { action: "deleteGmailSetting", id: rule._serverIdx });
-          onRefresh(); // GASが古いデータを返してもdeletedIdsRefでフィルターされる
+          onRefresh();
         } catch {
-          // 失敗時：記録を取り消してUIを元に戻す
           deletedIdsRef.current.delete(rule._localId);
           deletedFingerprintsRef.current.delete(makeFingerprint(rule));
           setLocalSettings(prevSettings);
@@ -374,6 +387,13 @@ export default function GmailSettings({
         }
       },
     });
+  };
+
+  // ── カード一覧表示用：カスタムキーをオブジェクト形式で取得 ──
+  // safeParseCustomKeys は UI配列形式を返すので、カード表示用にオブジェクトに戻す
+  const parseCustomKeysForDisplay = (str) => {
+    const arr = safeParseCustomKeys(str);
+    return customKeysToObject(arr);
   };
 
   return (
@@ -440,9 +460,9 @@ export default function GmailSettings({
         </div>
 
         {/* ルール一覧 */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(420px, 1fr))", gap: 24, marginBottom: 32 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: isMobile ? 16 : 24, marginBottom: 32 }}>
           {localSettings.map((rule) => {
-            const ck   = safeParseCustomKeys(rule["カスタム項目キー"]);
+            const ck   = parseCustomKeysForDisplay(rule["カスタム項目キー"]);
             const mgmt = [
               rule["対応ステータス"] && `ステータス: ${rule["対応ステータス"]}`,
               rule["流入元"]         && `流入元: ${rule["流入元"]}`,
@@ -504,11 +524,21 @@ export default function GmailSettings({
 
       {/* ── 編集 / 新規モーダル ─────────────────────────────── */}
       {modal.open && (
-        <div style={{ position: "fixed", inset: 0, backgroundColor: "rgba(15,23,42,0.6)", backdropFilter: "blur(4px)", display: "flex", justifyContent: "center", alignItems: "center", zIndex: 2000, padding: 24 }}>
-          <div style={{ backgroundColor: "white", borderRadius: 20, width: "100%", maxWidth: 980, maxHeight: "92vh", overflowY: "auto", display: "grid", gridTemplateColumns: "1fr 320px", boxShadow: "0 24px 48px rgba(0,0,0,0.15)" }}>
+        <div style={{ position: "fixed", inset: 0, backgroundColor: "rgba(15,23,42,0.6)", backdropFilter: "blur(4px)", display: "flex", justifyContent: "center", alignItems: "center", zIndex: 2000, padding: isMobile ? 0 : 24 }}>
+          <div style={{
+            backgroundColor: "white",
+            borderRadius: isMobile ? 0 : 20,
+            width: "100%", maxWidth: 980,
+            height: isMobile ? "100%" : "auto",
+            maxHeight: isMobile ? "100%" : "92vh",
+            overflowY: "auto",
+            display: "grid",
+            gridTemplateColumns: isMobile ? "1fr" : "1fr 320px",
+            boxShadow: "0 24px 48px rgba(0,0,0,0.15)",
+          }}>
 
             {/* 左：設定フォーム */}
-            <div style={{ padding: 36 }}>
+            <div style={{ padding: isMobile ? "20px 16px" : 36 }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 28 }}>
                 <h2 style={{ margin: 0, fontSize: 22, fontWeight: 900, color: THEME.textMain }}>
                   {modal.mode === "add" ? "取り込みルールの作成" : "ルールの編集"}
@@ -530,28 +560,132 @@ export default function GmailSettings({
               {/* 抽出キーワード */}
               <div style={{ padding: 20, background: "#F8FAFC", borderRadius: 14, border: `1px solid ${THEME.border}`, marginBottom: 20 }}>
                 <div style={{ fontSize: 12, fontWeight: 800, color: THEME.textMuted, marginBottom: 14 }}>抽出キーワード設定（その文字の「後ろ」を取得します）</div>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
-                  <FieldBox>
-                    <LabelText>氏名</LabelText>
-                    <input style={styles.input} value={modal.data.nameKey} onChange={e => setData({ nameKey: e.target.value })} />
-                  </FieldBox>
-                  <FieldBox>
-                    <LabelText>電話番号</LabelText>
-                    <input style={styles.input} value={modal.data.phoneKey} onChange={e => setData({ phoneKey: e.target.value })} />
-                  </FieldBox>
-                  {formSettings.map(f => (
-                    <FieldBox key={f.name}>
-                      <LabelText>{f.name}</LabelText>
-                      <input style={styles.input} value={modal.data.customKeys[f.name] || ""} onChange={e => setCustomKey(f.name, e.target.value)} placeholder={`例: ${f.name}：`} />
-                    </FieldBox>
-                  ))}
-                </div>
+
+                {/* 全フィールド共通ヘッダー（PC/タブレットのみ） */}
+                {!isMobile && (
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 32px", gap: 8, marginBottom: 8 }}>
+                    <span style={{ fontSize: 11, fontWeight: 800, color: THEME.textMuted }}>取り込み先項目</span>
+                    <span style={{ fontSize: 11, fontWeight: 800, color: THEME.textMuted }}>抽出キーワード</span>
+                    <span />
+                  </div>
+                )}
+
+                {/* 固定フィールド：氏名・電話番号（必須・固定ラベル） */}
+                {[
+                  { label: "氏名", key: "nameKey" },
+                  { label: "電話番号", key: "phoneKey" },
+                ].map(({ label, key }) => (
+                  <div key={key} style={{
+                    display: "grid",
+                    gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr 32px",
+                    gap: isMobile ? 6 : 8, marginBottom: isMobile ? 12 : 8, alignItems: "center",
+                  }}>
+                    {/* 取り込み先：固定ラベル（プルダウン風の見た目） */}
+                    <div style={{
+                      display: "flex", alignItems: "center", justifyContent: "space-between",
+                      padding: "11px 14px", border: `1px solid ${THEME.border}`,
+                      borderRadius: 12, backgroundColor: "#F3F4F6",
+                      fontSize: 14, fontWeight: 700, color: THEME.textMain,
+                      userSelect: "none", boxSizing: "border-box",
+                    }}>
+                      <span>{label}</span>
+                      <span style={{ fontSize: 10, fontWeight: 800, color: THEME.primary, backgroundColor: "#EEF2FF", borderRadius: 4, padding: "2px 6px", letterSpacing: "0.03em" }}>必須</span>
+                    </div>
+                    {/* 抽出キーワード：編集可能 */}
+                    <input
+                      style={styles.input}
+                      value={modal.data[key]}
+                      onChange={e => setData({ [key]: e.target.value })}
+                      placeholder={`例: ${label}：`}
+                    />
+                    {/* 削除ボタン不要のためダミースペース（PCのみ） */}
+                    {!isMobile && <span />}
+                  </div>
+                ))}
+
+                {/* カスタム項目：動的追加行 */}
+                {(modal.data.customKeys || []).length > 0 && (
+                  <div style={{ marginBottom: 0 }}>
+                    {(modal.data.customKeys || []).map((row, idx) => {
+                      // 他の行で既に使われているフィールド名（現在行は除く）
+                      const usedFields = new Set(
+                        (modal.data.customKeys || [])
+                          .filter((_, i) => i !== idx)
+                          .map(r => r.fieldName)
+                          .filter(Boolean)
+                      );
+                      // 顧客情報（固定）グループ：使用済みを除外
+                      const availableFixed = CUSTOMER_FIXED_FIELDS.filter(f => !usedFields.has(f));
+                      // カスタム項目グループ：使用済みを除外
+                      const availableCustom = formSettings.filter(f => !usedFields.has(f.name));
+                      const fieldOptions = [
+                        { value: "", label: "項目を選択..." },
+                        ...(availableFixed.length > 0 ? [
+                          { value: "__group_customer__", label: "── 顧客情報 ──", disabled: true },
+                          ...availableFixed.map(f => ({ value: f, label: f })),
+                        ] : []),
+                        ...(availableCustom.length > 0 ? [
+                          { value: "__group_custom__", label: "── カスタム項目 ──", disabled: true },
+                          ...availableCustom.map(f => ({ value: f.name, label: f.name })),
+                        ] : []),
+                      ];
+                      return (
+                        <div key={idx} style={{
+                          display: "grid",
+                          gridTemplateColumns: isMobile ? "1fr auto" : "1fr 1fr 32px",
+                          gridTemplateAreas: isMobile ? `"field delete" "keyword keyword"` : undefined,
+                          gap: isMobile ? 6 : 8, alignItems: "center", marginBottom: isMobile ? 12 : 8,
+                          ...(isMobile ? { padding: 10, backgroundColor: "white", border: `1px solid ${THEME.border}`, borderRadius: 10 } : {}),
+                        }}>
+                          <div style={isMobile ? { gridArea: "field" } : undefined}>
+                            <CustomSelect
+                              value={row.fieldName}
+                              onChange={v => updateCustomKeyRow(idx, { fieldName: v })}
+                              options={fieldOptions}
+                              placeholder="項目を選択..."
+                            />
+                          </div>
+                          <div style={isMobile ? { gridArea: "keyword" } : undefined}>
+                            <input
+                              style={{ ...styles.input, width: "100%", boxSizing: "border-box" }}
+                              value={row.keyword}
+                              onChange={e => updateCustomKeyRow(idx, { keyword: e.target.value })}
+                              placeholder={row.fieldName ? `例: ${row.fieldName}：` : "例: フィールド名："}
+                            />
+                          </div>
+                          <button
+                            onClick={() => removeCustomKeyRow(idx)}
+                            style={{ width: 32, height: 32, border: "none", background: "none", cursor: "pointer", color: THEME.danger, display: "flex", alignItems: "center", justifyContent: "center", borderRadius: 6, flexShrink: 0, ...(isMobile ? { gridArea: "delete" } : {}) }}
+                          >
+                            <X size={16} />
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* 追加ボタン：追加可能な項目が残っている限り表示 */}
+                {(() => {
+                  const usedCount = (modal.data.customKeys || []).length;
+                  const totalAvailable = CUSTOMER_FIXED_FIELDS.length + formSettings.length;
+                  const canAdd = usedCount < totalAvailable;
+                  if (!canAdd) return null;
+                  return (
+                    <button
+                      onClick={addCustomKeyRow}
+                      style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 700, color: THEME.primary, background: "none", border: `1px dashed ${THEME.primary}`, borderRadius: 8, padding: "6px 14px", cursor: "pointer" }}
+                    >
+                      <Plus size={14} /> 項目を追加
+                    </button>
+                  );
+                })()}
               </div>
 
               {/* 管理項目 */}
               <div style={{ padding: 20, background: "#EEF2FF", borderRadius: 14, border: "1px solid #C7D2FE", marginBottom: 28 }}>
                 <div style={{ fontSize: 12, fontWeight: 800, color: THEME.primary, marginBottom: 14 }}>管理項目（取り込み時に自動セットする値）</div>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14 }}>
+                <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 14 }}>
                   <FieldBox>
                     <LabelText>対応ステータス</LabelText>
                     <CustomSelect value={modal.data.status} onChange={handleStatusChange} placeholder="未設定（デフォルト）" options={[{ value: "", label: "未設定（デフォルト）" }, ...statuses.map(st => ({ value: st.name, label: st.name }))]} />
@@ -608,11 +742,16 @@ export default function GmailSettings({
                   </div>
                 )}
                 {(modal.data.notifyUsers || []).map((u, idx) => (
-                  <div key={idx} style={{ display: "grid", gridTemplateColumns: "1fr 1fr auto", gap: 8, alignItems: "center", marginBottom: 8 }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 14px", borderRadius: 8, backgroundColor: "#EEF2FF", border: "1px solid #C7D2FE", fontSize: 13, fontWeight: 600, color: THEME.primary }}>
+                  <div key={idx} style={{
+                    display: "grid",
+                    gridTemplateColumns: isMobile ? "1fr auto" : "1fr 1fr auto",
+                    gridTemplateAreas: isMobile ? `"name name" "phone delete"` : undefined,
+                    gap: 8, alignItems: "center", marginBottom: 8,
+                  }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 14px", borderRadius: 8, backgroundColor: "#EEF2FF", border: "1px solid #C7D2FE", fontSize: 13, fontWeight: 600, color: THEME.primary, ...(isMobile ? { gridArea: "name" } : {}) }}>
                       <UserCircle size={14} /> {u.name}
                     </div>
-                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, ...(isMobile ? { gridArea: "phone" } : {}) }}>
                       <Phone size={13} color={THEME.textMuted} style={{ flexShrink: 0 }} />
                       <input
                         style={{ ...styles.input, flex: 1, fontSize: 13 }}
@@ -627,7 +766,7 @@ export default function GmailSettings({
                     </div>
                     <button
                       onClick={() => setData({ notifyUsers: (modal.data.notifyUsers || []).filter((_, i) => i !== idx) })}
-                      style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 32, height: 32, borderRadius: 8, border: "none", backgroundColor: "#FEE2E2", color: "#DC2626", cursor: "pointer", flexShrink: 0 }}
+                      style={{ display: "flex", alignItems: "center", justifyContent: "center", width: 32, height: 32, borderRadius: 8, border: "none", backgroundColor: "#FEE2E2", color: "#DC2626", cursor: "pointer", flexShrink: 0, ...(isMobile ? { gridArea: "delete" } : {}) }}
                       title="削除"
                     >
                       <X size={14} />
@@ -679,18 +818,24 @@ export default function GmailSettings({
               </div>
 
               {/* 保存・キャンセル */}
-              <div style={{ display: "flex", gap: 12 }}>
-                <button onClick={handleSave} disabled={saving} style={{ flex: 1, padding: "13px", borderRadius: 12, border: "none", backgroundColor: saving ? "#818CF8" : THEME.primary, color: "white", fontWeight: 900, fontSize: 15, cursor: saving ? "not-allowed" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, transition: "background-color 0.2s" }}>
+              <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", gap: 12 }}>
+                <button onClick={handleSave} disabled={saving} style={{ flex: 1, padding: "13px", borderRadius: 12, border: "none", backgroundColor: saving ? "#818CF8" : THEME.primary, color: "white", fontWeight: 900, fontSize: 15, cursor: saving ? "not-allowed" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, transition: "background-color 0.2s", order: isMobile ? 1 : 0 }}>
                   {saving ? <><Loader2 size={18} style={{ animation: "spin 1s linear infinite" }} /> 保存中...</> : <><Save size={18} /> 保存する</>}
                 </button>
-                <button onClick={closeModal} disabled={saving} style={{ flex: 1, padding: "13px", borderRadius: 12, border: `1px solid ${THEME.border}`, backgroundColor: "#F1F5F9", color: THEME.textMuted, fontWeight: 800, fontSize: 15, cursor: "pointer" }}>
+                <button onClick={closeModal} disabled={saving} style={{ flex: 1, padding: "13px", borderRadius: 12, border: `1px solid ${THEME.border}`, backgroundColor: "#F1F5F9", color: THEME.textMuted, fontWeight: 800, fontSize: 15, cursor: "pointer", order: isMobile ? 2 : 0 }}>
                   キャンセル
                 </button>
               </div>
             </div>
 
-            {/* 右：テストパネル */}
-            <div style={{ background: "#F8FAFC", borderRadius: "0 20px 20px 0", padding: 32, borderLeft: `1px solid ${THEME.border}` }}>
+            {/* 右：テストパネル（モバイルでは下に積む。フルスクリーンモーダルの最後尾） */}
+            <div style={{
+              background: "#F8FAFC",
+              borderRadius: isMobile ? 0 : "0 20px 20px 0",
+              padding: isMobile ? "20px 16px 32px" : 32,
+              borderLeft: isMobile ? "none" : `1px solid ${THEME.border}`,
+              borderTop: isMobile ? `1px solid ${THEME.border}` : "none",
+            }}>
               <h4 style={{ margin: "0 0 16px", display: "flex", alignItems: "center", gap: 8, fontSize: 15, color: THEME.textMain }}>
                 <AlertCircle size={17} color={THEME.primary} /> テスト
               </h4>

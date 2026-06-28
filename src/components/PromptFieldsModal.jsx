@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { THEME } from "../lib/constants";
 import { styles } from "../lib/styles";
 import CustomSelect from "./CustomSelect";
+import { useWindowWidth } from "../lib/useWindowWidth";
 
 // ==========================================
 // 📝 PromptFieldsModal
@@ -19,6 +20,7 @@ export default function PromptFieldsModal({
   onSkip,            // () => void
 }) {
   const [values, setValues] = useState(currentValues);
+  const { isMobile } = useWindowWidth();
 
   if (promptFields.length === 0) return null;
 
@@ -77,8 +79,8 @@ export default function PromptFieldsModal({
   };
 
   return (
-    <div style={{ position: "fixed", inset: 0, backgroundColor: "rgba(15,23,42,0.6)", display: "flex", justifyContent: "center", alignItems: "center", zIndex: 2500, backdropFilter: "blur(4px)" }}>
-      <div style={{ backgroundColor: "white", borderRadius: 20, padding: "36px 40px", width: 460, boxShadow: "0 24px 48px rgba(0,0,0,0.15)" }}>
+    <div style={{ position: "fixed", inset: 0, backgroundColor: "rgba(15,23,42,0.6)", display: "flex", justifyContent: "center", alignItems: "center", zIndex: 2500, backdropFilter: "blur(4px)", padding: isMobile ? 16 : 0, boxSizing: "border-box" }}>
+      <div style={{ backgroundColor: "white", borderRadius: 20, padding: isMobile ? "28px 20px" : "36px 40px", width: isMobile ? "100%" : 460, maxWidth: 460, boxShadow: "0 24px 48px rgba(0,0,0,0.15)", boxSizing: "border-box" }}>
         <div style={{ textAlign: "center", marginBottom: 24 }}>
           <div style={{ fontSize: 40, marginBottom: 8 }}>📝</div>
           <h3 style={{ fontSize: 18, fontWeight: 900, color: THEME.textMain, margin: "0 0 6px" }}>
@@ -95,16 +97,16 @@ export default function PromptFieldsModal({
           {promptFields.map(renderField)}
         </div>
 
-        <div style={{ display: "flex", gap: 10 }}>
+        <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", gap: 10 }}>
           <button
             onClick={() => onConfirm(values)}
-            style={{ flex: 2, padding: 13, borderRadius: 10, border: "none", backgroundColor: THEME.primary, color: "white", fontWeight: 900, fontSize: 14, cursor: "pointer" }}
+            style={{ flex: isMobile ? "none" : 2, padding: 13, borderRadius: 10, border: "none", backgroundColor: THEME.primary, color: "white", fontWeight: 900, fontSize: 14, cursor: "pointer", order: isMobile ? 1 : 0 }}
           >
             更新して完了
           </button>
           <button
             onClick={onSkip}
-            style={{ flex: 1, padding: 13, borderRadius: 10, border: `1px solid ${THEME.border}`, backgroundColor: "white", color: THEME.textMuted, fontWeight: 800, fontSize: 14, cursor: "pointer" }}
+            style={{ flex: isMobile ? "none" : 1, padding: 13, borderRadius: 10, border: `1px solid ${THEME.border}`, backgroundColor: "white", color: THEME.textMuted, fontWeight: 800, fontSize: 14, cursor: "pointer", order: isMobile ? 2 : 0 }}
           >
             スキップ
           </button>

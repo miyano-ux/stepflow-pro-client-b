@@ -5,6 +5,7 @@ import {
   CheckCircle2, XCircle, Loader2, Globe, KeyRound,
   Zap, AlertCircle, ChevronLeft, Copy, Check, Mail,
   Bell, Phone, X, Plus, MessageSquare, UserCircle, Lock,
+  Eye, EyeOff,
 } from "lucide-react";
 import { THEME, GAS_URL } from "../lib/constants";
 import { styles } from "../lib/styles";
@@ -13,6 +14,7 @@ import Page from "../components/Page";
 import StaffGroupSelect from "../components/StaffGroupSelect";
 import { SUPPORTED_SOURCES } from "./SourceIntegrationIndex";
 import { useToast } from "../ToastContext";
+import { useWindowWidth } from "../lib/useWindowWidth";
 
 // ============================================================
 // 🔗 SourceIntegrationDetail - 媒体連携 個別設定
@@ -40,9 +42,9 @@ const S = {
     textTransform: "uppercase", letterSpacing: "0.05em",
     marginBottom: 16, display: "flex", alignItems: "center", gap: 6,
   },
-  row: {
-    display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16,
-  },
+  row: (isMobile = false) => ({
+    display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 16, marginBottom: 16,
+  }),
   btn: (variant = "default") => ({
     display: "inline-flex", alignItems: "center", gap: 6,
     padding: "10px 18px", borderRadius: 10, fontSize: 13, fontWeight: 600,
@@ -116,6 +118,94 @@ function ForwardingAddressBox({ address }) {
   );
 }
 
+// ── 通知文言で挿入できる変数一覧 ─────────────────────────────
+const NOTIFY_VARIABLE_GROUPS = [
+  {
+    label: "顧客情報",
+    color: THEME.primary,
+    bg: "#EEF2FF",
+    vars: [
+      { label: "姓",            value: "{{姓}}"            },
+      { label: "名",            value: "{{名}}"            },
+      { label: "電話番号",       value: "{{電話番号}}"       },
+      { label: "メールアドレス", value: "{{メールアドレス}}" },
+    ],
+  },
+  {
+    label: "担当者",
+    color: "#0284C7",
+    bg: "#E0F2FE",
+    vars: [
+      { label: "担当者姓",     value: "{{担当者姓}}"     },
+      { label: "担当者名",     value: "{{担当者名}}"     },
+      { label: "担当者電話",   value: "{{担当者電話}}"   },
+      { label: "担当者メール", value: "{{担当者メール}}"  },
+    ],
+  },
+];
+
+// ── 通知文言 変数挿入パネル ────────────────────────────────
+function NotifyVariablePanel({ lastInserted, onInsert }) {
+  return (
+    <div style={{
+      backgroundColor: "#F8FAFC",
+      border: `1px solid ${THEME.border}`,
+      borderRadius: "10px 10px 0 0",
+      padding: "10px 14px",
+      borderBottom: "none",
+    }}>
+      <p style={{
+        fontSize: 11, fontWeight: 800, color: THEME.textMuted,
+        margin: "0 0 8px", letterSpacing: "0.05em",
+      }}>
+        変数を挿入　―　クリックするとカーソル位置に挿入されます
+      </p>
+      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+        {NOTIFY_VARIABLE_GROUPS.map((group) => (
+          <div key={group.label} style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+            <span style={{ fontSize: 11, fontWeight: 800, color: group.color, minWidth: 48, flexShrink: 0 }}>
+              {group.label}
+            </span>
+            {group.vars.map((v) => {
+              const active = lastInserted === v.value;
+              return (
+                <button
+                  key={v.value}
+                  type="button"
+                  onClick={() => onInsert(v.value)}
+                  style={{
+                    padding: "3px 10px", borderRadius: 20,
+                    border: `1.5px solid ${active ? group.color : group.color + "60"}`,
+                    backgroundColor: active ? group.color : group.bg,
+                    color: active ? "white" : group.color,
+                    fontSize: 12, fontWeight: 800, cursor: "pointer",
+                    transition: "all 0.15s", fontFamily: "monospace",
+                  }}
+                  onMouseEnter={e => {
+                    if (!active) {
+                      e.currentTarget.style.backgroundColor = group.color;
+                      e.currentTarget.style.color = "white";
+                    }
+                  }}
+                  onMouseLeave={e => {
+                    if (!active) {
+                      e.currentTarget.style.backgroundColor = group.bg;
+                      e.currentTarget.style.color = group.color;
+                    }
+                  }}
+                  title={`クリックで ${v.value} を挿入`}
+                >
+                  {v.label}
+                </button>
+              );
+            })}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function SourceIntegrationDetail({
   sourceIntegrations = [],
   sourceCredsStatus  = {},
@@ -134,6 +224,7 @@ export default function SourceIntegrationDetail({
   const showToast = useToast();
   const { sourceKey } = useParams();
   const navigate      = useNavigate();
+  const { isMobile }  = useWindowWidth();
 
   // 対応媒体リストから該当媒体を取得
   const src = SUPPORTED_SOURCES.find(s => s.key === sourceKey);
@@ -156,10 +247,13 @@ export default function SourceIntegrationDetail({
     loginId:  sourceLoginIds[sourceKey] || "",
     password: "",
   });
-  const [testResult,  setTestResult]  = useState(null);
-  const [testLoading, setTestLoading] = useState(false);
-  const [credsSaved,  setCredsSaved]  = useState(false);
-  const [credsSaving, setCredsSaving] = useState(false);
+  const [testResult,   setTestResult]   = useState(null);
+  const [testLoading,  setTestLoading]  = useState(false);
+  const [credsSaved,   setCredsSaved]   = useState(false);
+  const [credsSaving,  setCredsSaving]  = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  // 認証済みの場合は「マスク済み・未編集」状態からスタート
+  const [pwEditing,    setPwEditing]    = useState(false);
 
   const [ruleForm, setRuleForm] = useState({
     source:     existingRule["流入元"]        || src.name,
@@ -169,6 +263,28 @@ export default function SourceIntegrationDetail({
   });
   const [ruleSaving, setRuleSaving] = useState(false);
   const [ruleSaved,  setRuleSaved]  = useState(false);
+
+  // ── 通知文言 変数差し込み ──────────────────────────────────
+  const notifyTextareaRef                   = useRef(null);
+  const [notifyLastInserted, setNotifyLastInserted] = useState(null);
+
+  const insertNotifyVariable = (varValue) => {
+    const ta = notifyTextareaRef.current;
+    if (!ta) {
+      setNotifyMessage(m => m + varValue);
+    } else {
+      const start = ta.selectionStart;
+      const end   = ta.selectionEnd;
+      setNotifyMessage(m => m.slice(0, start) + varValue + m.slice(end));
+      requestAnimationFrame(() => {
+        ta.focus();
+        const pos = start + varValue.length;
+        ta.setSelectionRange(pos, pos);
+      });
+    }
+    setNotifyLastInserted(varValue);
+    setTimeout(() => setNotifyLastInserted(null), 1200);
+  };
 
   // ── 通知設定 ──────────────────────────────────────────────
   const [notifyUsers, setNotifyUsers] = useState(() => {
@@ -218,18 +334,28 @@ export default function SourceIntegrationDetail({
 
   // ── 認証情報の保存 ───────────────────────────────────────────
   const handleSaveCreds = async () => {
-    if (!loginForm.loginId || !loginForm.password) {
-      showToast("ログインIDとパスワードを入力してください", "warning");
+    if (!loginForm.loginId) {
+      showToast("ログインIDを入力してください", "warning");
+      return;
+    }
+    // pwEditing=false（マスク状態）の場合は既存パスワードを維持するので空チェック不要
+    if (pwEditing && !loginForm.password) {
+      showToast("パスワードを入力してください", "warning");
       return;
     }
     setCredsSaving(true);
     try {
-      await api({ action: "saveSourceCredentials", sourceKey, loginId: loginForm.loginId, password: loginForm.password });
+      const payload = { action: "saveSourceCredentials", sourceKey, loginId: loginForm.loginId };
+      // パスワード編集中の場合のみ新しいパスワードを送信
+      if (pwEditing) payload.password = loginForm.password;
+      await api(payload);
       setCredsSaved(true);
+      setPwEditing(false);
+      setLoginForm(p => ({ ...p, password: "" }));
       setTimeout(() => setCredsSaved(false), 2000);
       onRefresh?.();
     } catch (e) {
-      showToast("保存に失敗しました: " + (e?.message || e, "error"));
+      showToast("保存に失敗しました: " + (e?.message || e), "error");
     } finally {
       setCredsSaving(false);
     }
@@ -319,13 +445,9 @@ export default function SourceIntegrationDetail({
   // ── マッピング先カラム選択肢 ─────────────────────────────────
   // 「顧客情報」グループ：processCustomerRegistration で直接処理される特殊カラム
   const PERSONAL_DEST_COLS = ["姓", "名", "姓（カナ）", "名（カナ）", "電話番号", "メールアドレス"];
-  // 「物件・査定情報」グループ：data{} に格納される汎用カラム
+  // 「物件情報」グループ：物件リスト（SHEET_PROPERTIES）で管理しているカラムのみ
   const PROPERTY_DEST_COLS = [
-    "問い合わせ番号", "物件種別", "物件名", "物件住所", "所在地",
-    "土地面積", "建物面積", "専有面積", "間取り", "築年", "完成年",
-    "現況", "名義", "残債", "事業所名", "部屋番号",
-    "売却希望時期", "売却理由", "ご要望", "希望連絡時間",
-    "受付日時", "受信日時", "住所", "郵便番号",
+    "物件名", "物件種別", "査定金額", "成約金額", "住所",
   ];
   const ALL_FIXED = new Set([...PERSONAL_DEST_COLS, ...PROPERTY_DEST_COLS]);
   const customDestCols = (formSettings || [])
@@ -335,7 +457,7 @@ export default function SourceIntegrationDetail({
     { value: "", label: "— 保存しない —" },
     { value: "__group_personal__", label: "── 顧客情報 ──", disabled: true },
     ...PERSONAL_DEST_COLS.map(c => ({ value: c, label: c })),
-    { value: "__group_property__", label: "── 物件・査定情報 ──", disabled: true },
+    { value: "__group_property__", label: "── 物件情報 ──", disabled: true },
     ...PROPERTY_DEST_COLS.map(c => ({ value: c, label: c })),
     ...(customDestCols.length > 0 ? [
       { value: "__group_custom__", label: "── カスタム項目 ──", disabled: true },
@@ -350,6 +472,12 @@ export default function SourceIntegrationDetail({
   };
 
   const isConfigured = src.requiresLogin ? !!sourceCredsStatus?.[sourceKey] : true;
+
+  // 認証済みの場合は最初からマスク状態（未編集）にする
+  useEffect(() => {
+    setPwEditing(!isConfigured);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sourceKey]);
 
   return (
     <Page
@@ -403,7 +531,8 @@ export default function SourceIntegrationDetail({
             <KeyRound size={13} />
             認証情報
           </div>
-          <div style={S.row}>
+          <div style={S.row(isMobile)}>
+            {/* ── ログインID ── */}
             <div>
               <LabelText>ログインID（メールアドレス）</LabelText>
               <input
@@ -414,18 +543,75 @@ export default function SourceIntegrationDetail({
                 onChange={e => setLoginForm(p => ({ ...p, loginId: e.target.value }))}
               />
             </div>
+
+            {/* ── パスワード ── */}
             <div>
               <LabelText>パスワード</LabelText>
-              <input
-                style={S.input}
-                type="password"
-                placeholder="パスワードを入力"
-                value={loginForm.password}
-                onChange={e => setLoginForm(p => ({ ...p, password: e.target.value }))}
-              />
+              {!pwEditing ? (
+                /* 登録済みマスク表示 */
+                <div style={{
+                  ...S.input,
+                  display: "flex", alignItems: "center", justifyContent: "space-between",
+                  cursor: "default", userSelect: "none",
+                  backgroundColor: "#F0FDF4",
+                  border: `1px solid #86EFAC`,
+                  color: THEME.textMuted,
+                  gap: 8,
+                }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <Lock size={13} color="#16A34A" style={{ flexShrink: 0 }} />
+                    <span style={{ letterSpacing: "0.18em", fontSize: 16, color: "#16A34A", lineHeight: 1 }}>
+                      ••••••••
+                    </span>
+                    <span style={{ fontSize: 11, color: "#16A34A", fontWeight: 600, letterSpacing: 0 }}>
+                      設定済み
+                    </span>
+                  </div>
+                  <div style={{ display: "flex", gap: 4 }}>
+                    <button
+                      onClick={() => { setPwEditing(true); setShowPassword(false); }}
+                      style={{
+                        fontSize: 11, fontWeight: 600, padding: "3px 10px",
+                        borderRadius: 6, border: "1px solid #86EFAC",
+                        backgroundColor: "white", color: "#16A34A",
+                        cursor: "pointer", whiteSpace: "nowrap",
+                      }}
+                      title="パスワードを変更する"
+                    >
+                      変更
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                /* 編集中：入力フィールド ＋ 表示切り替えボタン */
+                <div style={{ position: "relative" }}>
+                  <input
+                    style={{ ...S.input, paddingRight: 40 }}
+                    type={showPassword ? "text" : "password"}
+                    placeholder="パスワードを入力"
+                    value={loginForm.password}
+                    autoFocus
+                    onChange={e => setLoginForm(p => ({ ...p, password: e.target.value }))}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(v => !v)}
+                    style={{
+                      position: "absolute", right: 10, top: "50%",
+                      transform: "translateY(-50%)",
+                      background: "none", border: "none",
+                      cursor: "pointer", padding: 2,
+                      color: THEME.textMuted, display: "flex", alignItems: "center",
+                    }}
+                    title={showPassword ? "パスワードを隠す" : "パスワードを表示"}
+                  >
+                    {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </button>
+                </div>
+              )}
             </div>
           </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
             <button style={S.btn("default")} onClick={handleSaveCreds} disabled={credsSaving}>
               {credsSaving
                 ? <><Loader2 size={14} /> 保存中…</>
@@ -455,7 +641,7 @@ export default function SourceIntegrationDetail({
         <div style={S.sectionTitle}>
           連携ルール（取り込み時の初期値）
         </div>
-        <div style={S.row}>
+        <div style={S.row(isMobile)}>
           <div>
             <LabelText>流入元</LabelText>
             <input
@@ -478,7 +664,7 @@ export default function SourceIntegrationDetail({
             />
           </div>
         </div>
-        <div style={S.row}>
+        <div style={S.row(isMobile)}>
           <div>
             <LabelText>担当者</LabelText>
             <StaffGroupSelect
@@ -540,19 +726,23 @@ export default function SourceIntegrationDetail({
         {/* 通知文言 */}
         <div style={{ marginBottom: 20 }}>
           <LabelText>通知文言</LabelText>
+          {/* 変数挿入パネル（textarea 上部に接続） */}
+          <NotifyVariablePanel lastInserted={notifyLastInserted} onInsert={insertNotifyVariable} />
           <textarea
+            ref={notifyTextareaRef}
             style={{
               ...S.input,
               width: "100%", boxSizing: "border-box",
               minHeight: 72, resize: "vertical", lineHeight: 1.6,
               fontFamily: "inherit",
+              borderRadius: "0 0 10px 10px",
             }}
             value={notifyMessage}
             onChange={e => setNotifyMessage(e.target.value)}
             placeholder={`${src.name}から反響がありました。確認をお願いします。`}
           />
           <div style={{ fontSize: 11, color: THEME.textMuted, marginTop: 4 }}>
-            ※ 登録のたびに上記の文言でSMSが送信されます。
+            ※ 登録のたびに上記の文言でSMSが送信されます。顧客情報の変数（例: <span style={{ fontFamily: "monospace", color: THEME.primary }}>{"{{姓}}"}</span>）を使って送信先ごとにパーソナライズできます。
           </div>
         </div>
 
@@ -572,7 +762,9 @@ export default function SourceIntegrationDetail({
 
         {notifyUsers.map((u, idx) => (
           <div key={idx} style={{
-            display: "grid", gridTemplateColumns: "1fr 1fr auto",
+            display: "grid",
+            gridTemplateColumns: isMobile ? "1fr auto" : "1fr 1fr auto",
+            gridTemplateAreas: isMobile ? `"name name" "phone delete"` : undefined,
             gap: 8, alignItems: "center", marginBottom: 8,
           }}>
             {/* 名前（表示のみ） */}
@@ -582,6 +774,7 @@ export default function SourceIntegrationDetail({
               backgroundColor: "#EEF2FF",
               border: `1px solid #C7D2FE`,
               fontSize: 13, fontWeight: 600, color: THEME.primary,
+              ...(isMobile ? { gridColumn: "1 / -1" } : {}),
             }}>
               <UserCircle size={14} />
               {u.name}
@@ -708,20 +901,22 @@ export default function SourceIntegrationDetail({
             メールから取得した各項目を、顧客DBのどのカラムに保存するか設定します。「保存しない」にした項目は取り込み時に無視されます。
           </p>
 
-          {/* テーブルヘッダー */}
-          <div style={{
-            display: "grid", gridTemplateColumns: "1fr 24px 1fr",
-            gap: 8, alignItems: "center",
-            padding: "6px 4px", marginBottom: 6,
-          }}>
-            <span style={{ fontSize: 11, fontWeight: 800, color: THEME.textMuted, letterSpacing: "0.04em" }}>
-              メール内フィールド
-            </span>
-            <span />
-            <span style={{ fontSize: 11, fontWeight: 800, color: THEME.textMuted, letterSpacing: "0.04em" }}>
-              保存先カラム
-            </span>
-          </div>
+          {/* テーブルヘッダー（PC/タブレットのみ。モバイルは1列積みのため不要） */}
+          {!isMobile && (
+            <div style={{
+              display: "grid", gridTemplateColumns: "1fr 24px 1fr",
+              gap: 8, alignItems: "center",
+              padding: "6px 4px", marginBottom: 6,
+            }}>
+              <span style={{ fontSize: 11, fontWeight: 800, color: THEME.textMuted, letterSpacing: "0.04em" }}>
+                メール内フィールド
+              </span>
+              <span />
+              <span style={{ fontSize: 11, fontWeight: 800, color: THEME.textMuted, letterSpacing: "0.04em" }}>
+                保存先カラム
+              </span>
+            </div>
+          )}
 
           {/* マッピング行 */}
           {src.sourceFields.map(field => {
@@ -731,8 +926,16 @@ export default function SourceIntegrationDetail({
               <div
                 key={field.key}
                 style={{
-                  display: "grid", gridTemplateColumns: "1fr 24px 1fr",
-                  gap: 8, alignItems: "center", marginBottom: 6,
+                  display: "grid",
+                  gridTemplateColumns: isMobile ? "1fr" : "1fr 24px 1fr",
+                  gap: isMobile ? 6 : 8, alignItems: "center",
+                  marginBottom: isMobile ? 12 : 6,
+                  ...(isMobile ? {
+                    padding: "12px",
+                    backgroundColor: "#FBFBFD",
+                    border: `1px solid ${THEME.border}`,
+                    borderRadius: 12,
+                  } : {}),
                 }}
               >
                 {/* 左：媒体フィールド名 */}
@@ -740,7 +943,7 @@ export default function SourceIntegrationDetail({
                   fontSize: 13, fontWeight: 600,
                   color: isMapped ? THEME.textMain : THEME.textMuted,
                   padding: "10px 14px",
-                  backgroundColor: isMapped ? "#F0FDF4" : "#F8FAFC",
+                  backgroundColor: isMapped ? "#F0FDF4" : "white",
                   border: `1px solid ${isMapped ? "#86EFAC" : THEME.border}`,
                   borderRadius: 8,
                   display: "flex", alignItems: "center", gap: 6,
@@ -751,12 +954,13 @@ export default function SourceIntegrationDetail({
                   {field.label}
                 </div>
 
-                {/* 矢印 */}
+                {/* 矢印（モバイルでは下向き・中央寄せ） */}
                 <div style={{
                   textAlign: "center", fontSize: 14, color: THEME.textMuted,
                   opacity: isMapped ? 1 : 0.3,
+                  ...(isMobile ? { padding: "1px 0" } : {}),
                 }}>
-                  →
+                  {isMobile ? "↓" : "→"}
                 </div>
 
                 {/* 右：保存先カラム選択 */}

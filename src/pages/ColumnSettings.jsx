@@ -2,10 +2,11 @@ import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   GripVertical, Eye, EyeOff,
-  Search, Loader2, CheckCircle2, ArrowLeft
+  Search, Loader2, CheckCircle2, ArrowLeft, ChevronUp, ChevronDown
 } from "lucide-react";
 import { THEME } from "../lib/constants";
 import { styles } from "../lib/styles";
+import { useWindowWidth } from "../lib/useWindowWidth";
 
 // ==========================================
 // ⚙️ ColumnSettings - 表示・検索項目設定
@@ -42,45 +43,60 @@ const REQUIRED_KEYS  = ["氏名", "電話番号", "対応ステータス"];
 const getLabel = (key) => SALES_FIELDS.find(f => f.key === key)?.label || key;
 
 // ドラッグ可能な汎用行コンポーネント
-const DraggableRow = ({ it, idx, dragIdx, onDragStart, onDragOver, onDragEnd, onToggleVisible, onToggleSearchable }) => (
+const DraggableRow = ({ it, idx, total, dragIdx, onDragStart, onDragOver, onDragEnd, onToggleVisible, onToggleSearchable, onMoveUp, onMoveDown }) => {
+  const { isMobile } = useWindowWidth();
+  return (
   <div
-    draggable
-    onDragStart={() => onDragStart(idx)}
-    onDragOver={(e) => onDragOver(e, idx)}
-    onDragEnd={onDragEnd}
+    draggable={!isMobile}
+    onDragStart={!isMobile ? (() => onDragStart(idx)) : undefined}
+    onDragOver={!isMobile ? ((e) => onDragOver(e, idx)) : undefined}
+    onDragEnd={!isMobile ? onDragEnd : undefined}
     style={{
       ...localStyles.card,
-      cursor: "grab",
+      cursor: isMobile ? "default" : "grab",
       opacity: dragIdx === idx ? 0.45 : 1,
       border: dragIdx === idx ? `2px solid ${THEME.primary}` : `1px solid ${THEME.border}`,
       backgroundColor: dragIdx === idx ? "#F5F3FF" : "white",
     }}
   >
-    <GripVertical size={18} color={THEME.textMuted} style={{ flexShrink: 0 }} />
-    <div style={{ flex: 1, fontWeight: 800, color: THEME.textMain, fontSize: 14, display: "flex", alignItems: "center" }}>
-      {getLabel(it.key)}
+    {/* モバイル：↑↓ボタン / PC：グリップアイコン */}
+    {isMobile ? (
+      <div style={{ display: "flex", flexDirection: "column", gap: 0, flexShrink: 0 }}>
+        <button onClick={() => onMoveUp(idx)} disabled={idx === 0} style={{ background: "none", border: "none", cursor: idx === 0 ? "default" : "pointer", padding: "2px", color: idx === 0 ? "#E2E8F0" : THEME.textMuted, display: "flex" }}>
+          <ChevronUp size={15} />
+        </button>
+        <button onClick={() => onMoveDown(idx)} disabled={idx === total - 1} style={{ background: "none", border: "none", cursor: idx === total - 1 ? "default" : "pointer", padding: "2px", color: idx === total - 1 ? "#E2E8F0" : THEME.textMuted, display: "flex" }}>
+          <ChevronDown size={15} />
+        </button>
+      </div>
+    ) : (
+      <GripVertical size={18} color={THEME.textMuted} style={{ flexShrink: 0 }} />
+    )}
+    <div style={{ flex: 1, minWidth: 0, fontWeight: 800, color: THEME.textMain, fontSize: 14, display: "flex", alignItems: "center", overflow: "hidden" }}>
+      <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{getLabel(it.key)}</span>
       {REQUIRED_KEYS.includes(it.key) && (
-        <span style={localStyles.badge}>必須項目</span>
+        <span style={{ ...localStyles.badge, flexShrink: 0 }}>必須</span>
       )}
     </div>
-    <div style={{ display: "flex", gap: 20 }}>
+    <div style={{ display: "flex", gap: isMobile ? 8 : 20, flexShrink: 0 }}>
       <button
         onClick={onToggleVisible}
-        style={{ background: "none", border: "none", cursor: "pointer", display: "flex", alignItems: "center", gap: 6, color: it.visible ? THEME.primary : THEME.textMuted, fontWeight: 800, fontSize: 13 }}
+        style={{ background: "none", border: "none", cursor: "pointer", display: "flex", alignItems: "center", gap: 4, color: it.visible ? THEME.primary : THEME.textMuted, fontWeight: 800, fontSize: 13 }}
       >
         {it.visible ? <Eye size={17} /> : <EyeOff size={17} />}
-        {it.visible ? "表示中" : "非表示"}
+        {!isMobile && (it.visible ? "表示中" : "非表示")}
       </button>
       <button
         onClick={onToggleSearchable}
-        style={{ background: "none", border: "none", cursor: "pointer", display: "flex", alignItems: "center", gap: 6, color: it.searchable ? THEME.success : THEME.textMuted, fontWeight: 800, fontSize: 13 }}
+        style={{ background: "none", border: "none", cursor: "pointer", display: "flex", alignItems: "center", gap: 4, color: it.searchable ? THEME.success : THEME.textMuted, fontWeight: 800, fontSize: 13 }}
       >
         <Search size={17} />
-        {it.searchable ? "検索可" : "検索不可"}
+        {!isMobile && (it.searchable ? "検索可" : "検索不可")}
       </button>
     </div>
   </div>
-);
+  );
+};
 
 export default function ColumnSettings({ displaySettings = [], formSettings = [], onSaveDisplaySettings }) {
   const navigate = useNavigate();
@@ -176,21 +192,41 @@ export default function ColumnSettings({ displaySettings = [], formSettings = []
   const salesDrag   = makeDragHandlers("sales",   salesItems,   setSalesItems);
   const defaultDrag = makeDragHandlers("default",  defaultItems, setDefaultItems);
   const customDrag  = makeDragHandlers("custom",   customItems,  setCustomItems);
+  const { isMobile } = useWindowWidth();
+
+  // モバイル用：上下ボタンによる並び替え
+  const makeMoveHandlers = (setItems) => ({
+    onMoveUp: (i) => setItems(prev => {
+      if (i === 0) return prev;
+      const next = [...prev];
+      [next[i - 1], next[i]] = [next[i], next[i - 1]];
+      return next;
+    }),
+    onMoveDown: (i) => setItems(prev => {
+      if (i === prev.length - 1) return prev;
+      const next = [...prev];
+      [next[i], next[i + 1]] = [next[i + 1], next[i]];
+      return next;
+    }),
+  });
+  const salesMove   = makeMoveHandlers(setSalesItems);
+  const defaultMove = makeMoveHandlers(setDefaultItems);
+  const customMove  = makeMoveHandlers(setCustomItems);
 
   return (
-    <div style={localStyles.main}>
-      <header style={{ marginBottom: 40 }}>
+    <div style={{ ...localStyles.main, padding: isMobile ? "20px 16px" : "40px 64px", boxSizing: "border-box" }}>
+      <header style={{ marginBottom: isMobile ? 24 : 40 }}>
         <button
           onClick={() => navigate("/")}
           style={{ background: "none", border: "none", color: THEME.textMuted, cursor: "pointer", display: "flex", alignItems: "center", gap: 8, fontWeight: 800, marginBottom: 12 }}
         >
           <ArrowLeft size={18} /> ダッシュボードへ戻る
         </button>
-        <h1 style={{ fontSize: 32, fontWeight: 900, color: THEME.textMain, margin: 0 }}>
+        <h1 style={{ fontSize: isMobile ? 22 : 32, fontWeight: 900, color: THEME.textMain, margin: 0 }}>
           表示・検索項目の設定
         </h1>
         <p style={{ fontSize: 13, color: THEME.textMuted, marginTop: 8 }}>
-          設定はあなたのアカウントに個別に保存されます。他のユーザーには影響しません。
+          {isMobile ? "表示順・表示/非表示・検索対象を設定できます。" : "設定はあなたのアカウントに個別に保存されます。他のユーザーには影響しません。"}
         </p>
       </header>
 
@@ -206,11 +242,13 @@ export default function ColumnSettings({ displaySettings = [], formSettings = []
           <SectionTitle>管理項目</SectionTitle>
           {salesItems.map((it, i) => (
             <DraggableRow
-              key={it.key} it={it} idx={i}
+              key={it.key} it={it} idx={i} total={salesItems.length}
               dragIdx={dragSec === "sales" ? dragIdx : null}
               onDragStart={salesDrag.onDragStart}
               onDragOver={salesDrag.onDragOver}
               onDragEnd={salesDrag.onDragEnd}
+              onMoveUp={salesMove.onMoveUp}
+              onMoveDown={salesMove.onMoveDown}
               onToggleVisible={() => toggle(setSalesItems, i, "visible")}
               onToggleSearchable={() => toggle(setSalesItems, i, "searchable")}
             />
@@ -222,11 +260,13 @@ export default function ColumnSettings({ displaySettings = [], formSettings = []
           <SectionTitle>デフォルト項目</SectionTitle>
           {defaultItems.map((it, i) => (
             <DraggableRow
-              key={it.key} it={it} idx={i}
+              key={it.key} it={it} idx={i} total={defaultItems.length}
               dragIdx={dragSec === "default" ? dragIdx : null}
               onDragStart={defaultDrag.onDragStart}
               onDragOver={defaultDrag.onDragOver}
               onDragEnd={defaultDrag.onDragEnd}
+              onMoveUp={defaultMove.onMoveUp}
+              onMoveDown={defaultMove.onMoveDown}
               onToggleVisible={() => toggle(setDefaultItems, i, "visible")}
               onToggleSearchable={() => toggle(setDefaultItems, i, "searchable")}
             />
@@ -243,11 +283,13 @@ export default function ColumnSettings({ displaySettings = [], formSettings = []
           ) : (
             customItems.map((it, i) => (
               <DraggableRow
-                key={it.key} it={it} idx={i}
+                key={it.key} it={it} idx={i} total={customItems.length}
                 dragIdx={dragSec === "custom" ? dragIdx : null}
                 onDragStart={customDrag.onDragStart}
                 onDragOver={customDrag.onDragOver}
                 onDragEnd={customDrag.onDragEnd}
+                onMoveUp={customMove.onMoveUp}
+                onMoveDown={customMove.onMoveDown}
                 onToggleVisible={() => toggle(setCustomItems, i, "visible")}
                 onToggleSearchable={() => toggle(setCustomItems, i, "searchable")}
               />

@@ -4,6 +4,7 @@ import { Globe, CheckCircle2, AlertCircle, Zap, ChevronRight, Mail, Settings, Pl
 import { THEME, GAS_URL } from "../lib/constants";
 import { styles } from "../lib/styles";
 import Page from "../components/Page";
+import { useWindowWidth } from "../lib/useWindowWidth";
 
 // ============================================================
 // 🔗 SourceIntegrationIndex - 媒体連携 一覧
@@ -297,6 +298,7 @@ export default function SourceIntegrationIndex({
 }) {
   const navigate = useNavigate();
   const gmailRuleCount = gmailSettings.length;
+  const { isMobile } = useWindowWidth();
 
   return (
     <Page title="自動連携設定" icon={<Globe size={20} />}>
@@ -308,8 +310,8 @@ export default function SourceIntegrationIndex({
 
       <div style={{
         display: "grid",
-        gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))",
-        gap: 20,
+        gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))",
+        gap: isMobile ? 14 : 20,
         marginBottom: 48,
       }}>
         {SUPPORTED_SOURCES.map(src => (
@@ -336,12 +338,13 @@ export default function SourceIntegrationIndex({
 
       <div style={{
         ...styles.card,
-        padding: "24px 28px",
+        padding: isMobile ? "20px" : "24px 28px",
         marginBottom: 48,
         display: "flex",
-        alignItems: "center",
+        flexDirection: isMobile ? "column" : "row",
+        alignItems: isMobile ? "stretch" : "center",
         justifyContent: "space-between",
-        gap: 24,
+        gap: isMobile ? 16 : 24,
         borderLeft: `4px solid ${THEME.primary}`,
       }}>
         <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
@@ -353,7 +356,7 @@ export default function SourceIntegrationIndex({
             <Settings size={24} color={THEME.primary} />
           </div>
           <div>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4, flexWrap: "wrap" }}>
               <span style={{ fontSize: 15, fontWeight: 700, color: THEME.textMain }}>
                 カスタム取り込みルール
               </span>
@@ -380,10 +383,12 @@ export default function SourceIntegrationIndex({
             ...styles.btnPrimary,
             display: "inline-flex",
             alignItems: "center",
+            justifyContent: "center",
             gap: 8,
             whiteSpace: "nowrap",
             flexShrink: 0,
             padding: "10px 20px",
+            ...(isMobile ? { width: "100%", boxSizing: "border-box" } : {}),
           }}
         >
           <PlusCircle size={16} />

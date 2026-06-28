@@ -9,10 +9,16 @@ import { THEME, GAS_URL } from "../lib/constants";
 import { styles } from "../lib/styles";
 import ConfirmModal from "../components/ConfirmModal";
 import { useToast } from "../ToastContext";
+import { useWindowWidth } from "../lib/useWindowWidth";
 
 // ==========================================
 // 👥 UserManager - ユーザー管理 + グループ管理
 // ==========================================
+
+// 公開メンバーページのURL組み立て・コピー
+const memberUrl = (slug) =>
+  slug ? `${window.location.origin}/m/${slug}` : "";
+const copyText = (t) => { try { navigator.clipboard.writeText(t); } catch {} };
 
 const lS = {
   main:    { minHeight: "100vh", backgroundColor: THEME.bg },
@@ -282,26 +288,23 @@ export default function UserManager({
   const [successModal, setSuccessModal] = useState({ open: false, message: "" });
   const showToast = useToast();
   const navigate = useNavigate();
+  const { isMobile } = useWindowWidth();
   const [refreshing,      setRefreshing]      = useState(false);
   const [addingGroup,     setAddingGroup]      = useState(false);
   const [newGroupName,    setNewGroupName]     = useState("");
   const [newGroupMembers, setNewGroupMembers]  = useState([]);
 
-  // ── 楽観的UI（パターンA：固有IDあり） ──────────────────────
-  // ※ すべての state/ref 宣言は useEffect より前に書く（TDZエラー防止）
+  // ── 楽観的UI ──────────────────────────────────────────────
   const [localGroups, setLocalGroups] = useState(groupsProp);
   // 削除済みグループIDを記録（GASキャッシュ staleデータ対策）
-  // onRefresh() が古いデータを返しても復活しないようにガード
   const deletedIdsRef = useRef(new Set());
 
   // groupsProp が変化したとき（初回ロード・手動更新）にローカルへ同期
-  // 削除済みIDを除外し、まだ正式IDが届いていない仮エントリを先頭に残す
   React.useEffect(() => {
     setLocalGroups((prev) => {
       const filtered = groupsProp.filter(
         (x) => !deletedIdsRef.current.has(x["グループID"])
       );
-      // _isTemp かつ filtered に同IDがない → まだ正式エントリ未着
       const pendingTemps = prev.filter(
         (x) => x._isTemp && !filtered.some((f) => f["グループID"] === x["グループID"])
       );
@@ -314,6 +317,7 @@ export default function UserManager({
     try { await onRefreshStaff(); } finally { setRefreshing(false); }
   };
 
+  // ユーザー削除：成功時にグループからも該当メールを除去
   const handleDeleteUser = (email) => {
     setConfirmModal({
       title: "このユーザーを完全に削除しますか？",
@@ -326,18 +330,39 @@ export default function UserManager({
             JSON.stringify({ action: "deleteAllowUser", "メール": email, company: companyName }),
             { headers: { "Content-Type": "text/plain;charset=utf-8" } }
           );
-          if (res.data.status === "success") await onRefreshStaff();
-          else showToast("失敗: " + res.data.message, "error");
+          if (res.data.status === "success") {
+            // 該当メールアドレスを含むグループを検出して更新
+            const affectedGroups = localGroups.filter(g => {
+              const members = g["メンバーメール"] ? g["メンバーメール"].split(",").map(s => s.trim()).filter(Boolean) : [];
+              return members.includes(email);
+            });
+            if (affectedGroups.length > 0) {
+              setLocalGroups(prev => prev.map(g => {
+                const members = g["メンバーメール"] ? g["メンバーメール"].split(",").map(s => s.trim()).filter(Boolean) : [];
+                if (!members.includes(email)) return g;
+                return { ...g, "メンバーメール": members.filter(m => m !== email).join(",") };
+              }));
+              await Promise.all(affectedGroups.map(g => {
+                const members = g["メンバーメール"] ? g["メンバーメール"].split(",").map(s => s.trim()).filter(Boolean) : [];
+                return axios.post(
+                  GAS_URL,
+                  JSON.stringify({ action: "saveGroup", groupId: g["グループID"], name: g["グループ名"], members: members.filter(m => m !== email) }),
+                  { headers: { "Content-Type": "text/plain;charset=utf-8" } }
+                );
+              }));
+            }
+            await onRefreshStaff();
+          } else {
+            showToast("失敗: " + res.data.message, "error");
+          }
         } catch { showToast("通信エラーが発生しました", "error"); }
       },
     });
   };
 
-  // グループ保存（編集）楽観的更新：即座にローカルに反映 → バックグラウンドでGAS保存
-  // 成功時は onRefresh() 不要（GASキャッシュ遅延で書き込み前のデータが返るのを避ける）
+  // グループ保存（編集）楽観的更新
   const handleSaveGroup = async ({ groupId, name, members }) => {
     const prevItems = localGroups;
-    // 1) 楽観的更新
     setLocalGroups((prev) =>
       prev.map((g) =>
         g["グループID"] === groupId
@@ -353,17 +378,15 @@ export default function UserManager({
       );
       if (res.data?.status === "error") {
         showToast("エラー: " + (res.data.message || "保存に失敗しました"), "error");
-        setLocalGroups(prevItems); // ロールバック
-        // GroupCard の catch（savedLabel リセット）に伝播させる
+        setLocalGroups(prevItems);
         throw Object.assign(new Error(res.data.message), { _handled: true });
       }
     } catch (e) {
       if (!e._handled) {
-        // axios レベルの通信エラー（上記 throw は除外）
         showToast("通信エラー: " + (e?.message || "不明なエラー"), "error");
-        setLocalGroups(prevItems); // ロールバック
+        setLocalGroups(prevItems);
       }
-      throw e; // GroupCard の catch（savedLabel リセット）に伝播
+      throw e;
     }
   };
 
@@ -375,10 +398,9 @@ export default function UserManager({
       "グループID": groupId,
       "グループ名": newGroupName.trim(),
       "メンバーメール": newGroupMembers.join(","),
-      _isTemp: true, // サーバーの正式IDが届くまでの仮エントリフラグ
+      _isTemp: true,
     };
     const prevItems = localGroups;
-    // 1) 楽観的更新：末尾に追加
     setLocalGroups((prev) => [...prev, newGroup]);
     setSuccessModal({ open: true, message: `「${newGroupName.trim()}」を作成しました。` });
     setNewGroupName("");
@@ -392,13 +414,13 @@ export default function UserManager({
       );
       if (res.data?.status === "error") {
         showToast("エラー: " + (res.data.message || "保存に失敗しました"), "error");
-        setLocalGroups(prevItems); // ロールバック
+        setLocalGroups(prevItems);
       } else {
-        if (onRefresh) onRefresh(); // 正式IDで仮エントリを置き換える
+        if (onRefresh) onRefresh();
       }
     } catch (e) {
       showToast("通信エラー: " + (e?.message || "不明なエラー"), "error");
-      setLocalGroups(prevItems); // ロールバック
+      setLocalGroups(prevItems);
     }
   };
 
@@ -412,23 +434,18 @@ export default function UserManager({
       note: "この操作は取り消せません。",
       onConfirm: async () => {
         setConfirmModal(null);
-        // 1) 削除済みIDを記録（GASキャッシュ staleデータ対策）
-        //    onRefresh() が古いデータを返しても復活しないようにガード
         deletedIdsRef.current.add(groupId);
         const prevItems = localGroups;
-        // 2) 楽観的更新
         setLocalGroups((prev) => prev.filter((g) => g["グループID"] !== groupId));
         setSuccessModal({ open: true, message: `「${label}」を削除しました。` });
-        // 3) バックグラウンドAPI
         try {
           await axios.post(
             GAS_URL,
             JSON.stringify({ action: "deleteGroup", groupId }),
             { headers: { "Content-Type": "text/plain;charset=utf-8" } }
           );
-          if (onRefresh) onRefresh(); // deletedIdsRef でフィルター済みなので復活しない
+          if (onRefresh) onRefresh();
         } catch (e) {
-          // 失敗時のみ記録を取り消してUIを元に戻す
           deletedIdsRef.current.delete(groupId);
           setLocalGroups(prevItems);
           showToast("通信エラー: " + (e?.message || "不明なエラー"), "error");
@@ -453,25 +470,66 @@ export default function UserManager({
         onClose={() => setSuccessModal({ open: false, message: "" })}
       />
       <div style={lS.main}>
-      <div style={lS.wrapper}>
+      <div style={{ ...lS.wrapper, padding: isMobile ? "20px 16px" : "48px 64px", boxSizing: "border-box" }}>
 
         {/* ── ユーザー一覧 ── */}
-        <header style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 32 }}>
+        <header style={{ display: "flex", flexDirection: isMobile ? "column" : "row", justifyContent: "space-between", alignItems: isMobile ? "stretch" : "flex-end", gap: isMobile ? 14 : 0, marginBottom: 32 }}>
           <div>
             <h1 style={lS.secTitle}>ユーザー管理</h1>
             <p style={lS.secSub}>システムの利用権限を持つスタッフアカウントの一覧</p>
           </div>
-          <div style={{ display: "flex", gap: 12 }}>
-            <button onClick={handleRefresh} disabled={refreshing} style={{ ...styles.btn, ...styles.btnSecondary, gap: 8 }}>
+          <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", gap: 12 }}>
+            <button onClick={handleRefresh} disabled={refreshing} style={{ ...styles.btn, ...styles.btnSecondary, gap: 8, ...(isMobile ? { width: "100%", justifyContent: "center" } : {}) }}>
               <RefreshCw size={16} className={refreshing ? "animate-spin" : ""} />
               {refreshing ? "更新中..." : "更新"}
             </button>
-            <button onClick={() => navigate("/users/add")} style={{ ...styles.btn, ...styles.btnPrimary }}>
+            <button onClick={() => navigate("/users/add")} style={{ ...styles.btn, ...styles.btnPrimary, ...(isMobile ? { width: "100%", justifyContent: "center" } : {}) }}>
               <UserPlus size={18} /> 新規ユーザー登録
             </button>
           </div>
         </header>
 
+        {/* ユーザー一覧：PC/タブレットはテーブル、モバイルはカード */}
+        {isMobile ? (
+          <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 48 }}>
+            {staffList.length === 0 ? (
+              <div style={{ ...lS.card, textAlign: "center", padding: 40, color: THEME.textMuted }}>
+                登録データが見つかりません
+              </div>
+            ) : (
+              staffList.map(u => (
+                <div key={u.email} style={{ ...lS.card, padding: "16px 18px" }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                      <div style={{ width: 36, height: 36, borderRadius: "50%", backgroundColor: "#E0E7FF", display: "flex", alignItems: "center", justifyContent: "center", color: THEME.primary, flexShrink: 0 }}>
+                        <UserCircle size={20} />
+                      </div>
+                      <span style={{ fontWeight: 900, fontSize: 15 }}>{u.lastName} {u.firstName}</span>
+                    </div>
+                    <div style={{ display: "flex", gap: 4 }}>
+                      <button onClick={() => navigate(`/users/edit/${encodeURIComponent(u.email)}`, { state: { user: u } })} style={{ background: "none", border: "none", color: THEME.primary, cursor: "pointer", padding: 8 }}>
+                        <Edit3 size={18} />
+                      </button>
+                      <button onClick={() => handleDeleteUser(u.email)} style={{ background: "none", border: "none", color: THEME.danger, cursor: "pointer", padding: 8 }}>
+                        <Trash2 size={18} />
+                      </button>
+                    </div>
+                  </div>
+                  <div style={{ fontSize: 12, color: THEME.textMuted, display: "flex", flexDirection: "column", gap: 4, paddingLeft: 46 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}><Mail size={12} /> {u.email}</div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}><Phone size={12} /> {String(u.phone || "-").replace(/'/g, "")}</div>
+                    {u.published && u.slug && (
+                      <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                        <span style={{ fontSize: 11, fontWeight: 800, color: THEME.primary, backgroundColor: "#EEF2FF", padding: "2px 7px", borderRadius: 99 }}>公開中</span>
+                        <span style={{ fontSize: 12 }}>/m/{u.slug}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        ) : (
         <div style={{ ...lS.card, marginBottom: 48 }}>
           <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: 0 }}>
             <thead>
@@ -479,13 +537,14 @@ export default function UserManager({
                 <th style={lS.tableTh}>担当スタッフ</th>
                 <th style={lS.tableTh}>メールアドレス</th>
                 <th style={lS.tableTh}>電話番号</th>
+                <th style={lS.tableTh}>紹介ページ</th>
                 <th style={{ ...lS.tableTh, textAlign: "center", width: 120 }}>操作</th>
               </tr>
             </thead>
             <tbody>
               {staffList.length === 0 ? (
                 <tr>
-                  <td colSpan="4" style={{ padding: 80, textAlign: "center", color: THEME.textMuted }}>
+                  <td colSpan="5" style={{ padding: 80, textAlign: "center", color: THEME.textMuted }}>
                     登録データが見つかりません
                   </td>
                 </tr>
@@ -516,6 +575,26 @@ export default function UserManager({
                       </div>
                     </td>
                     <td style={lS.tableTd}>
+                      {u.published && u.slug ? (
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                          <span style={{
+                            fontSize: 11, fontWeight: 800, color: THEME.primary,
+                            backgroundColor: "#EEF2FF", padding: "3px 8px", borderRadius: 99,
+                          }}>公開中</span>
+                          <a href={memberUrl(u.slug)} target="_blank" rel="noreferrer"
+                            style={{ fontSize: 12, color: THEME.textMuted, textDecoration: "none" }}>
+                            /m/{u.slug}
+                          </a>
+                          <button onClick={() => copyText(memberUrl(u.slug))}
+                            style={{ background: "none", border: "none", color: THEME.primary, cursor: "pointer", fontSize: 12, fontWeight: 700, padding: 0 }}>
+                            コピー
+                          </button>
+                        </div>
+                      ) : (
+                        <span style={{ fontSize: 12, color: THEME.textMuted }}>非公開</span>
+                      )}
+                    </td>
+                    <td style={lS.tableTd}>
                       <div style={{ display: "flex", gap: 16, justifyContent: "center" }}>
                         <button
                           onClick={() => navigate(`/users/edit/${encodeURIComponent(u.email)}`, { state: { user: u } })}
@@ -537,16 +616,17 @@ export default function UserManager({
             </tbody>
           </table>
         </div>
+        )}
 
         {/* ── グループ管理 ── */}
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 20 }}>
+        <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", justifyContent: "space-between", alignItems: isMobile ? "stretch" : "flex-end", gap: isMobile ? 14 : 0, marginBottom: 20 }}>
           <div>
             <h2 style={lS.secTitle}>グループ管理</h2>
             <p style={lS.secSub}>担当者をグループにまとめ、顧客登録時に自動割り当てできます</p>
           </div>
           <button
             onClick={() => setAddingGroup(true)}
-            style={{ ...styles.btn, ...styles.btnPrimary }}
+            style={{ ...styles.btn, ...styles.btnPrimary, ...(isMobile ? { width: "100%", justifyContent: "center" } : {}) }}
           >
             <Plus size={16} /> グループを追加
           </button>
@@ -608,7 +688,7 @@ export default function UserManager({
         )}
 
         {/* グループ一覧 */}
-{localGroups.length === 0 && !addingGroup ? (
+        {localGroups.length === 0 && !addingGroup ? (
           <div style={{ padding: "48px 0", textAlign: "center", color: THEME.textMuted, fontSize: 14, border: `2px dashed ${THEME.border}`, borderRadius: 14 }}>
             グループがまだ登録されていません。「グループを追加」から作成してください。
           </div>

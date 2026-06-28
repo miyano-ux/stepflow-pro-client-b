@@ -5,6 +5,7 @@ import { Plus, Trash2, Clock, ChevronRight, Settings, Zap, List, CheckCircle2, L
 import { THEME, GAS_URL } from "../lib/constants";
 import { styles } from "../lib/styles";
 import { useToast } from "../ToastContext";
+import { useWindowWidth } from "../lib/useWindowWidth";
 
 // ==========================================
 // 🎬 ScenarioList - シナリオ管理
@@ -18,8 +19,16 @@ function statusColor(terminalType) {
 }
 
 function SectionHeading({ icon, label, sub, action }) {
+  const { isMobile } = useWindowWidth();
   return (
-    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 20 }}>
+    <div style={{
+      display: "flex",
+      flexDirection: isMobile ? "column" : "row",
+      justifyContent: "space-between",
+      alignItems: isMobile ? "stretch" : "flex-end",
+      gap: isMobile ? 12 : 0,
+      marginBottom: 20,
+    }}>
       <div>
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
           {icon}
@@ -171,6 +180,7 @@ const spinStyle = `@keyframes spin { from { transform: rotate(0deg); } to { tran
 export default function ScenarioList({ scenarios = [], statuses = [], onRefresh, gasUrl }) {
   const showToast = useToast();
   const navigate = useNavigate();
+  const { isMobile } = useWindowWidth();
 
   // 削除モーダル状態
   const [deleteModal, setDeleteModal] = React.useState(null); // { scenarioId }
@@ -190,12 +200,19 @@ export default function ScenarioList({ scenarios = [], statuses = [], onRefresh,
   }, {});
   const scenarioIds = Object.keys(grouped);
 
+  // 全シナリオに実在するシナリオIDの集合
+  const existingScenarioIds = new Set(scenarioIds);
+
   const scenarioToStatus = {};
   visibleStatuses.forEach(st => {
     if (st.scenarioId) scenarioToStatus[st.scenarioId] = st;
   });
 
-  const linkedStatuses = visibleStatuses.filter(st => st.scenarioId);
+  // 自動適用シナリオ設定：ステータスに紐づき、かつ全シナリオに実在するものだけ表示する。
+  // （削除済みシナリオへのダングリング参照がステータス設定側に残っていても表記しない）
+  const linkedStatuses = visibleStatuses.filter(
+    st => st.scenarioId && existingScenarioIds.has(st.scenarioId)
+  );
 
   const handleDeleteConfirm = async () => {
     if (!deleteModal) return;
@@ -244,12 +261,19 @@ export default function ScenarioList({ scenarios = [], statuses = [], onRefresh,
         onClose={() => setSuccessModal(null)}
       />
 
-      <div style={{ minHeight: "100vh", backgroundColor: THEME.bg, padding: "40px 64px" }}>
+      <div style={{ minHeight: "100vh", backgroundColor: THEME.bg, padding: isMobile ? "20px 16px" : "40px 64px", boxSizing: "border-box" }}>
 
         {/* ── ページヘッダー ── */}
-        <header style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 48 }}>
-          <h1 style={{ fontSize: 32, fontWeight: 900, color: THEME.textMain, margin: 0 }}>シナリオ管理</h1>
-          <Link to="/scenarios/new" style={{ ...styles.btn, ...styles.btnPrimary, textDecoration: "none" }}>
+        <header style={{
+          display: "flex",
+          flexDirection: isMobile ? "column" : "row",
+          alignItems: isMobile ? "stretch" : "center",
+          justifyContent: "space-between",
+          gap: isMobile ? 14 : 0,
+          marginBottom: isMobile ? 28 : 48,
+        }}>
+          <h1 style={{ fontSize: isMobile ? 22 : 32, fontWeight: 900, color: THEME.textMain, margin: 0 }}>シナリオ管理</h1>
+          <Link to="/scenarios/new" style={{ ...styles.btn, ...styles.btnPrimary, textDecoration: "none", ...(isMobile ? { width: "100%", boxSizing: "border-box", justifyContent: "center" } : {}) }}>
             <Plus size={18} /> 新規作成
           </Link>
         </header>
@@ -258,8 +282,8 @@ export default function ScenarioList({ scenarios = [], statuses = [], onRefresh,
         <section style={{
           backgroundColor: "#F0F4FF",
           borderRadius: 20,
-          padding: "28px 32px",
-          marginBottom: 48,
+          padding: isMobile ? "20px 18px" : "28px 32px",
+          marginBottom: isMobile ? 32 : 48,
           border: "1px solid #C7D2FE",
         }}>
           <SectionHeading
@@ -269,7 +293,7 @@ export default function ScenarioList({ scenarios = [], statuses = [], onRefresh,
             action={
               <button
                 onClick={() => navigate("/status-settings")}
-                style={{ ...styles.btn, ...styles.btnSecondary, gap: 8, fontSize: 13 }}
+                style={{ ...styles.btn, ...styles.btnSecondary, gap: 8, fontSize: 13, ...(isMobile ? { width: "100%", boxSizing: "border-box", justifyContent: "center" } : {}) }}
               >
                 <Settings size={14} /> ステータス設定で変更
               </button>
@@ -282,7 +306,7 @@ export default function ScenarioList({ scenarios = [], statuses = [], onRefresh,
               ステータス設定からシナリオを割り当ててください。
             </div>
           ) : (
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 16 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: isMobile ? 14 : 16 }}>
               {linkedStatuses.map(st => {
                 const col   = statusColor(st.terminalType);
                 const steps = (grouped[st.scenarioId] || []).sort((a, b) => a["ステップ数"] - b["ステップ数"]);
@@ -338,7 +362,7 @@ export default function ScenarioList({ scenarios = [], statuses = [], onRefresh,
               シナリオがありません。「＋ 新規作成」から作成してください。
             </div>
           ) : (
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(340px, 1fr))", gap: 20 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: isMobile ? 14 : 20 }}>
               {scenarioIds.map(id => {
                 const steps    = (grouped[id] || []).sort((a, b) => a["ステップ数"] - b["ステップ数"]);
                 const linkedSt = scenarioToStatus[id];

@@ -4,7 +4,7 @@ import axios from "axios";
 import {
   ArrowLeft, Save, MessageSquare, History, Loader2,
   Edit3, X, Clock, LayoutGrid, ExternalLink,
-  Phone, User, Building2, Plus, Trash2, Check, RefreshCw, Lock,
+  Phone, Mail, User, Building2, Plus, Trash2, Check, RefreshCw, Lock,
 } from "lucide-react";
 import { THEME, GAS_URL } from "../lib/constants";
 import { styles } from "../lib/styles";
@@ -16,6 +16,7 @@ import PromptFieldsModal from "../components/PromptFieldsModal";
 import StaffGroupSelect from "../components/StaffGroupSelect";
 import ConfirmModal from "../components/ConfirmModal";
 import { useToast } from "../ToastContext";
+import { useWindowWidth } from "../lib/useWindowWidth";
 
 // ==========================================
 // 👤 CustomerDetail - 顧客詳細ページ
@@ -112,6 +113,7 @@ function PropSyncingBadge({ syncing }) {
 // ── 物件追加・編集モーダル ────────────────────────────────────
 function PropFormModal({ open, mode, data, propTypes, propStatuses, onSave, onClose }) {
   const [form, setForm] = useState(data);
+  const { isMobile } = useWindowWidth();
   useEffect(() => { setForm(data); }, [data]);
   if (!open) return null;
 
@@ -120,11 +122,11 @@ function PropFormModal({ open, mode, data, propTypes, propStatuses, onSave, onCl
 
   return (
     <div
-      style={{ position: "fixed", inset: 0, backgroundColor: "rgba(15,23,42,0.6)", backdropFilter: "blur(4px)", display: "flex", justifyContent: "center", alignItems: "center", zIndex: 2000 }}
+      style={{ position: "fixed", inset: 0, backgroundColor: "rgba(15,23,42,0.6)", backdropFilter: "blur(4px)", display: "flex", justifyContent: "center", alignItems: "center", zIndex: 2000, padding: isMobile ? 16 : 0, boxSizing: "border-box" }}
       onClick={onClose}
     >
       <div
-        style={{ backgroundColor: "white", borderRadius: 20, padding: 32, width: 520, maxHeight: "92vh", overflowY: "auto", boxShadow: "0 24px 48px rgba(0,0,0,0.15)" }}
+        style={{ backgroundColor: "white", borderRadius: 20, padding: isMobile ? "24px 20px" : 32, width: isMobile ? "100%" : 520, maxWidth: 520, maxHeight: "92vh", overflowY: "auto", boxShadow: "0 24px 48px rgba(0,0,0,0.15)", boxSizing: "border-box" }}
         onClick={e => e.stopPropagation()}
       >
         {/* ヘッダー */}
@@ -138,7 +140,7 @@ function PropFormModal({ open, mode, data, propTypes, propStatuses, onSave, onCl
         </div>
 
         {/* フォーム */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 14 }}>
+        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: 14, marginBottom: 14 }}>
           <div>
             <label style={{ fontSize: 11, fontWeight: 800, color: "#64748B", display: "block", marginBottom: 5 }}>物件名 *</label>
             <input style={{ width: "100%", padding: "10px 14px", borderRadius: 8, border: "1px solid #E2E8F0", fontSize: 14, outline: "none", boxSizing: "border-box" }}
@@ -146,10 +148,11 @@ function PropFormModal({ open, mode, data, propTypes, propStatuses, onSave, onCl
           </div>
           <div>
             <label style={{ fontSize: 11, fontWeight: 800, color: "#64748B", display: "block", marginBottom: 5 }}>物件種別</label>
-            <select style={{ width: "100%", padding: "10px 14px", borderRadius: 8, border: "1px solid #E2E8F0", fontSize: 14, outline: "none", boxSizing: "border-box", appearance: "none" }}
-              value={form.propertyType || "マンション"} onChange={e => set("propertyType", e.target.value)}>
-              {propTypes.map(t => <option key={t} value={t}>{t}</option>)}
-            </select>
+            <CustomSelect
+              value={form.propertyType || "マンション"}
+              options={propTypes.map(t => ({ value: t, label: t }))}
+              onChange={v => set("propertyType", v)}
+            />
           </div>
           <div>
             <label style={{ fontSize: 11, fontWeight: 800, color: "#64748B", display: "block", marginBottom: 5 }}>査定金額（万円）</label>
@@ -169,10 +172,11 @@ function PropFormModal({ open, mode, data, propTypes, propStatuses, onSave, onCl
           {isEdit && (
             <div>
               <label style={{ fontSize: 11, fontWeight: 800, color: "#64748B", display: "block", marginBottom: 5 }}>ステータス</label>
-              <select style={{ width: "100%", padding: "10px 14px", borderRadius: 8, border: "1px solid #E2E8F0", fontSize: 14, outline: "none", boxSizing: "border-box", appearance: "none" }}
-                value={form.status || "検討中"} onChange={e => set("status", e.target.value)}>
-                {propStatuses.map(s => <option key={s} value={s}>{s}</option>)}
-              </select>
+              <CustomSelect
+                value={form.status || "検討中"}
+                options={propStatuses.map(s => ({ value: s, label: s }))}
+                onChange={v => set("status", v)}
+              />
             </div>
           )}
           <div style={{ gridColumn: "1 / -1" }}>
@@ -193,6 +197,98 @@ function PropFormModal({ open, mode, data, propTypes, propStatuses, onSave, onCl
           <button
             onClick={onClose}
             style={{ flex: 1, padding: "12px", borderRadius: 10, border: "1px solid #E2E8F0", backgroundColor: "white", color: "#64748B", fontWeight: 700, fontSize: 14, cursor: "pointer" }}
+          >
+            キャンセル
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── 失注理由モーダル ──────────────────────────────────────────
+// 顧客編集画面で失注ステータスに変更した際、失注理由を入力させる。
+// 理由は formData に保持され、「保存する」押下時に GAS へ反映される。
+const DEFAULT_LOST_REASONS = [
+  "金額条件が合わなかった", "他社に決まった", "売却を取り止めた",
+  "時期を再検討する", "連絡が取れなくなった", "その他",
+];
+
+function LostReasonModal({ open, lostReasonOptions = [], onConfirm, onCancel }) {
+  const [reason, setReason]     = useState("");
+  const [freeText, setFreeText] = useState("");
+  const { isMobile } = useWindowWidth();
+
+  // モーダルを開くたびに入力をリセット
+  useEffect(() => {
+    if (open) { setReason(""); setFreeText(""); }
+  }, [open]);
+
+  if (!open) return null;
+
+  const options = (lostReasonOptions && lostReasonOptions.length > 0)
+    ? [...lostReasonOptions, "その他"]
+    : DEFAULT_LOST_REASONS;
+
+  const handleConfirm = () => {
+    if (!reason) return;
+    const finalReason = reason === "その他" ? (freeText.trim() || "その他") : reason;
+    onConfirm(finalReason);
+  };
+
+  return (
+    <div style={{ position: "fixed", inset: 0, backgroundColor: "rgba(15,23,42,0.6)", display: "flex", justifyContent: "center", alignItems: "center", zIndex: 3000, backdropFilter: "blur(4px)", padding: isMobile ? 16 : 0, boxSizing: "border-box" }}>
+      <div style={{ backgroundColor: "white", borderRadius: 20, padding: isMobile ? "28px 24px" : 36, width: isMobile ? "100%" : 460, maxWidth: 460, boxShadow: "0 24px 48px rgba(0,0,0,0.15)", boxSizing: "border-box" }}>
+        {/* ヘッダー */}
+        <div style={{ textAlign: "center", marginBottom: 24 }}>
+          <div style={{ width: 56, height: 56, borderRadius: 16, backgroundColor: "#FEF2F2", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 12px", fontSize: 26 }}>🗑</div>
+          <h3 style={{ fontSize: 18, fontWeight: 900, color: "#0F172A", margin: "0 0 6px" }}>失注に変更</h3>
+          <p style={{ fontSize: 13, color: "#64748B", margin: 0, lineHeight: 1.6 }}>失注の理由を記録しておきましょう</p>
+        </div>
+
+        {/* 失注理由セレクト */}
+        <div style={{ marginBottom: reason === "その他" ? 16 : 24 }}>
+          <div style={{ fontSize: 12, fontWeight: 800, color: "#64748B", marginBottom: 8, display: "flex", alignItems: "center", gap: 4 }}>
+            失注理由 <span style={{ color: "#DC2626", fontSize: 11 }}>必須</span>
+          </div>
+          <CustomSelect
+            value={reason}
+            options={options.map(o => ({ value: o, label: o }))}
+            onChange={setReason}
+            color="#DC2626"
+            placeholder="選択してください"
+          />
+        </div>
+
+        {/* その他：自由記述 */}
+        {reason === "その他" && (
+          <div style={{ marginBottom: 24 }}>
+            <div style={{ fontSize: 12, fontWeight: 800, color: "#64748B", marginBottom: 8 }}>詳細（任意）</div>
+            <textarea
+              value={freeText}
+              onChange={e => setFreeText(e.target.value)}
+              placeholder="失注の詳細を入力してください"
+              rows={3}
+              autoFocus
+              style={{ width: "100%", padding: "11px 14px", borderRadius: 12, border: "1.5px solid #E2E8F0", fontSize: 14, fontWeight: 600, resize: "vertical", boxSizing: "border-box", outline: "none", color: "#0F172A", lineHeight: 1.6, fontFamily: "inherit" }}
+              onFocus={e => e.target.style.borderColor = "#DC2626"}
+              onBlur={e => e.target.style.borderColor = "#E2E8F0"}
+            />
+          </div>
+        )}
+
+        {/* アクションボタン */}
+        <div style={{ display: "flex", gap: 12 }}>
+          <button
+            onClick={handleConfirm}
+            disabled={!reason}
+            style={{ flex: 2, padding: 13, borderRadius: 10, border: "none", backgroundColor: reason ? "#DC2626" : "#E5E7EB", color: "white", fontWeight: 900, fontSize: 14, cursor: reason ? "pointer" : "not-allowed", transition: "background-color 0.15s" }}
+          >
+            確定する
+          </button>
+          <button
+            onClick={onCancel}
+            style={{ flex: 1, padding: 13, borderRadius: 10, border: "1px solid #E2E8F0", backgroundColor: "white", color: "#64748B", fontWeight: 800, fontSize: 14, cursor: "pointer" }}
           >
             キャンセル
           </button>
@@ -289,10 +385,12 @@ export default function CustomerDetail({
   const { id } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
+  const { isMobile } = useWindowWidth();
 
   const [isEditing, setIsEditing] = useState(false);
   const [scenarioConfirm, setScenarioConfirm] = useState(null); // { newStatus, scenarioId }
   const [promptModal, setPromptModal]         = useState(null); // { promptFields }
+  const [lostModal, setLostModal]             = useState(null); // { newStatus, promptFields, lostReasonOptions }
   const [syncingCount, setSyncingCount] = useState(0);
   const [formData, setFormData] = useState(null);
   const [pendingHistoryEntry, setPendingHistoryEntry] = useState(null); // 楽観的更新用
@@ -408,6 +506,19 @@ export default function CustomerDetail({
         JSON.stringify({ action: "update", id, data: snapshot }),
         { headers: { "Content-Type": "text/plain;charset=utf-8" } }
       );
+
+      // 失注ステータスへ変更した場合は失注理由を確実に保存する。
+      // ※ update は既存列のみ書き込むため、失注理由列が無い環境でも
+      //   列を自動追加する saveLostReason を併用して取りこぼしを防ぐ。
+      const nextStatusDef = (statuses || []).find(s => s.name === nextStatus);
+      if (nextStatusDef?.terminalType === "lost" && snapshot["失注理由"]) {
+        await axios.post(
+          gasUrl,
+          JSON.stringify({ action: "saveLostReason", id, reason: snapshot["失注理由"] }),
+          { headers: { "Content-Type": "text/plain;charset=utf-8" } }
+        );
+      }
+
       setFormData(snapshot);
       // 成功モーダルを表示（OK押下後に編集モードを終了）
       setPropSuccess({ open: true, message: "顧客情報を保存しました。", _onClose: () => setIsEditing(false) });
@@ -432,6 +543,18 @@ export default function CustomerDetail({
     if (key === "対応ステータス" && val !== formData["対応ステータス"]) {
       const statusDef = (statuses || []).find(s => s.name === val);
       const pf = statusDef?.promptFields || [];
+
+      // 失注ステータスへの変更：失注理由モーダルを表示し、
+      // 理由が確定してからステータスを formData に反映する。
+      if (statusDef?.terminalType === "lost") {
+        setLostModal({
+          newStatus: val,
+          promptFields: pf,
+          lostReasonOptions: statusDef.lostReasonOptions || [],
+        });
+        return;
+      }
+
       if (statusDef?.scenarioId) {
         setScenarioConfirm({ newStatus: val, scenarioId: statusDef.scenarioId, promptFields: pf });
         return;
@@ -447,6 +570,8 @@ export default function CustomerDetail({
         ...prev,
         [key]: val,
         ...(isStatusLinked ? { "シナリオID": "" } : {}),
+        // 失注以外のステータスへ変更した場合は失注理由をクリアする
+        ...(prev["失注理由"] ? { "失注理由": "" } : {}),
       }));
       if (pf.length > 0) setPromptModal({ promptFields: pf });
       return;
@@ -471,6 +596,23 @@ export default function CustomerDetail({
       }
     }
     setPromptModal(null);
+  };
+
+  // 失注理由が確定したら、ステータスと失注理由を formData へ反映する。
+  // GAS への保存は「保存する」押下時（handleSave）にまとめて行う。
+  const handleLostConfirm = (reason) => {
+    if (!lostModal) return;
+    const { newStatus, promptFields } = lostModal;
+    const currentScenarioId = formData["シナリオID"] || "";
+    const isStatusLinked = currentScenarioId && !availableScenarios.includes(currentScenarioId);
+    setFormData(prev => ({
+      ...prev,
+      "対応ステータス": newStatus,
+      "失注理由": reason,
+      ...(isStatusLinked ? { "シナリオID": "" } : {}),
+    }));
+    setLostModal(null);
+    if (promptFields.length > 0) setPromptModal({ promptFields });
   };
 
   // ステータス変更を検知して楽観的タイムラインを更新するヘルパー
@@ -616,10 +758,10 @@ export default function CustomerDetail({
         }}
         onClose={() => setPropModal(prev => ({ ...prev, open: false }))}
       />
-    <div style={{ minHeight: "100vh", backgroundColor: THEME.bg, padding: "40px 48px" }}>
+    <div style={{ minHeight: "100vh", backgroundColor: THEME.bg, padding: isMobile ? "16px" : "40px 48px", boxSizing: "border-box" }}>
 
       {/* ── ヘッダー ── */}
-      <div style={{ marginBottom: 32 }}>
+      <div style={{ marginBottom: isMobile ? 20 : 32 }}>
         <button
           onClick={() => navigate(location.state?.from ?? "/customers")}
           style={{ background: "none", border: "none", color: THEME.textMuted, cursor: "pointer", display: "flex", alignItems: "center", gap: 6, fontWeight: 700, marginBottom: 16, fontSize: 14 }}
@@ -627,44 +769,44 @@ export default function CustomerDetail({
           <ArrowLeft size={16} /> {location.state?.from ? "リストに戻る" : "顧客一覧に戻る"}
         </button>
 
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+        <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", justifyContent: "space-between", alignItems: isMobile ? "stretch" : "flex-start", gap: isMobile ? 16 : 0, width: "100%", boxSizing: "border-box" }}>
           <div>
-            <h1 style={{ fontSize: 32, fontWeight: 900, color: THEME.textMain, margin: 0 }}>
+            <h1 style={{ fontSize: isMobile ? 22 : 32, fontWeight: 900, color: THEME.textMain, margin: 0 }}>
               {formData["姓"]} {formData["名"]}
-              <span style={{ fontSize: 18, color: THEME.textMuted, fontWeight: 500, marginLeft: 8 }}>様</span>
+              <span style={{ fontSize: isMobile ? 14 : 18, color: THEME.textMuted, fontWeight: 500, marginLeft: 8 }}>様</span>
             </h1>
-            <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 8 }}>
-              <span style={{ ...styles.badge, backgroundColor: "#EEF2FF", color: THEME.primary }}>
+            <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: isMobile ? 8 : 12, marginTop: 8 }}>
+              <span style={{ ...styles.badge, backgroundColor: "#EEF2FF", color: THEME.primary, whiteSpace: "nowrap" }}>
                 {formData["対応ステータス"] || "未対応"}
               </span>
-              {assignedName && (
-                <span style={{ fontSize: 13, color: THEME.textMuted }}>担当: {assignedName}</span>
+              {!isMobile && assignedName && (
+                <span style={{ fontSize: 13, color: THEME.textMuted, whiteSpace: "nowrap" }}>担当: {assignedName}</span>
               )}
-              <span style={{ fontSize: 13, color: THEME.textMuted }}>
+              <span style={{ fontSize: 13, color: THEME.textMuted, whiteSpace: "nowrap" }}>
                 登録: {formatDateJP(formData["登録日"]) || "-"}
               </span>
             </div>
           </div>
 
-          <div style={{ display: "flex", gap: 10 }}>
+          <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", gap: 10, width: isMobile ? "100%" : "auto", boxSizing: "border-box" }}>
             {!isEditing ? (
               <>
-                <button onClick={() => navigate(`/schedule/${id}`)} style={{ ...styles.btn, ...styles.btnSecondary }}>
+                <button onClick={() => navigate(`/schedule/${id}`)} style={{ ...styles.btn, ...styles.btnSecondary, ...(isMobile ? { width: "100%", boxSizing: "border-box" } : {}) }}>
                   <Clock size={16} color={THEME.primary} /> 配信履歴
                 </button>
-                <button onClick={() => navigate(`/direct-sms/${id}`)} style={{ ...styles.btn, ...styles.btnSecondary }}>
+                <button onClick={() => navigate(`/direct-sms/${id}`)} style={{ ...styles.btn, ...styles.btnSecondary, ...(isMobile ? { width: "100%", boxSizing: "border-box" } : {}) }}>
                   <MessageSquare size={16} color={THEME.primary} /> SMS送信
                 </button>
-                <button onClick={() => setIsEditing(true)} style={{ ...styles.btn, ...styles.btnPrimary }}>
+                <button onClick={() => setIsEditing(true)} style={{ ...styles.btn, ...styles.btnPrimary, ...(isMobile ? { width: "100%", boxSizing: "border-box" } : {}) }}>
                   <Edit3 size={16} /> 情報を編集
                 </button>
               </>
             ) : (
               <>
-                <button onClick={handleCancel} style={{ ...styles.btn, ...styles.btnSecondary, color: THEME.danger, borderColor: `${THEME.danger}40` }}>
+                <button onClick={handleCancel} style={{ ...styles.btn, ...styles.btnSecondary, color: THEME.danger, borderColor: `${THEME.danger}40`, ...(isMobile ? { width: "100%", boxSizing: "border-box" } : {}) }}>
                   <X size={16} /> キャンセル
                 </button>
-                <button onClick={handleSave} disabled={syncingCount > 0} style={{ ...styles.btn, ...styles.btnPrimary, opacity: syncingCount > 0 ? 0.7 : 1 }}>
+                <button onClick={handleSave} disabled={syncingCount > 0} style={{ ...styles.btn, ...styles.btnPrimary, opacity: syncingCount > 0 ? 0.7 : 1, ...(isMobile ? { width: "100%", boxSizing: "border-box" } : {}) }}>
                   {syncingCount > 0
                     ? <><Loader2 size={16} className="animate-spin" /> 保存中...</>
                     : <><Save size={16} /> 変更を保存</>}
@@ -676,7 +818,7 @@ export default function CustomerDetail({
       </div>
 
       {/* ── メインコンテンツ ── */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 360px", gap: 28, alignItems: "start" }}>
+      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 360px", gap: isMobile ? 20 : 28, alignItems: "start" }}>
 
         {/* 左：顧客情報 */}
         <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
@@ -687,8 +829,8 @@ export default function CustomerDetail({
               <User size={15} /> 基本情報
             </h3>
 
-            {/* 対応ステータス・担当者・流入元 */}
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr" + (sources.length > 0 ? " 1fr" : ""), gap: 20, marginBottom: 20, padding: "20px", backgroundColor: THEME.bg, borderRadius: 12 }}>
+            {/* 対応ステータス・担当者・流入元・契約種別 */}
+            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: isMobile ? 14 : 20, marginBottom: 20, padding: isMobile ? "16px" : "20px", backgroundColor: THEME.bg, borderRadius: 12 }}>
               {isEditing ? (
                 <>
                   <EditSelect
@@ -714,12 +856,20 @@ export default function CustomerDetail({
                       value={formData["流入元"]} onChange={handleFieldChange}
                     />
                   )}
+                  {contractTypes.length > 0 && (
+                    <EditSelect
+                      label="契約種別" fieldName="契約種別"
+                      options={[{ value: "", label: "未選択" }, ...contractTypes.map((t) => ({ value: t, label: t }))]}
+                      value={formData["契約種別"]} onChange={handleFieldChange}
+                    />
+                  )}
                 </>
               ) : (
                 <>
                   <ViewField label="対応ステータス" value={formData["対応ステータス"]} />
                   <ViewField label="担当者" value={assignedName} />
                   {sources.length > 0 && <ViewField label="流入元" value={formData["流入元"] || "－"} />}
+                  {contractTypes.length > 0 && <ViewField label="契約種別" value={formData["契約種別"] || "－"} />}
                 </>
               )}
             </div>
@@ -772,19 +922,21 @@ export default function CustomerDetail({
               )}
             </div>
 
-            {/* 姓・名・電話番号 */}
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 20 }}>
+            {/* 姓・名 / 電話番号・メールアドレス */}
+            <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: isMobile ? 14 : 20 }}>
               {isEditing ? (
                 <>
                   <EditText label="姓" fieldName="姓" value={formData["姓"]} onChange={handleFieldChange} />
                   <EditText label="名" fieldName="名" value={formData["名"]} onChange={handleFieldChange} />
                   <EditText label="電話番号" fieldName="電話番号" value={formData["電話番号"]} onChange={handleFieldChange} />
+                  <EditText label="メールアドレス" fieldName="メールアドレス" type="email" value={formData["メールアドレス"]} onChange={handleFieldChange} />
                 </>
               ) : (
                 <>
                   <ViewField label="姓" value={formData["姓"]} icon={<User size={12} />} />
                   <ViewField label="名" value={formData["名"]} />
                   <ViewField label="電話番号" value={formData["電話番号"]} icon={<Phone size={12} />} />
+                  <ViewField label="メールアドレス" value={formData["メールアドレス"]} icon={<Mail size={12} />} />
                 </>
               )}
             </div>
@@ -812,7 +964,7 @@ export default function CustomerDetail({
               <h3 style={{ fontSize: 14, fontWeight: 800, color: THEME.textMuted, marginTop: 0, marginBottom: 20, display: "flex", alignItems: "center", gap: 8 }}>
                 <LayoutGrid size={15} /> カスタム項目
               </h3>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
+              <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: isMobile ? 14 : 20 }}>
                 {formSettings.map((field) => (
                   <CustomField
                     key={field.name}
@@ -829,7 +981,7 @@ export default function CustomerDetail({
           {/* ── 検討物件セクション ── */}
           <div style={styles.card}>
             {/* ヘッダー */}
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+            <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", alignItems: isMobile ? "stretch" : "center", justifyContent: "space-between", gap: isMobile ? 10 : 0, marginBottom: 16 }}>
               <h3 style={{ fontSize: 14, fontWeight: 800, color: THEME.textMuted, margin: 0, display: "flex", alignItems: "center", gap: 8 }}>
                 <Building2 size={15} /> 検討物件
                 {localProperties.length > 0 && (
@@ -838,7 +990,7 @@ export default function CustomerDetail({
                   </span>
                 )}
               </h3>
-              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 12 }}>
                 {/* 合計サマリー */}
                 {localProperties.length > 0 && (() => {
                   const wonTotal = localProperties.filter(p => p.status === "成約")
@@ -947,27 +1099,49 @@ export default function CustomerDetail({
             </div>
           ) : (
             <div style={{ maxHeight: 560, overflowY: "auto" }}>
-              {customerLogs.map((log, i) => {
-                const isHot = log.last_clicked_at && (new Date() - new Date(log.last_clicked_at)) < 5 * 60 * 1000;
-                return (
-                  <div
-                    key={i}
-                    style={{ paddingLeft: 20, borderLeft: `2px solid ${isHot ? THEME.danger : i === 0 ? THEME.primary : THEME.border}`, position: "relative", marginBottom: 20, paddingBottom: 4 }}
-                  >
-                    <div style={{ position: "absolute", left: -6, top: 3, width: 10, height: 10, borderRadius: "50%", backgroundColor: isHot ? THEME.danger : i === 0 ? THEME.primary : THEME.border, border: "2px solid white" }} />
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
-                      <span style={{ fontSize: 11, color: THEME.textMuted, fontWeight: 700 }}>最終クリック: {formatDateJP(log.last_clicked_at) || "-"}</span>
-                      {isHot && <span style={{ backgroundColor: THEME.danger, color: "white", fontSize: 9, padding: "1px 6px", borderRadius: 4, fontWeight: 900 }}>HOT</span>}
+              {customerLogs.flatMap((log, logIdx) => {
+                const clickCount = parseInt(log.click_count) || 0;
+
+                // click_timestamps（JSON配列）があれば個別日時を使う。
+                // なければ last_clicked_at のみ判明しているので最新行のみ日時あり、残りは日時不明として展開。
+                let timestamps = [];
+                try {
+                  if (log.click_timestamps) {
+                    const parsed = JSON.parse(log.click_timestamps);
+                    if (Array.isArray(parsed)) timestamps = [...parsed].reverse(); // 新しい順に並べる
+                  }
+                } catch (e) { timestamps = []; }
+
+                // clickCount 分の行を生成（timestamps が足りない場合は null で補完）
+                return Array.from({ length: clickCount }, (_, clickIdx) => {
+                  const key = `${logIdx}-${clickIdx}`;
+                  const clickedAt = timestamps[clickIdx] || null;
+                  // click_timestamps がない旧データは last_clicked_at をフォールバックに使ってHOT判定する
+                  const hotBaseTime = clickedAt || (clickIdx === 0 ? log.last_clicked_at : null);
+                  const isHot = hotBaseTime && (new Date() - new Date(hotBaseTime)) < 60 * 60 * 1000;
+                  const globalFirst = logIdx === 0 && clickIdx === 0;
+                  return (
+                    <div
+                      key={key}
+                      style={{ paddingLeft: 20, borderLeft: `2px solid ${isHot ? THEME.danger : globalFirst ? THEME.primary : THEME.border}`, position: "relative", marginBottom: 20, paddingBottom: 4 }}
+                    >
+                      <div style={{ position: "absolute", left: -6, top: 3, width: 10, height: 10, borderRadius: "50%", backgroundColor: isHot ? THEME.danger : globalFirst ? THEME.primary : THEME.border, border: "2px solid white" }} />
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                        <span style={{ fontSize: 11, color: THEME.textMuted, fontWeight: 700 }}>
+                          {clickedAt ? `クリック日時: ${formatDateJP(clickedAt)}` : `クリック日時: ${formatDateJP(log.last_clicked_at) || "不明"}`}
+                        </span>
+                        {isHot && <span style={{ backgroundColor: THEME.danger, color: "white", fontSize: 9, padding: "1px 6px", borderRadius: 4, fontWeight: 900 }}>HOT</span>}
+                      </div>
+                      <div style={{ fontSize: 13, fontWeight: 800, color: THEME.textMain, marginBottom: 4 }}>URLクリック</div>
+                      <div style={{ fontSize: 11, color: THEME.textMuted, marginBottom: 4 }}>送信: {formatDateJP(log.sent_at) || "-"}</div>
+                      {log.original_url && (
+                        <a href={log.original_url} target="_blank" rel="noreferrer" style={{ fontSize: 11, color: THEME.primary, display: "flex", alignItems: "center", gap: 4, textDecoration: "none", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          <ExternalLink size={10} /> {log.original_url}
+                        </a>
+                      )}
                     </div>
-                    <div style={{ fontSize: 13, fontWeight: 800, color: THEME.textMain, marginBottom: 4 }}>{parseInt(log.click_count)}回クリック</div>
-                    <div style={{ fontSize: 11, color: THEME.textMuted, marginBottom: 4 }}>送信: {formatDateJP(log.sent_at) || "-"}</div>
-                    {log.original_url && (
-                      <a href={log.original_url} target="_blank" rel="noreferrer" style={{ fontSize: 11, color: THEME.primary, display: "flex", alignItems: "center", gap: 4, textDecoration: "none", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                        <ExternalLink size={10} /> {log.original_url}
-                      </a>
-                    )}
-                  </div>
-                );
+                  );
+                });
               })}
             </div>
           )}
@@ -978,6 +1152,12 @@ export default function CustomerDetail({
       </div>
 
       {/* ── モーダル群（return の中に配置することで正しくレンダリングされる） ── */}
+      <LostReasonModal
+        open={!!lostModal}
+        lostReasonOptions={lostModal?.lostReasonOptions || []}
+        onConfirm={handleLostConfirm}
+        onCancel={() => setLostModal(null)}
+      />
       {promptModal && (
         <PromptFieldsModal
           newStatus={formData["対応ステータス"] || ""}
@@ -995,8 +1175,8 @@ export default function CustomerDetail({
         />
       )}
       {scenarioConfirm && (
-        <div style={{ position: "fixed", inset: 0, backgroundColor: "rgba(15,23,42,0.6)", display: "flex", justifyContent: "center", alignItems: "center", zIndex: 3000, backdropFilter: "blur(4px)" }}>
-          <div style={{ backgroundColor: "white", borderRadius: 20, padding: 36, width: 440, boxShadow: "0 24px 48px rgba(0,0,0,0.15)" }}>
+        <div style={{ position: "fixed", inset: 0, backgroundColor: "rgba(15,23,42,0.6)", display: "flex", justifyContent: "center", alignItems: "center", zIndex: 3000, backdropFilter: "blur(4px)", padding: isMobile ? 16 : 0, boxSizing: "border-box" }}>
+          <div style={{ backgroundColor: "white", borderRadius: 20, padding: isMobile ? "28px 24px" : 36, width: isMobile ? "100%" : 440, maxWidth: 440, boxShadow: "0 24px 48px rgba(0,0,0,0.15)", boxSizing: "border-box" }}>
             <div style={{ textAlign: "center", marginBottom: 24 }}>
               <div style={{ fontSize: 44, marginBottom: 8 }}>🔄</div>
               <h3 style={{ fontSize: 18, fontWeight: 900, color: "#0F172A", margin: "0 0 10px" }}>

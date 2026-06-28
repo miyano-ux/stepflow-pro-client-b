@@ -7,6 +7,7 @@ import { styles } from "../lib/styles";
 import { apiCall, formatDate } from "../lib/utils";
 import Page from "../components/Page";
 import { useToast } from "../ToastContext";
+import { useWindowWidth } from "../lib/useWindowWidth";
 
 // ==========================================
 // ⚠️ ImportErrorList - 取り込みエラーログページ
@@ -23,6 +24,7 @@ function ImportErrorList({ errors = [], onRefresh }) {
   // "confirm" | "loading" | "done" | null
   const [modalPhase, setModalPhase] = useState(null);
   const navigate = useNavigate();
+  const { isMobile } = useWindowWidth();
 
   // 全ログ削除
   const handleClearAll = async () => {
@@ -181,13 +183,57 @@ function ImportErrorList({ errors = [], onRefresh }) {
           </button>
         </div>
 
-        {/* エラーログテーブル */}
+        {/* エラーログ一覧：PC/タブレットはテーブル、モバイルはカードリスト */}
+        {isMobile ? (
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {sortedErrors.length > 0 ? (
+              sortedErrors.map((e, i) => (
+                <div
+                  key={i}
+                  style={{ ...styles.card, padding: "14px 16px" }}
+                >
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
+                    <span style={{ fontSize: 12, color: THEME.textMuted }}>
+                      {formatDate(e["日時"])}
+                    </span>
+                    <button
+                      onClick={() => setSelected(e)}
+                      style={{
+                        display: "flex", alignItems: "center", justifyContent: "center",
+                        background: "#EEF2FF", border: "none", borderRadius: 8,
+                        color: THEME.primary, cursor: "pointer", padding: 6, flexShrink: 0,
+                      }}
+                    >
+                      <Eye size={16} />
+                    </button>
+                  </div>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: THEME.textMain, marginTop: 6 }}>
+                    {e["送信元"]}
+                  </div>
+                  <div style={{ fontSize: 12, color: THEME.textMuted, marginTop: 2 }}>
+                    {e["件名 / 反響番号"]}
+                  </div>
+                  <div style={{ marginTop: 8, paddingTop: 8, borderTop: `1px solid ${THEME.border}` }}>
+                    <span style={{ color: THEME.danger, fontWeight: 800, fontSize: 12 }}>
+                      {e["エラー原因"]}
+                    </span>
+                  </div>
+                </div>
+              ))
+            ) : (
+              <div style={{ ...styles.card, textAlign: "center", padding: 40, color: THEME.textMuted, fontSize: 14 }}>
+                現在、エラーログはありません。
+              </div>
+            )}
+          </div>
+        ) : (
         <div style={{ ...styles.card, padding: 0, overflow: "hidden" }}>
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
             <thead>
               <tr>
                 <th style={styles.tableTh}>日時</th>
-                <th style={styles.tableTh}>件名 / 送信元</th>
+                <th style={styles.tableTh}>送信元</th>
+                <th style={styles.tableTh}>件名 / 反響番号</th>
                 <th style={styles.tableTh}>エラー原因</th>
                 <th style={{ ...styles.tableTh, textAlign: "right" }}>詳細</th>
               </tr>
@@ -206,12 +252,8 @@ function ImportErrorList({ errors = [], onRefresh }) {
                     }
                   >
                     <td style={styles.tableTd}>{formatDate(e["日時"])}</td>
-                    <td style={styles.tableTd}>
-                      <div style={{ fontWeight: 700 }}>{e["件名"]}</div>
-                      <div style={{ fontSize: "12px", color: THEME.textMuted }}>
-                        {e["送信元"]}
-                      </div>
-                    </td>
+                    <td style={styles.tableTd}>{e["送信元"]}</td>
+                    <td style={styles.tableTd}>{e["件名 / 反響番号"]}</td>
                     <td style={styles.tableTd}>
                       <span style={{ color: THEME.danger, fontWeight: 800 }}>
                         {e["エラー原因"]}
@@ -235,7 +277,7 @@ function ImportErrorList({ errors = [], onRefresh }) {
               ) : (
                 <tr>
                   <td
-                    colSpan="4"
+                    colSpan="5"
                     style={{
                       ...styles.tableTd,
                       textAlign: "center",
@@ -250,6 +292,7 @@ function ImportErrorList({ errors = [], onRefresh }) {
             </tbody>
           </table>
         </div>
+        )}
 
         {/* 本文詳細モーダル */}
         {selected && (
@@ -265,16 +308,21 @@ function ImportErrorList({ errors = [], onRefresh }) {
               justifyContent: "center",
               alignItems: "center",
               zIndex: 2100,
+              padding: isMobile ? 16 : 0,
+              boxSizing: "border-box",
             }}
           >
             <div
               style={{
                 ...styles.card,
-                width: "800px",
+                width: isMobile ? "100%" : "800px",
+                maxWidth: "800px",
                 maxHeight: "80vh",
                 overflow: "hidden",
                 display: "flex",
                 flexDirection: "column",
+                padding: isMobile ? 20 : undefined,
+                boxSizing: "border-box",
               }}
             >
               <div
@@ -284,7 +332,7 @@ function ImportErrorList({ errors = [], onRefresh }) {
                   marginBottom: "20px",
                 }}
               >
-                <h3 style={{ margin: 0 }}>メール本文の詳細確認</h3>
+                <h3 style={{ margin: 0, fontSize: isMobile ? 16 : undefined }}>メール本文の詳細確認</h3>
                 <button
                   onClick={() => setSelected(null)}
                   style={{ background: "none", border: "none", cursor: "pointer" }}
@@ -304,7 +352,7 @@ function ImportErrorList({ errors = [], onRefresh }) {
                   color: THEME.textMain,
                 }}
               >
-                {selected["内容"]}
+                {selected["詳細"]}
               </div>
             </div>
           </div>

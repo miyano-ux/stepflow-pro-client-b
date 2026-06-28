@@ -6,6 +6,7 @@ import { styles } from "../lib/styles";
 import Page from "../components/Page";
 import ConfirmModal from "../components/ConfirmModal";
 import { useToast } from "../ToastContext";
+import { useWindowWidth } from "../lib/useWindowWidth";
 
 // ==========================================
 // 🌐 SourceManager - 流入元管理ページ
@@ -110,6 +111,7 @@ function SuccessModal({ open, message, onClose }) {
 
 export default function SourceManager({ sources = [], onRefresh, gasUrl = GAS_URL }) {
   const showToast = useToast();
+  const { isMobile } = useWindowWidth();
 
   // ── State / Ref（すべてuseEffectより前に宣言） ──────────────────────
   const [localSources, setLocalSources] = useState(sources);
@@ -288,8 +290,11 @@ export default function SourceManager({ sources = [], onRefresh, gasUrl = GAS_UR
                   <div
                     key={s.name}
                     style={{
-                      display: "flex", alignItems: "center", gap: 12,
-                      padding: "12px 16px",
+                      display: "flex",
+                      flexDirection: isMobile ? "column" : "row",
+                      alignItems: isMobile ? "stretch" : "center",
+                      gap: isMobile ? 10 : 12,
+                      padding: isMobile ? "12px 14px" : "12px 16px",
                       background: s._isTemp
                         ? "#F0FDF4"
                         : i % 2 === 0 ? "#FAFBFF" : "#FFFFFF",
@@ -299,27 +304,48 @@ export default function SourceManager({ sources = [], onRefresh, gasUrl = GAS_UR
                       transition: "opacity 0.2s, background 0.2s",
                     }}
                   >
-                    <GripVertical size={16} color={THEME.border} style={{ flexShrink: 0 }} />
-                    <Globe size={15} color={THEME.primary} style={{ flexShrink: 0 }} />
-                    <span style={{ flex: 1, fontSize: 14, fontWeight: 700, color: THEME.textMain }}>
-                      {s.name}
-                      {s._isTemp && (
-                        <span style={{ marginLeft: 6, fontSize: 11, color: "#16A34A", fontWeight: 600 }}>
-                          保存中…
-                        </span>
+                    {/* 1段目：grip + アイコン + 名前 + 件数バッジ（+モバイルのみ削除ボタン） */}
+                    <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                      <GripVertical size={16} color={THEME.border} style={{ flexShrink: 0 }} />
+                      <Globe size={15} color={THEME.primary} style={{ flexShrink: 0 }} />
+                      <span style={{ flex: 1, fontSize: 14, fontWeight: 700, color: THEME.textMain }}>
+                        {s.name}
+                        {s._isTemp && (
+                          <span style={{ marginLeft: 6, fontSize: 11, color: "#16A34A", fontWeight: 600 }}>
+                            保存中…
+                          </span>
+                        )}
+                      </span>
+                      <span style={{
+                        fontSize: 11, color: THEME.textMuted,
+                        background: "#F1F5F9", borderRadius: 6,
+                        padding: "2px 8px",
+                        flexShrink: 0,
+                      }}>
+                        顧客 {s.count ?? 0} 件
+                      </span>
+                      {isMobile && (
+                        <button
+                          onClick={() => handleDelete(s.name)}
+                          disabled={deletingName === s.name || !!s._isTemp}
+                          style={{
+                            background: "none", border: "none",
+                            cursor: (deletingName === s.name || s._isTemp) ? "not-allowed" : "pointer",
+                            padding: 4,
+                            color: (deletingName === s.name || s._isTemp) ? THEME.border : "#EF4444",
+                            flexShrink: 0,
+                          }}
+                          title="削除"
+                        >
+                          {deletingName === s.name
+                            ? <Loader2 size={16} />
+                            : <Trash2 size={16} />}
+                        </button>
                       )}
-                    </span>
-                    <span style={{
-                      fontSize: 11, color: THEME.textMuted,
-                      background: "#F1F5F9", borderRadius: 6,
-                      padding: "2px 8px",
-                      flexShrink: 0,
-                    }}>
-                      顧客 {s.count ?? 0} 件
-                    </span>
+                    </div>
 
-                    {/* コスト入力 */}
-                    <div style={{ display: "flex", alignItems: "center", gap: 4, flexShrink: 0 }}>
+                    {/* 2段目（モバイル）/ 続き（PC）：コスト入力 + 保存 (+PCのみ削除ボタン) */}
+                    <div style={{ display: "flex", alignItems: "center", gap: 4, flexShrink: 0, ...(isMobile ? { paddingLeft: 28, justifyContent: "flex-start" } : {}) }}>
                       <span style={{ fontSize: 11, color: THEME.textMuted }}>コスト</span>
                       <input
                         type="number"
@@ -350,24 +376,26 @@ export default function SourceManager({ sources = [], onRefresh, gasUrl = GAS_UR
                       >
                         {costSaving === s.name ? "保存中" : "保存"}
                       </button>
+                      {!isMobile && (
+                        <button
+                          onClick={() => handleDelete(s.name)}
+                          disabled={deletingName === s.name || !!s._isTemp}
+                          style={{
+                            background: "none", border: "none",
+                            cursor: (deletingName === s.name || s._isTemp) ? "not-allowed" : "pointer",
+                            padding: 4,
+                            color: (deletingName === s.name || s._isTemp) ? THEME.border : "#EF4444",
+                            flexShrink: 0,
+                            marginLeft: 4,
+                          }}
+                          title="削除"
+                        >
+                          {deletingName === s.name
+                            ? <Loader2 size={16} />
+                            : <Trash2 size={16} />}
+                        </button>
+                      )}
                     </div>
-
-                    <button
-                      onClick={() => handleDelete(s.name)}
-                      disabled={deletingName === s.name || !!s._isTemp}
-                      style={{
-                        background: "none", border: "none",
-                        cursor: (deletingName === s.name || s._isTemp) ? "not-allowed" : "pointer",
-                        padding: 4,
-                        color: (deletingName === s.name || s._isTemp) ? THEME.border : "#EF4444",
-                        flexShrink: 0,
-                      }}
-                      title="削除"
-                    >
-                      {deletingName === s.name
-                        ? <Loader2 size={16} />
-                        : <Trash2 size={16} />}
-                    </button>
                   </div>
                 ))}
               </div>

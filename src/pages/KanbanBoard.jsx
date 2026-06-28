@@ -3,13 +3,14 @@ import { Link, useNavigate } from "react-router-dom";
 import axios from "axios";
 import {
   ListTodo, UserCircle, MessageSquare,
-  Loader2, ExternalLink, ChevronDown, Check
+  Loader2, ExternalLink, ChevronDown, Check, X, Filter,
 } from "lucide-react";
 import { THEME } from "../lib/constants";
 import { StaffDropdown } from "../components/StaffDropdown";
 import { apiCall, customerStore } from "../lib/utils";
 import PromptFieldsModal from "../components/PromptFieldsModal";
 import { useToast } from "../ToastContext";
+import { useWindowWidth } from "../lib/useWindowWidth";
 
 // ─────────────────────────────────────────────────────────
 // スタイル定数
@@ -41,6 +42,31 @@ const S = {
   zone:      { minWidth: "260px", height: "96px", borderRadius: "16px", display: "flex", alignItems: "center", justifyContent: "center", gap: "10px", fontWeight: "900", fontSize: "15px", border: "3px dashed transparent", transition: "all 0.2s", cursor: "default", padding: "0 24px" },
   overlay:   { position: "fixed", inset: 0, backgroundColor: "rgba(15,23,42,0.6)", display: "flex", justifyContent: "center", alignItems: "center", zIndex: 2000, backdropFilter: "blur(4px)" },
   modal:     { backgroundColor: "white", borderRadius: 24, padding: "40px", width: 460, boxShadow: "0 24px 48px rgba(0,0,0,0.15)" },
+};
+
+// ─────────────────────────────────────────────────────────
+// モバイル専用スタイル定数
+// ─────────────────────────────────────────────────────────
+const MS = {
+  main:    { minHeight: "100vh", backgroundColor: THEME.bg, display: "flex", flexDirection: "column" },
+  header:  { padding: "14px 16px 12px", flexShrink: 0, display: "flex", justifyContent: "space-between", alignItems: "center", backgroundColor: THEME.bg, borderBottom: `1px solid ${THEME.border}`, position: "sticky", top: 0, zIndex: 20 },
+  tabs:    { display: "flex", gap: "6px", overflowX: "auto", padding: "10px 16px", flexShrink: 0, borderBottom: `1px solid ${THEME.border}`, backgroundColor: THEME.bg },
+  tab:     (active) => ({
+    flexShrink: 0, fontSize: 12, fontWeight: active ? 800 : 700, padding: "7px 14px", borderRadius: 99,
+    backgroundColor: active ? "#EEF2FF" : "white", color: active ? THEME.primary : THEME.textMuted,
+    border: `1px solid ${active ? THEME.primary : THEME.border}`, whiteSpace: "nowrap", cursor: "pointer",
+  }),
+  cardList: { flex: 1, padding: "12px 16px 24px", display: "flex", flexDirection: "column", gap: 10 },
+  card:     { backgroundColor: "white", borderRadius: 14, padding: "14px 16px", boxShadow: "0 2px 6px rgba(0,0,0,0.04)", border: `1px solid ${THEME.border}`, cursor: "pointer" },
+  sheetOverlay: { position: "fixed", inset: 0, backgroundColor: "rgba(15,23,42,0.5)", zIndex: 2000, display: "flex", alignItems: "flex-end", justifyContent: "center" },
+  sheet:    { backgroundColor: "white", width: "100%", maxWidth: 480, borderRadius: "20px 20px 0 0", padding: "10px 16px 28px", maxHeight: "80vh", overflowY: "auto", boxSizing: "border-box" },
+  sheetOption: (active) => ({
+    width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between",
+    padding: "13px 14px", borderRadius: 12, border: "none", cursor: "pointer", textAlign: "left",
+    backgroundColor: active ? "#EEF2FF" : "transparent",
+    color: active ? THEME.primary : THEME.textMain,
+    fontWeight: active ? 900 : 700, fontSize: 14, marginBottom: 4,
+  }),
 };
 
 // ─────────────────────────────────────────────────────────
@@ -110,9 +136,7 @@ function DormantModal({ info, scenarios, gasUrl, onDone, onCancel }) {
   if (!info) return null;
   const handleConfirm = async () => {
     setSaving(true);
-    // info.scenarioId: ステータス設定で休眠ステータスに紐づけられたシナリオ（即時配信）
-    await axios.post(gasUrl, JSON.stringify({ action: "updateStatus", id: info.customerId, status: info.newStatus, applyScenario: info.scenarioId || "" }), { headers: { "Content-Type": "text/plain;charset=utf-8" } });
-    // scenarioId: モーダル内で選択した「再アプローチ時の」シナリオ（N ヶ月後配信）
+    await axios.post(gasUrl, JSON.stringify({ action: "updateStatus", id: info.customerId, status: info.newStatus, applyScenario: "" }), { headers: { "Content-Type": "text/plain;charset=utf-8" } });
     if (selected?.months > 0 && scenarioId) {
       await axios.post(gasUrl, JSON.stringify({ action: "scheduleDormantReapproach", id: info.customerId, months: selected.months, scenarioId }), { headers: { "Content-Type": "text/plain;charset=utf-8" } });
     }
@@ -256,7 +280,7 @@ function LostModal({ info, gasUrl, onDone, onCancel }) {
     if (!reason) return;
     setSaving(true);
     const finalReason = reason === "その他" ? freeText || "その他" : reason;
-    await axios.post(gasUrl, JSON.stringify({ action: "updateStatus", id: info.customerId, status: info.newStatus, applyScenario: info.scenarioId || "" }), { headers: { "Content-Type": "text/plain;charset=utf-8" } });
+    await axios.post(gasUrl, JSON.stringify({ action: "updateStatus", id: info.customerId, status: info.newStatus, applyScenario: "" }), { headers: { "Content-Type": "text/plain;charset=utf-8" } });
     await axios.post(gasUrl, JSON.stringify({ action: "saveLostReason", id: info.customerId, reason: finalReason }), { headers: { "Content-Type": "text/plain;charset=utf-8" } });
     setSaving(false);
     onDone();
@@ -989,6 +1013,7 @@ export default function KanbanBoard({
 }) {
   const showToast = useToast();
   const navigate = useNavigate();
+  const { isMobile } = useWindowWidth();
   const [filterStaff, setFilterStaff]       = useState("");
   // 初期値をストアのパッチ適用済みデータで初期化
   // → CustomerListで更新後にKanbanBoardへ遷移した瞬間から正しい状態で表示
@@ -996,6 +1021,11 @@ export default function KanbanBoard({
   const [draggingId, setDraggingId]         = useState(null);
   const [overColumn, setOverColumn]         = useState(null);
   const [syncing, setSyncing]               = useState(false);
+
+  // ── モバイル専用UI状態 ──────────────────────────
+  const [mobileActiveStatus, setMobileActiveStatus] = useState(null); // 表示中のカラム（タブ）
+  const [statusSheetCustomer, setStatusSheetCustomer] = useState(null); // ステータス選択シート対象の顧客
+  const [mobileFilterOpen, setMobileFilterOpen] = useState(false); // 担当者フィルタの開閉
 
   const [scenarioModal, setScenarioModal] = useState(null);
   const [promptModal,   setPromptModal]   = useState(null);
@@ -1074,6 +1104,16 @@ export default function KanbanBoard({
   // 右パネルを表示するか
   const hasRightPanel = rightTerminals.length > 0; // excludedはbottomRow右下コーナーに配置
 
+  // ── モバイル用：全ステータスをフラットな1リストに統合（フロー→右終点→下終点→除外の順） ──
+  const allStatusesFlat = [...flowStatuses, ...rightTerminals, ...bottomTerminals, ...excludedStatuses];
+
+  // 初期表示カラム：先頭のフローステータス（未設定時のみ）
+  useEffect(() => {
+    if (!mobileActiveStatus && flowStatuses.length > 0) {
+      setMobileActiveStatus(flowStatuses[0].name);
+    }
+  }, [flowStatuses, mobileActiveStatus]);
+
   // ── ドラッグ処理 ──────────────────────────────────
   const onDragStart = useCallback((e, cid) => {
     e.dataTransfer.setData("customerId", String(cid));
@@ -1117,7 +1157,7 @@ export default function KanbanBoard({
 
     // 失注
     if (statusDef?.terminalType === "lost") {
-      setLostModal({ customerId: cid, newStatus, prevStatus, lostReasonOptions: statusDef.lostReasonOptions || [], scenarioId: statusDef?.scenarioId || "" });
+      setLostModal({ customerId: cid, newStatus, prevStatus, lostReasonOptions: statusDef.lostReasonOptions || [] });
       return;
     }
     // 成約 → WonModal（物件ごとの成約金額入力）
@@ -1129,7 +1169,7 @@ export default function KanbanBoard({
     }
     // 休眠系（dormant）→ 再アプローチモーダル
     if (statusDef?.terminalType === "dormant") {
-      setDormantModal({ customerId: cid, newStatus, prevStatus, scenarioId: statusDef?.scenarioId || "" });
+      setDormantModal({ customerId: cid, newStatus, prevStatus });
       return;
     }
     // 除外 → シンプル更新（モーダルなし）
@@ -1145,6 +1185,17 @@ export default function KanbanBoard({
       execUpdate(cid, newStatus, prevStatus, "");
     }
   }, [localCustomers, statuses, flowStatuses, properties]);
+
+  // ── モバイル：ステータス選択シートでの選択を、既存 onDrop と同じロジックに橋渡し ──
+  // HTML5 DnD の dataTransfer の代わりに、合成イベントを作って onDrop を直接呼ぶ
+  const handleMobileStatusSelect = useCallback((cid, newStatus) => {
+    setStatusSheetCustomer(null);
+    const fakeEvent = {
+      preventDefault: () => {},
+      dataTransfer: { getData: () => String(cid) },
+    };
+    onDrop(fakeEvent, newStatus);
+  }, [onDrop]);
 
   const execUpdate = useCallback(async (cid, newStatus, prevStatus, scenarioId) => {
     // ── 楽観的更新：ストアとpendingの両方に登録 ──
@@ -1264,7 +1315,229 @@ export default function KanbanBoard({
   const termCount = (st) => localCustomers.filter(c => (c["対応ステータス"] || "").trim() === st.name.trim()).length;
 
   // ─────────────────────────────────────────────────
-  // レンダリング
+  // レンダリング（モバイル：1カラム表示＋タップでステータス変更シート）
+  // ─────────────────────────────────────────────────
+  if (isMobile) {
+    const activeCards = mobileActiveStatus
+      ? filtered.filter(c => {
+          const cur = (c["対応ステータス"] || "").trim();
+          if (cur === mobileActiveStatus.trim()) return true;
+          const idx = flowStatuses.findIndex(s => s.name === mobileActiveStatus);
+          const known = statuses.some(s => s.name.trim() === cur);
+          return idx === 0 && (!cur || !known);
+        })
+      : [];
+
+    return (
+      <>
+        <div style={MS.main}>
+          {/* ヘッダー */}
+          <header style={MS.header}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <h1 style={{ fontSize: 17, fontWeight: 900, color: THEME.textMain, margin: 0 }}>案件進捗管理</h1>
+              {syncing && <Loader2 className="animate-spin" size={14} color={THEME.primary} />}
+            </div>
+            <div style={{ display: "flex", gap: 8, alignItems: "center", position: "relative" }}>
+              <button
+                onClick={() => navigate("/status-settings")}
+                title="ステータス調整"
+                style={{ width: 34, height: 34, padding: 0, display: "flex", alignItems: "center", justifyContent: "center", border: `1px solid ${THEME.border}`, borderRadius: 10, backgroundColor: "white", cursor: "pointer" }}
+              >
+                <ListTodo size={15} color={THEME.textMain} />
+              </button>
+              <button
+                onClick={() => setMobileFilterOpen(o => !o)}
+                title="担当者フィルタ"
+                style={{
+                  width: 34, height: 34, padding: 0, display: "flex", alignItems: "center", justifyContent: "center",
+                  border: `1px solid ${filterStaff ? THEME.primary : THEME.border}`, borderRadius: 10,
+                  backgroundColor: filterStaff ? "#EEF2FF" : "white", cursor: "pointer", position: "relative",
+                }}
+              >
+                <Filter size={15} color={filterStaff ? THEME.primary : THEME.textMain} />
+                {filterStaff && (
+                  <span style={{ position: "absolute", top: -2, right: -2, width: 8, height: 8, borderRadius: "50%", backgroundColor: THEME.primary, border: "2px solid white" }} />
+                )}
+              </button>
+              {mobileFilterOpen && (
+                <div style={{ position: "absolute", top: "calc(100% + 8px)", right: 0, zIndex: 60, backgroundColor: "white", borderRadius: 12, border: `1px solid ${THEME.border}`, boxShadow: "0 12px 28px rgba(0,0,0,0.12)", padding: 10, minWidth: 220 }}>
+                  <StaffDropdown staffList={staffList} value={filterStaff} onChange={(v) => { setFilterStaff(v); setMobileFilterOpen(false); }} />
+                </div>
+              )}
+            </div>
+          </header>
+
+          {/* カラムタブ */}
+          <div style={MS.tabs}>
+            {allStatusesFlat.map((st) => {
+              const isFlowCol = flowStatuses.some(f => f.name === st.name);
+              const count = isFlowCol ? colCustomers(st, flowStatuses.findIndex(f => f.name === st.name)).length : termCount(st);
+              return (
+                <button
+                  key={st.name}
+                  onClick={() => setMobileActiveStatus(st.name)}
+                  style={MS.tab(mobileActiveStatus === st.name)}
+                >
+                  {st.name}（{count}）
+                </button>
+              );
+            })}
+          </div>
+
+          {/* カードリスト */}
+          <div style={MS.cardList}>
+            {activeCards.map((c) => {
+              const staff = staffList.find(s => s.email === c["担当者メール"]);
+              const days  = calcDaysInStatus(c);
+              const color = daysColor(days);
+              const cProps = properties.filter(p => String(p.customerId) === String(c.id));
+              const wonProps = cProps.filter(p => p.status === "成約");
+              const activeProps = cProps.filter(p => p.status === "検討中");
+              const formatPrice = (p) => {
+                const n = Number(String(p).replace(/[^0-9.]/g, ""));
+                if (!n) return null;
+                if (n >= 10000) return `${(n / 10000).toFixed(1).replace(/\.0$/, "")}億`;
+                return `${n.toLocaleString()}万`;
+              };
+              const wonTotal = wonProps.reduce((s, p) => s + (Number(String(p.contractPrice || "").replace(/[^0-9.]/g, "")) || 0), 0);
+              const maxActive = activeProps.length > 0
+                ? Math.max(...activeProps.map(p => Number(String(p.assessmentPrice || "").replace(/[^0-9.]/g, "")) || 0))
+                : 0;
+
+              return (
+                <div
+                  key={c.id}
+                  onClick={() => setStatusSheetCustomer(c)}
+                  style={MS.card}
+                >
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
+                    <Link
+                      to={`/detail/${c.id}`}
+                      onClick={e => e.stopPropagation()}
+                      style={{ fontWeight: 900, fontSize: 15, color: THEME.primary, textDecoration: "none", lineHeight: 1.3 }}
+                    >
+                      {c["姓"]} {c["名"]} 様
+                    </Link>
+                    <Link
+                      to={`/direct-sms/${c.id}`}
+                      onClick={e => e.stopPropagation()}
+                      style={{ color: THEME.primary, backgroundColor: "#EEF2FF", padding: 7, borderRadius: 8, display: "flex", flexShrink: 0 }}
+                    >
+                      <MessageSquare size={14} />
+                    </Link>
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 8 }}>
+                    <div style={{ fontSize: 11, color: THEME.textMuted, display: "flex", alignItems: "center", gap: 5, fontWeight: 700 }}>
+                      <UserCircle size={13} color={THEME.primary} />
+                      {staff ? `${staff.lastName} ${staff.firstName}` : "未割当"}
+                    </div>
+                    {days !== null && color && (
+                      <span style={{ fontSize: 11, fontWeight: 800, backgroundColor: color.bg, color: color.text, padding: "2px 9px", borderRadius: 99 }}>
+                        {days === 0 ? "本日" : `${days}日滞留中`}
+                      </span>
+                    )}
+                  </div>
+                  {cProps.length > 0 && (
+                    <div style={{ marginTop: 8, paddingTop: 8, borderTop: "1px solid #F1F5F9", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                        {wonProps.length > 0 && (
+                          <span style={{ fontSize: 10, fontWeight: 800, backgroundColor: "#DCFCE7", color: "#166534", padding: "2px 7px", borderRadius: 99 }}>
+                            成約{wonProps.length}件
+                          </span>
+                        )}
+                        {activeProps.length > 0 && (
+                          <span style={{ fontSize: 10, fontWeight: 800, backgroundColor: "#EEF2FF", color: THEME.primary, padding: "2px 7px", borderRadius: 99 }}>
+                            検討{activeProps.length}件
+                          </span>
+                        )}
+                      </div>
+                      <span style={{ fontSize: 11, fontWeight: 800, color: wonTotal > 0 ? "#166534" : THEME.textMain }}>
+                        {wonTotal > 0 ? `¥${formatPrice(wonTotal)}` : maxActive > 0 ? `〜¥${formatPrice(maxActive)}` : ""}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+            {activeCards.length === 0 && (
+              <div style={{ textAlign: "center", padding: "48px 16px", color: THEME.textMuted, fontSize: 13 }}>
+                このステータスの案件はありません
+              </div>
+            )}
+            <p style={{ textAlign: "center", fontSize: 11, color: THEME.textMuted, margin: "8px 0 0" }}>
+              カードをタップしてステータスを変更
+            </p>
+          </div>
+        </div>
+
+        {/* ステータス選択ボトムシート */}
+        {statusSheetCustomer && (
+          <div style={MS.sheetOverlay} onClick={() => setStatusSheetCustomer(null)}>
+            <div style={MS.sheet} onClick={e => e.stopPropagation()}>
+              <div style={{ width: 36, height: 4, backgroundColor: THEME.border, borderRadius: 2, margin: "0 auto 16px" }} />
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+                <div>
+                  <p style={{ fontSize: 12, color: THEME.textMuted, margin: "0 0 2px" }}>
+                    {statusSheetCustomer["姓"]} {statusSheetCustomer["名"]} 様
+                  </p>
+                  <p style={{ fontSize: 15, fontWeight: 900, color: THEME.textMain, margin: 0 }}>ステータスを選択</p>
+                </div>
+                <button
+                  onClick={() => setStatusSheetCustomer(null)}
+                  style={{ width: 32, height: 32, padding: 0, display: "flex", alignItems: "center", justifyContent: "center", background: "#F8FAFC", border: "none", borderRadius: 8, cursor: "pointer" }}
+                >
+                  <X size={16} color={THEME.textMuted} />
+                </button>
+              </div>
+              <div>
+                {allStatusesFlat.map((st) => {
+                  const current = (statusSheetCustomer["対応ステータス"] || "").trim() === st.name.trim();
+                  return (
+                    <button
+                      key={st.name}
+                      onClick={() => !current && handleMobileStatusSelect(statusSheetCustomer.id, st.name)}
+                      disabled={current}
+                      style={MS.sheetOption(current)}
+                    >
+                      <span>{st.name}{current ? "（現在）" : ""}</span>
+                      {current && <Check size={15} />}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* モーダル群（PC版と共通） */}
+        <ScenarioConfirmModal info={scenarioModal} onConfirm={handleScenarioConfirm} onCancel={() => setScenarioModal(null)} />
+        <DormantModal info={dormantModal} scenarios={scenarios} gasUrl={gasUrl} onDone={handleModalDone} onCancel={() => setDormantModal(null)} />
+        <LostModal info={lostModal} gasUrl={gasUrl} onDone={handleModalDone} onCancel={() => setLostModal(null)} />
+        {wonModal && (
+          <WonModal info={wonModal} gasUrl={gasUrl} onDone={handleWonDone} onCancel={() => setWonModal(null)} />
+        )}
+        {uketsukeModal && (
+          <UketsukeModal
+            info={uketsukeModal} gasUrl={gasUrl} contractTypes={contractTypes} staffList={staffList}
+            onDone={handleUketsukeDone} onCancel={() => setUketsukeModal(null)}
+          />
+        )}
+        <UketsukeBackModal info={uketsukeBackModal} onConfirm={handleUketsukeBackConfirm} onCancel={() => setUketsukeBackModal(null)} />
+        {promptModal && (
+          <PromptFieldsModal
+            newStatus={localCustomers.find(c => String(c.id) === promptModal.customerId)?.["対応ステータス"] || ""}
+            promptFields={promptModal.promptFields}
+            sources={sources} contractTypes={contractTypes} staffList={staffList}
+            onConfirm={handlePromptConfirm}
+            onSkip={() => { setPromptModal(null); onRefresh(); }}
+          />
+        )}
+      </>
+    );
+  }
+
+  // ─────────────────────────────────────────────────
+  // レンダリング（PC/タブレット：従来通り）
   // ─────────────────────────────────────────────────
   return (
     <>

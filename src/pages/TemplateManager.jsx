@@ -3,6 +3,7 @@ import ConfirmModal from "../components/ConfirmModal";
 import axios from "axios";
 import { Plus, Edit3, Trash2, Save, X, Loader2, CheckCircle2, RefreshCw } from "lucide-react";
 import { useToast } from "../ToastContext";
+import { useWindowWidth } from "../lib/useWindowWidth";
 
 const THEME = {
   primary: "#4F46E5", bg: "#F8FAFC", card: "#FFFFFF",
@@ -178,8 +179,7 @@ function SyncingBadge({ syncing }) {
 // ── メインコンポーネント ──────────────────────────────────────
 export default function TemplateManager({ templates = [], onRefresh, gasUrl }) {
   const showToast = useToast();
-
-  // ── ローカルリスト（楽観的UI用） ──
+  const { isMobile } = useWindowWidth();
   // ── state / ref 宣言 ──────────────────────────────────────
   const [localTemplates, setLocalTemplates] = useState(templates);
   const [confirmModal, setConfirmModal] = useState(null);
@@ -326,39 +326,38 @@ export default function TemplateManager({ templates = [], onRefresh, gasUrl }) {
 
       <SyncingBadge syncing={syncing} />
 
-      <div style={{ minHeight: "100vh", backgroundColor: THEME.bg, padding: "40px 64px" }}>
+      <div style={{ minHeight: "100vh", backgroundColor: THEME.bg, padding: isMobile ? "20px 16px" : "40px 64px", boxSizing: "border-box" }}>
 
         {/* ヘッダー */}
-        <header style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 40 }}>
+        <header style={{ display: "flex", flexDirection: isMobile ? "column" : "row", justifyContent: "space-between", alignItems: isMobile ? "stretch" : "center", gap: isMobile ? 14 : 0, marginBottom: isMobile ? 24 : 40 }}>
           <div>
-            <h1 style={{ fontSize: 32, fontWeight: 900, color: THEME.textMain, margin: "0 0 6px" }}>テンプレート管理</h1>
+            <h1 style={{ fontSize: isMobile ? 22 : 32, fontWeight: 900, color: THEME.textMain, margin: "0 0 6px" }}>テンプレート管理</h1>
             <p style={{ color: THEME.textMuted, margin: 0 }}>SMS配信で使用する定型文を作成・編集できます。</p>
           </div>
           <button
             onClick={openNew}
-            style={{ padding: "10px 20px", borderRadius: 10, fontWeight: 800, cursor: "pointer", display: "flex", alignItems: "center", gap: 8, border: "none", backgroundColor: THEME.primary, color: "white", fontSize: 14 }}
+            style={{ padding: "10px 20px", borderRadius: 10, fontWeight: 800, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, border: "none", backgroundColor: THEME.primary, color: "white", fontSize: 14, ...(isMobile ? { width: "100%", boxSizing: "border-box" } : {}) }}
           >
             <Plus size={18} /> 新規追加
           </button>
         </header>
 
-        {/* テンプレート一覧（楽観的ローカルリストを使用） */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(380px, 1fr))", gap: 24 }}>
+        {/* テンプレート一覧 */}
+        <div style={{ display: "grid", gridTemplateColumns: `repeat(auto-fill, minmax(${isMobile ? "280px" : "380px"}, 1fr))`, gap: isMobile ? 16 : 24 }}>
           {localTemplates.map((t) => (
             <div
               key={t.id}
               style={{
                 backgroundColor: THEME.card, borderRadius: 20,
-                border: `1px solid ${THEME.border}`, padding: 24,
+                border: `1px solid ${THEME.border}`, padding: isMobile ? 18 : 24,
                 boxShadow: "0 4px 6px -1px rgba(0,0,0,0.05)",
-                // 仮IDのカードは少し薄く表示して「同期待ち」を示す
                 opacity: String(t.id).startsWith("temp_") ? 0.7 : 1,
                 transition: "opacity 0.3s",
               }}
             >
-              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 16 }}>
-                <h3 style={{ margin: 0, fontSize: 18, fontWeight: 900 }}>{t.name}</h3>
-                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 16, gap: 8 }}>
+                <h3 style={{ margin: 0, fontSize: isMobile ? 15 : 18, fontWeight: 900, flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.name}</h3>
+                <div style={{ display: "flex", gap: 8, alignItems: "center", flexShrink: 0 }}>
                   {String(t.id).startsWith("temp_") && (
                     <RefreshCw size={13} color={THEME.textMuted} style={{ animation: "spin 1.2s linear infinite" }} />
                   )}
@@ -375,8 +374,8 @@ export default function TemplateManager({ templates = [], onRefresh, gasUrl }) {
 
         {/* ── 編集/新規モーダル ──────────────────────────── */}
         {modal.open && (
-          <div style={{ position: "fixed", inset: 0, backgroundColor: "rgba(15,23,42,0.6)", backdropFilter: "blur(4px)", display: "flex", justifyContent: "center", alignItems: "center", zIndex: 2000 }}>
-            <div style={{ backgroundColor: THEME.card, borderRadius: 20, border: `1px solid ${THEME.border}`, width: 640, maxHeight: "92vh", overflowY: "auto", padding: 36, boxShadow: "0 24px 48px rgba(0,0,0,0.15)" }}>
+          <div style={{ position: "fixed", inset: 0, backgroundColor: "rgba(15,23,42,0.6)", backdropFilter: "blur(4px)", display: "flex", justifyContent: "center", alignItems: "center", zIndex: 2000, padding: isMobile ? 16 : 0, boxSizing: "border-box" }}>
+            <div style={{ backgroundColor: THEME.card, borderRadius: isMobile ? 16 : 20, border: `1px solid ${THEME.border}`, width: isMobile ? "100%" : 640, maxWidth: 640, maxHeight: "92vh", overflowY: "auto", padding: isMobile ? "24px 20px" : 36, boxShadow: "0 24px 48px rgba(0,0,0,0.15)", boxSizing: "border-box" }}>
 
               {/* モーダルヘッダー */}
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 28 }}>
@@ -455,7 +454,7 @@ export default function TemplateManager({ templates = [], onRefresh, gasUrl }) {
                 />
 
                 {/* 保存・キャンセル */}
-                <div style={{ display: "flex", gap: 12 }}>
+                <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", gap: 12 }}>
                   <button
                     type="submit"
                     disabled={saving}
@@ -464,7 +463,7 @@ export default function TemplateManager({ templates = [], onRefresh, gasUrl }) {
                       backgroundColor: saving ? "#818CF8" : THEME.primary,
                       color: "white", fontWeight: 900, fontSize: 15, cursor: saving ? "not-allowed" : "pointer",
                       display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
-                      transition: "background-color 0.2s",
+                      transition: "background-color 0.2s", order: isMobile ? 1 : 0,
                     }}
                   >
                     {saving
@@ -476,7 +475,7 @@ export default function TemplateManager({ templates = [], onRefresh, gasUrl }) {
                     type="button"
                     onClick={closeModal}
                     disabled={saving}
-                    style={{ flex: 1, padding: "13px", borderRadius: 12, border: `1px solid ${THEME.border}`, backgroundColor: "#F1F5F9", color: THEME.textMuted, fontWeight: 800, fontSize: 15, cursor: "pointer" }}
+                    style={{ flex: 1, padding: "13px", borderRadius: 12, border: `1px solid ${THEME.border}`, backgroundColor: "#F1F5F9", color: THEME.textMuted, fontWeight: 800, fontSize: 15, cursor: "pointer", order: isMobile ? 2 : 0 }}
                   >
                     キャンセル
                   </button>

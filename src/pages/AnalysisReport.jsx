@@ -3,6 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { Activity, Timer, X, ChevronLeft } from "lucide-react";
 import { THEME as APP_THEME } from "../lib/constants";
 import { StaffDropdown } from "../components/StaffDropdown";
+import { useWindowWidth } from "../lib/useWindowWidth";
 
 const THEME = { ...APP_THEME, colors: ["#4F46E5","#6366F1","#818CF8","#A5B4FC","#C7D2FE","#E0E7FF"] };
 
@@ -40,7 +41,7 @@ function terminalStyle(terminalType) {
 }
 
 // ── ドリルダウンモーダル ──────────────────────────────
-function DrillModal({ statusName, customers, staffList, avgDays, onClose }) {
+function DrillModal({ statusName, customers, staffList, avgDays, isTerminal, onClose }) {
   const now = new Date();
 
   const rows = customers.map(c => {
@@ -63,7 +64,7 @@ function DrillModal({ statusName, customers, staffList, avgDays, onClose }) {
             <div style={{ fontSize: 18, fontWeight: 900, color: THEME.textMain }}>{statusName}</div>
             <div style={{ fontSize: 13, color: THEME.textMuted, marginTop: 2 }}>
               {customers.length} 件
-              {avgDays != null && (
+              {!isTerminal && avgDays != null && (
                 <span style={{ marginLeft: 12 }}>
                   平均滞在: <strong>{avgDays.toFixed(1)} 日</strong>
                   　🔵 〜平均　🟡 平均+7日　🔴 平均+7日超
@@ -74,25 +75,30 @@ function DrillModal({ statusName, customers, staffList, avgDays, onClose }) {
           <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", padding: 6, color: THEME.textMuted }}><X size={20} /></button>
         </div>
 
-        {/* 凡例 */}
-        <div style={{ display: "flex", gap: 20, padding: "10px 28px", borderBottom: `1px solid ${THEME.border}`, backgroundColor: "#FAFAFA" }}>
-          {Object.entries(STAY_COLORS).map(([k, v]) => (
-            <div key={k} style={{ display: "flex", alignItems: "center", gap: 6 }}>
-              <div style={{ width: 10, height: 10, borderRadius: "50%", backgroundColor: v.border }} />
-              <span style={{ fontSize: 12, fontWeight: 700, color: v.text }}>{v.label}</span>
-              <span style={{ fontSize: 11, color: THEME.textMuted }}>
-                {k === "normal"  ? `〜${avgDays?.toFixed(0) ?? "-"}日` :
-                 k === "warning" ? "+1〜7日" : "+7日超"}
-              </span>
-            </div>
-          ))}
-        </div>
+        {/* 凡例（終点ステータスでは滞在日数を扱わないため非表示） */}
+        {!isTerminal && (
+          <div style={{ display: "flex", gap: 20, padding: "10px 28px", borderBottom: `1px solid ${THEME.border}`, backgroundColor: "#FAFAFA" }}>
+            {Object.entries(STAY_COLORS).map(([k, v]) => (
+              <div key={k} style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <div style={{ width: 10, height: 10, borderRadius: "50%", backgroundColor: v.border }} />
+                <span style={{ fontSize: 12, fontWeight: 700, color: v.text }}>{v.label}</span>
+                <span style={{ fontSize: 11, color: THEME.textMuted }}>
+                  {k === "normal"  ? `〜${avgDays?.toFixed(0) ?? "-"}日` :
+                   k === "warning" ? "+1〜7日" : "+7日超"}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
 
         <div style={{ overflowY: "auto", flex: 1 }}>
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
             <thead>
               <tr style={{ backgroundColor: "#F8FAFC", position: "sticky", top: 0 }}>
-                {["", "氏名", "担当者", "ステータス変更日", "滞在日数", "状況"].map(h => (
+                {(isTerminal
+                  ? ["", "氏名", "担当者", "ステータス変更日"]
+                  : ["", "氏名", "担当者", "ステータス変更日", "滞在日数", "状況"]
+                ).map(h => (
                   <th key={h} style={{ padding: "10px 14px", fontSize: 12, fontWeight: 800, color: THEME.textMuted, textAlign: "left", borderBottom: `1px solid ${THEME.border}` }}>{h}</th>
                 ))}
               </tr>
@@ -118,18 +124,22 @@ function DrillModal({ statusName, customers, staffList, avgDays, onClose }) {
                   <td style={{ padding: "12px 14px", fontSize: 13, color: THEME.textMuted }}>
                     {c["ステータス変更日"] ? String(c["ステータス変更日"]).slice(0, 10) : "–"}
                   </td>
-                  <td style={{ padding: "12px 14px", fontSize: 15, fontWeight: 900, color: col.text }}>
-                    {days != null ? `${days} 日` : "–"}
-                  </td>
-                  <td style={{ padding: "12px 14px" }}>
-                    <span style={{ fontSize: 11, fontWeight: 800, color: col.text, backgroundColor: col.bg, border: `1px solid ${col.border}`, padding: "3px 10px", borderRadius: 99 }}>
-                      {col.label}
-                    </span>
-                  </td>
+                  {!isTerminal && (
+                    <>
+                      <td style={{ padding: "12px 14px", fontSize: 15, fontWeight: 900, color: col.text }}>
+                        {days != null ? `${days} 日` : "–"}
+                      </td>
+                      <td style={{ padding: "12px 14px" }}>
+                        <span style={{ fontSize: 11, fontWeight: 800, color: col.text, backgroundColor: col.bg, border: `1px solid ${col.border}`, padding: "3px 10px", borderRadius: 99 }}>
+                          {col.label}
+                        </span>
+                      </td>
+                    </>
+                  )}
                 </tr>
               ))}
               {rows.length === 0 && (
-                <tr><td colSpan={6} style={{ padding: 40, textAlign: "center", color: THEME.textMuted }}>該当なし</td></tr>
+                <tr><td colSpan={isTerminal ? 4 : 6} style={{ padding: 40, textAlign: "center", color: THEME.textMuted }}>該当なし</td></tr>
               )}
             </tbody>
           </table>
@@ -144,6 +154,7 @@ export default function AnalysisReport({ customers = [], statuses = [], tracking
   const [filterStaff, setFilterStaff] = useState("");
   const [drillStatus, setDrillStatus] = useState(null);
   const navigate = useNavigate();
+  const { isMobile } = useWindowWidth();
 
   const filtered = useMemo(() =>
     customers.filter(c => !filterStaff || c["担当者メール"] === filterStaff),
@@ -168,6 +179,7 @@ export default function AnalysisReport({ customers = [], statuses = [], tracking
     statuses.filter(s =>
       s.terminalType &&
       s.terminalType !== "excluded" &&
+      s.terminalType !== "won" &&            // 成約は上部「案件分布」グラフに表示済みのため下部サマリからは除外
       (s.placement || "bottom") === "right"
     ),
     [statuses]
@@ -222,11 +234,14 @@ export default function AnalysisReport({ customers = [], statuses = [], tracking
   }, [statusHistory]);
 
   const phaseTransitions = useMemo(() =>
-    chartStatuses.map(st => ({
-      name: st.name,
-      avgDays: avgDaysMap[st.name] ?? null,
-      terminalType: st.terminalType,
-    })),
+    chartStatuses
+      // 終点ステータス（成約・失注・休眠など）は「次フェーズへ進むまでの滞在日数」が存在しないため除外
+      .filter(st => !st.terminalType)
+      .map(st => ({
+        name: st.name,
+        avgDays: avgDaysMap[st.name] ?? null,
+        terminalType: st.terminalType,
+      })),
     [chartStatuses, avgDaysMap]
   );
 
@@ -243,58 +258,59 @@ export default function AnalysisReport({ customers = [], statuses = [], tracking
   return (
     <>
       <div style={S.main}>
-        <div style={S.wrapper}>
+        <div style={{ padding: isMobile ? "20px 16px" : "40px 64px", maxWidth: "1400px", margin: "0 auto", boxSizing: "border-box" }}>
 
           {/* ヘッダー */}
-          <header style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", marginBottom: 40 }}>
+          <header style={{ display: "flex", flexDirection: isMobile ? "column" : "row", justifyContent: "space-between", alignItems: isMobile ? "stretch" : "flex-end", gap: isMobile ? 14 : 0, marginBottom: isMobile ? 24 : 40 }}>
             <div>
               <button onClick={() => navigate("/analysis")} style={{ display: "flex", alignItems: "center", gap: 6, background: "none", border: "none", cursor: "pointer", color: THEME.textMuted, fontWeight: 800, fontSize: 13, marginBottom: 12, padding: 0 }}>
                 <ChevronLeft size={16} /> レポート一覧に戻る
               </button>
               <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 6 }}>
                 <Activity size={28} color={THEME.primary} />
-                <h1 style={{ fontSize: 28, fontWeight: 900, color: THEME.textMain, margin: 0 }}>営業進捗レポート</h1>
+                <h1 style={{ fontSize: isMobile ? 20 : 28, fontWeight: 900, color: THEME.textMain, margin: 0 }}>営業進捗レポート</h1>
               </div>
-              <p style={{ color: THEME.textMuted, fontSize: 14, margin: 0 }}>棒グラフをクリックすると顧客一覧が表示されます</p>
+              <p style={{ color: THEME.textMuted, fontSize: 14, margin: 0 }}>{isMobile ? "グラフをタップすると顧客一覧が表示されます" : "棒グラフをクリックすると顧客一覧が表示されます"}</p>
             </div>
             <StaffDropdown staffList={staffList} value={filterStaff} onChange={setFilterStaff} />
           </header>
 
-          {/* 棒グラフ */}
-          <div style={S.card}>
-            <h3 style={{ fontSize: 17, fontWeight: 900, marginBottom: 28, display: "flex", alignItems: "center", gap: 8 }}>
+          {/* 棒グラフ（横スクロール対応） */}
+          <div style={{ ...S.card, padding: isMobile ? "18px 16px" : "32px" }}>
+            <h3 style={{ fontSize: isMobile ? 15 : 17, fontWeight: 900, marginBottom: 28, display: "flex", alignItems: "center", gap: 8 }}>
               <Activity size={18} color={THEME.primary} /> 案件分布
-              <span style={{ fontSize: 12, fontWeight: 700, color: THEME.textMuted, marginLeft: 8 }}>— バーをクリックで顧客リスト（停滞色分け）表示</span>
             </h3>
-            <div style={{ height: 280, display: "flex", alignItems: "flex-end", gap: 12, paddingBottom: 16, borderBottom: `2px solid ${THEME.border}` }}>
-              {chartData.map(d => {
-                const isTerminal = !!d.terminalType;
-                const ts = isTerminal ? terminalStyle(d.terminalType) : null;
-                const barColor = isTerminal ? ts.color : d.color;
-                return (
-                  <div key={d.name} style={{ flex: 1, display: "flex", flexDirection: "column", height: "100%", cursor: d.count > 0 ? "pointer" : "default" }}
-                    onClick={() => d.count > 0 && setDrillStatus(d.name)}
-                  >
-                    <div style={{ flex: 1, display: "flex", alignItems: "flex-end", justifyContent: "center", marginBottom: 10 }}>
-                      <div style={{
-                        width: "60%", borderRadius: "8px 8px 2px 2px",
-                        backgroundColor: barColor, position: "relative",
-                        height: `${Math.max((d.count / maxCount) * 100, d.count > 0 ? 4 : 0)}%`,
-                        transition: "height 0.8s ease, filter 0.15s",
-                        minHeight: d.count > 0 ? 8 : 0,
-                        opacity: isTerminal ? 0.85 : 1,
-                      }}
-                        onMouseEnter={e => { if (d.count > 0) e.currentTarget.style.filter = "brightness(0.88)"; }}
-                        onMouseLeave={e => e.currentTarget.style.filter = "none"}
+            <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
+              <div style={{ minWidth: Math.max(chartData.length * 60, 800) }}>
+                <div style={{ height: 280, display: "flex", alignItems: "flex-end", gap: 12, paddingBottom: 16, borderBottom: `2px solid ${THEME.border}` }}>
+                  {chartData.map(d => {
+                    const isTerminal = !!d.terminalType;
+                    const ts = isTerminal ? terminalStyle(d.terminalType) : null;
+                    const barColor = isTerminal ? ts.color : d.color;
+                    return (
+                      <div key={d.name} style={{ flex: 1, display: "flex", flexDirection: "column", height: "100%", cursor: d.count > 0 ? "pointer" : "default" }}
+                        onClick={() => d.count > 0 && setDrillStatus(d.name)}
                       >
-                        {d.count > 0 && (
-                          <span style={{ position: "absolute", top: -24, left: "50%", transform: "translateX(-50%)", fontWeight: 900, color: barColor, fontSize: 14 }}>
-                            {d.count}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                    <div style={{ textAlign: "center" }}>
+                        <div style={{ flex: 1, display: "flex", alignItems: "flex-end", justifyContent: "center", marginBottom: 10 }}>
+                          <div style={{
+                            width: "60%", borderRadius: "8px 8px 2px 2px",
+                            backgroundColor: barColor, position: "relative",
+                            height: `${Math.max((d.count / maxCount) * 100, d.count > 0 ? 4 : 0)}%`,
+                            transition: "height 0.8s ease, filter 0.15s",
+                            minHeight: d.count > 0 ? 8 : 0,
+                            opacity: isTerminal ? 0.85 : 1,
+                          }}
+                            onMouseEnter={e => { if (d.count > 0) e.currentTarget.style.filter = "brightness(0.88)"; }}
+                            onMouseLeave={e => e.currentTarget.style.filter = "none"}
+                          >
+                            {d.count > 0 && (
+                              <span style={{ position: "absolute", top: -24, left: "50%", transform: "translateX(-50%)", fontWeight: 900, color: barColor, fontSize: 14 }}>
+                                {d.count}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        <div style={{ textAlign: "center" }}>
                       {isTerminal && <div style={{ fontSize: 13, lineHeight: 1, marginBottom: 2 }}>{ts.emoji}</div>}
                       <div style={{ fontSize: 11, fontWeight: 800, color: isTerminal ? ts.color : THEME.textMain, lineHeight: 1.3 }}>
                         {d.name}
@@ -304,13 +320,14 @@ export default function AnalysisReport({ customers = [], statuses = [], tracking
                 );
               })}
             </div>
+            </div>{/* 横スクロール内側 */}
+            </div>{/* overflowX:auto */}
           </div>
 
           {/* フェーズ別平均滞在日数 */}
-          <div style={S.card}>
-            <h3 style={{ fontSize: 17, fontWeight: 900, marginBottom: 24, display: "flex", alignItems: "center", gap: 8 }}>
+          <div style={{ ...S.card, padding: isMobile ? "18px 16px" : "32px" }}>
+            <h3 style={{ fontSize: isMobile ? 15 : 17, fontWeight: 900, marginBottom: 24, display: "flex", alignItems: "center", gap: 8 }}>
               <Timer size={18} color={THEME.primary} /> フェーズ別平均滞在日数
-              <span style={{ fontSize: 12, fontWeight: 700, color: THEME.textMuted, marginLeft: 8 }}>— 顧客が次のステータスへ進むまでの平均日数</span>
             </h3>
 
             <div style={{ display: "flex", alignItems: "stretch", overflowX: "auto", paddingBottom: 8, gap: 0 }}>
@@ -411,6 +428,7 @@ export default function AnalysisReport({ customers = [], statuses = [], tracking
           customers={drillData.customers}
           staffList={staffList}
           avgDays={drillAvgDays}
+          isTerminal={!!drillData.terminalType}
           onClose={() => setDrillStatus(null)}
         />
       )}

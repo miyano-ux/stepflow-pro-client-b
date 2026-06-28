@@ -1,5 +1,6 @@
 import React from "react";
 import { THEME } from "../lib/constants";
+import { useWindowWidth } from "../lib/useWindowWidth";
 
 // ==========================================
 // 📄 Page - ページ共通レイアウトラッパー
@@ -13,23 +14,26 @@ import { THEME } from "../lib/constants";
  * @param {React.ReactNode} topButton - タイトル右側に表示するボタン（任意）
  */
 function Page({ title, subtitle, children, topButton }) {
+  const { isMobile } = useWindowWidth();
   return (
     <div style={{ width: "100%", minHeight: "100vh" }}>
-      <div style={{ padding: "48px 32px", maxWidth: "1440px", margin: "0 auto" }}>
+      <div style={{ padding: isMobile ? "20px 16px" : "48px 32px", maxWidth: "1440px", margin: "0 auto", boxSizing: "border-box" }}>
 
         {/* ページヘッダー */}
         <div
           style={{
-            marginBottom: "40px",
+            marginBottom: isMobile ? "24px" : "40px",
             display: "flex",
+            flexDirection: isMobile ? "column" : "row",
             justifyContent: "space-between",
-            alignItems: "center",
+            alignItems: isMobile ? "stretch" : "center",
+            gap: isMobile ? "16px" : 0,
           }}
         >
           <div>
             <h1
               style={{
-                fontSize: "32px",
+                fontSize: isMobile ? "22px" : "32px",
                 fontWeight: "900",
                 color: THEME.textMain,
                 margin: 0,
@@ -41,7 +45,7 @@ function Page({ title, subtitle, children, topButton }) {
               <p
                 style={{
                   color: THEME.textMuted,
-                  fontSize: "15px",
+                  fontSize: isMobile ? "13px" : "15px",
                   marginTop: "6px",
                 }}
               >
@@ -51,7 +55,7 @@ function Page({ title, subtitle, children, topButton }) {
           </div>
 
           {/* タイトル右側のボタン領域（任意） */}
-          {topButton && <div>{topButton}</div>}
+          {topButton && <div style={isMobile ? { width: "100%", boxSizing: "border-box" } : {}}>{topButton}</div>}
         </div>
 
         {/* ページ本文 */}

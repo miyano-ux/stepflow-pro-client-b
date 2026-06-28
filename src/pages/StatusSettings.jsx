@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import { GripVertical, Plus, Trash2, ChevronLeft, Save, Flag, Trash, X } from "lucide-react";
+import { GripVertical, Plus, Trash2, ChevronLeft, Save, Flag, Trash, X, ChevronUp, ChevronDown } from "lucide-react";
 import CustomSelect from "../components/CustomSelect";
 import { THEME, GAS_URL } from "../lib/constants";
 import { styles } from "../lib/styles";
 import { apiCall } from "../lib/utils";
 import { useToast } from "../ToastContext";
+import { useWindowWidth } from "../lib/useWindowWidth";
 
 
 const PROMPT_FIELD_OPTIONS = [
@@ -29,19 +30,41 @@ const PLACEMENT_OPTIONS = [
   { value: "right",  label: "➡ 右側" },
 ];
 
+// 終点ステータス（dormant）の再アプローチ時期の選択肢
+const REAPPROACH_MONTH_OPTIONS = [
+  { months: 0,  label: "なし" },
+  { months: 1,  label: "1ヶ月後" },
+  { months: 2,  label: "2ヶ月後" },
+  { months: 3,  label: "3ヶ月後" },
+  { months: 6,  label: "6ヶ月後" },
+  { months: 12, label: "12ヶ月後" },
+];
+
 // ── 通常フロー行 ───────────────────────────────────────
-function StatusRow({ s, idx, scenarios, onChange, onDelete, onDragStart, onDragOver, onDrop, onPromptAdd, onPromptRemove, usedScenarios }) {
+function StatusRow({ s, idx, total, scenarios, onChange, onDelete, onDragStart, onDragOver, onDrop, onMoveUp, onMoveDown, onPromptAdd, onPromptRemove, usedScenarios }) {
+  const { isMobile } = useWindowWidth();
   return (
     <div
-      draggable
-      onDragStart={e => onDragStart(e, idx)}
-      onDragOver={e => onDragOver(e, idx)}
-      onDrop={e => onDrop(e, idx)}
-      style={{ display: "flex", alignItems: "flex-start", gap: 8, backgroundColor: "white", border: `1px solid ${THEME.border}`, borderRadius: 12, padding: "12px 14px", marginBottom: 8, cursor: "grab" }}
+      draggable={!isMobile}
+      onDragStart={!isMobile ? (e => onDragStart(e, idx)) : undefined}
+      onDragOver={!isMobile ? (e => onDragOver(e, idx)) : undefined}
+      onDrop={!isMobile ? (e => onDrop(e, idx)) : undefined}
+      style={{ display: "flex", alignItems: "flex-start", gap: 8, backgroundColor: "white", border: `1px solid ${THEME.border}`, borderRadius: 12, padding: "12px 14px", marginBottom: 8, cursor: isMobile ? "default" : "grab" }}
     >
-      <div style={{ paddingTop: 10, color: THEME.textMuted, flexShrink: 0 }}><GripVertical size={16} /></div>
+      {isMobile ? (
+        <div style={{ display: "flex", flexDirection: "column", gap: 2, flexShrink: 0, paddingTop: 6 }}>
+          <button onClick={() => onMoveUp(idx)} disabled={idx === 0} style={{ background: "none", border: "none", cursor: idx === 0 ? "default" : "pointer", padding: 3, color: idx === 0 ? "#E2E8F0" : THEME.textMuted, display: "flex" }}>
+            <ChevronUp size={16} />
+          </button>
+          <button onClick={() => onMoveDown(idx)} disabled={idx === total - 1} style={{ background: "none", border: "none", cursor: idx === total - 1 ? "default" : "pointer", padding: 3, color: idx === total - 1 ? "#E2E8F0" : THEME.textMuted, display: "flex" }}>
+            <ChevronDown size={16} />
+          </button>
+        </div>
+      ) : (
+        <div style={{ paddingTop: 10, color: THEME.textMuted, flexShrink: 0 }}><GripVertical size={16} /></div>
+      )}
 
-      <div style={{ flex: 1, display: "grid", gridTemplateColumns: "2fr 2fr 1.2fr", gap: 10, alignItems: "start" }}>
+      <div style={{ flex: 1, minWidth: 0, display: "grid", gridTemplateColumns: isMobile ? "1fr" : "2fr 2fr 1.2fr", gap: 10, alignItems: "start" }}>
         <div>
           <div style={{ fontSize: 11, fontWeight: 700, color: THEME.textMuted, marginBottom: 4 }}>ステータス名</div>
           <input style={{ ...styles.input, margin: 0 }} value={s.name} onChange={e => onChange(idx, "name", e.target.value)} placeholder="例: 対応中" />
@@ -96,26 +119,38 @@ const CONTRACT_COLOR  = "#0EA5E9";
 const CONTRACT_BG     = "#F0F9FF";
 const CONTRACT_BORDER = "#BAE6FD";
 
-function ContractRow({ s, idx, scenarios, onChange, onDelete, onDragStart, onDragOver, onDrop, onPromptAdd, onPromptRemove, usedScenarios }) {
+function ContractRow({ s, idx, total, scenarios, onChange, onDelete, onDragStart, onDragOver, onDrop, onMoveUp, onMoveDown, onPromptAdd, onPromptRemove, usedScenarios }) {
+  const { isMobile } = useWindowWidth();
   return (
     <div
-      draggable
-      onDragStart={e => onDragStart(e, idx)}
-      onDragOver={e => onDragOver(e, idx)}
-      onDrop={e => onDrop(e, idx)}
+      draggable={!isMobile}
+      onDragStart={!isMobile ? (e => onDragStart(e, idx)) : undefined}
+      onDragOver={!isMobile ? (e => onDragOver(e, idx)) : undefined}
+      onDrop={!isMobile ? (e => onDrop(e, idx)) : undefined}
       style={{
         display: "flex", alignItems: "flex-start", gap: 8,
         backgroundColor: CONTRACT_BG,
         border: `1.5px solid ${CONTRACT_BORDER}`,
         borderLeft: `4px solid ${CONTRACT_COLOR}`,
         borderRadius: 12, padding: "12px 14px", marginBottom: 8,
-        cursor: "grab",
+        cursor: isMobile ? "default" : "grab",
       }}
     >
-      {/* ドラッグハンドル（水色） */}
-      <div style={{ paddingTop: 10, color: CONTRACT_COLOR, flexShrink: 0 }}><GripVertical size={16} /></div>
+      {isMobile ? (
+        <div style={{ display: "flex", flexDirection: "column", gap: 2, flexShrink: 0, paddingTop: 6 }}>
+          <button onClick={() => onMoveUp(idx)} disabled={idx === 0} style={{ background: "none", border: "none", cursor: idx === 0 ? "default" : "pointer", padding: 3, color: idx === 0 ? `${CONTRACT_COLOR}30` : CONTRACT_COLOR, display: "flex" }}>
+            <ChevronUp size={16} />
+          </button>
+          <button onClick={() => onMoveDown(idx)} disabled={idx === total - 1} style={{ background: "none", border: "none", cursor: idx === total - 1 ? "default" : "pointer", padding: 3, color: idx === total - 1 ? `${CONTRACT_COLOR}30` : CONTRACT_COLOR, display: "flex" }}>
+            <ChevronDown size={16} />
+          </button>
+        </div>
+      ) : (
+        /* ドラッグハンドル（水色） */
+        <div style={{ paddingTop: 10, color: CONTRACT_COLOR, flexShrink: 0 }}><GripVertical size={16} /></div>
+      )}
 
-      <div style={{ flex: 1, display: "grid", gridTemplateColumns: "2fr 2fr 1.2fr", gap: 10, alignItems: "start" }}>
+      <div style={{ flex: 1, minWidth: 0, display: "grid", gridTemplateColumns: isMobile ? "1fr" : "2fr 2fr 1.2fr", gap: 10, alignItems: "start" }}>
         <div>
           <div style={{ fontSize: 11, fontWeight: 700, color: CONTRACT_COLOR, marginBottom: 4 }}>ステータス名</div>
           <input
@@ -175,9 +210,11 @@ function ContractRow({ s, idx, scenarios, onChange, onDelete, onDragStart, onDra
 
 // ── 終点ステータス行 ──────────────────────────────────
 function TerminalRow({ row, idx, scenarios, usedScenarios, onChange, onDelete }) {
+  const { isMobile } = useWindowWidth();
   const meta = TERMINAL_META[row.terminalType] || TERMINAL_META.dormant;
   const { icon, color, bg, canDelete, canRename, hasPlacement } = meta;
   const isLost = row.terminalType === "lost";
+  const isDormant = row.terminalType === "dormant";
 
   const inputRef = useRef(null);
   const [newOption, setNewOption] = useState("");
@@ -196,114 +233,168 @@ function TerminalRow({ row, idx, scenarios, usedScenarios, onChange, onDelete })
   };
 
   return (
-    <div style={{ display: "flex", alignItems: "flex-start", gap: 12, backgroundColor: bg, border: `1.5px solid ${color}40`, borderRadius: 12, padding: "14px 16px", marginBottom: 10 }}>
-      <div style={{ width: 34, height: 34, borderRadius: 8, backgroundColor: color, color: "white", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, marginTop: 2, fontSize: 16 }}>
-        {icon}
-      </div>
-
-      <div style={{ flex: 1, display: "grid", gridTemplateColumns: "1.5fr 1.5fr 1fr 0.8fr", gap: 10, alignItems: "start" }}>
-        {/* ステータス名 */}
-        <div>
-          <div style={{ fontSize: 11, fontWeight: 700, color, marginBottom: 4 }}>ステータス名</div>
-          <input
-            style={{ ...styles.input, margin: 0, borderColor: `${color}50`, backgroundColor: canRename ? "white" : "#F3F4F6", color: canRename ? undefined : THEME.textMuted }}
-            value={row.name}
-            onChange={e => canRename && onChange(idx, "name", e.target.value)}
-            readOnly={!canRename}
-          />
+    <div style={{ backgroundColor: bg, border: `1.5px solid ${color}40`, borderRadius: 12, padding: "14px 16px", marginBottom: 10 }}>
+      <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
+        <div style={{ width: 34, height: 34, borderRadius: 8, backgroundColor: color, color: "white", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, marginTop: 2, fontSize: 16 }}>
+          {icon}
         </div>
 
-        {/* 自動シナリオ */}
-        <div>
-          <div style={{ fontSize: 11, fontWeight: 700, color, marginBottom: 4 }}>自動シナリオ（任意）</div>
-          <CustomSelect
-            value={row.scenarioId || ""}
-            onChange={v => onChange(idx, "scenarioId", v)}
-            color={color}
-            options={[
-              { value: "", label: "設定しない" },
-              ...[...new Set(scenarios.map(sc => sc["シナリオID"]))].filter(Boolean).map(sid => {
-                const isUsed = usedScenarios.has(sid) && sid !== row.scenarioId;
-                return { value: sid, label: sid + (isUsed ? "（他で使用中）" : ""), disabled: isUsed };
-              })
-            ]}
-          />
-        </div>
-
-        {/* 配置 */}
-        <div>
-          <div style={{ fontSize: 11, fontWeight: 700, color, marginBottom: 4 }}>{hasPlacement ? "カンバン配置" : "配置（固定）"}</div>
-          {hasPlacement ? (
-            <div style={{ display: "flex", gap: 6 }}>
-              {PLACEMENT_OPTIONS.map(opt => (
-                <button key={opt.value} onClick={() => onChange(idx, "placement", opt.value)} style={{
-                  flex: 1, padding: "8px 4px", borderRadius: 8, fontSize: 11, fontWeight: 800, cursor: "pointer",
-                  border: `2px solid ${(row.placement || "bottom") === opt.value ? color : THEME.border}`,
-                  backgroundColor: (row.placement || "bottom") === opt.value ? bg : "white",
-                  color: (row.placement || "bottom") === opt.value ? color : THEME.textMuted,
-                }}>
-                  {opt.label}
-                </button>
-              ))}
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : (isDormant ? "1.5fr 1fr 0.8fr" : "1.5fr 1.5fr 1fr 0.8fr"), gap: 10, alignItems: "start" }}>
+            {/* ステータス名 */}
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 700, color, marginBottom: 4 }}>ステータス名</div>
+              <input
+                style={{ ...styles.input, margin: 0, borderColor: `${color}50`, backgroundColor: canRename ? "white" : "#F3F4F6", color: canRename ? undefined : THEME.textMuted }}
+                value={row.name}
+                onChange={e => canRename && onChange(idx, "name", e.target.value)}
+                readOnly={!canRename}
+              />
             </div>
-          ) : (
-            <div style={{ fontSize: 12, fontWeight: 700, color: "#9CA3AF", padding: "8px 4px" }}>右下コーナー固定</div>
+
+            {/* 自動シナリオ（dormant 以外） */}
+            {!isDormant && (
+              <div>
+                <div style={{ fontSize: 11, fontWeight: 700, color, marginBottom: 4 }}>自動シナリオ（任意）</div>
+                <CustomSelect
+                  value={row.scenarioId || ""}
+                  onChange={v => onChange(idx, "scenarioId", v)}
+                  color={color}
+                  options={[
+                    { value: "", label: "設定しない" },
+                    ...[...new Set(scenarios.map(sc => sc["シナリオID"]))].filter(Boolean).map(sid => {
+                      const isUsed = usedScenarios.has(sid) && sid !== row.scenarioId;
+                      return { value: sid, label: sid + (isUsed ? "（他で使用中）" : ""), disabled: isUsed };
+                    })
+                  ]}
+                />
+              </div>
+            )}
+
+            {/* 配置 */}
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 700, color, marginBottom: 4 }}>{hasPlacement ? "カンバン配置" : "配置（固定）"}</div>
+              {hasPlacement ? (
+                <div style={{ display: "flex", gap: 6 }}>
+                  {PLACEMENT_OPTIONS.map(opt => (
+                    <button key={opt.value} onClick={() => onChange(idx, "placement", opt.value)} style={{
+                      flex: 1, minWidth: 0, padding: "8px 4px", borderRadius: 8, fontSize: 11, fontWeight: 800, cursor: "pointer",
+                      border: `2px solid ${(row.placement || "bottom") === opt.value ? color : THEME.border}`,
+                      backgroundColor: (row.placement || "bottom") === opt.value ? bg : "white",
+                      color: (row.placement || "bottom") === opt.value ? color : THEME.textMuted,
+                    }}>
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <div style={{ fontSize: 12, fontWeight: 700, color: "#9CA3AF", padding: "8px 4px" }}>右下コーナー固定</div>
+              )}
+            </div>
+
+            {/* 集計 */}
+            <div>
+              <div style={{ fontSize: 11, fontWeight: 700, color, marginBottom: 6 }}>レポート集計</div>
+              <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", fontSize: 12, fontWeight: 700 }}>
+                <input type="checkbox" checked={!!row.reportCount} onChange={e => { onChange(idx, "reportCount", e.target.checked); onChange(idx, "reportArrival", e.target.checked); }} style={{ width: 14, height: 14, accentColor: color, flexShrink: 0 }} /> 集計する
+              </label>
+            </div>
+          </div>
+
+          {/* 失注理由の選択肢（lost タイプのみ） */}
+          {isLost && (
+            <div style={{ marginTop: 14 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color, marginBottom: 6 }}>失注理由の選択肢</div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center", marginBottom: 8 }}>
+                {(row.lostReasonOptions || []).map((opt) => (
+                  <span key={opt} style={{ display: "flex", alignItems: "center", gap: 4, backgroundColor: "#FEF2F2", color: "#DC2626", padding: "4px 10px", borderRadius: 99, fontSize: 12, fontWeight: 800 }}>
+                    {opt}
+                    <button onClick={() => handleRemoveOption(opt)} style={{ background: "none", border: "none", cursor: "pointer", padding: 0, color: "#DC2626", lineHeight: 1, fontSize: 14, display: "flex" }}>
+                      <X size={12} />
+                    </button>
+                  </span>
+                ))}
+                {(row.lostReasonOptions || []).length === 0 && (
+                  <span style={{ fontSize: 12, color: "#9CA3AF", fontWeight: 600 }}>選択肢が未設定です（設定なしの場合はフリーテキスト入力になります）</span>
+                )}
+              </div>
+              <div style={{ display: "flex", gap: 6 }}>
+                <input
+                  ref={inputRef}
+                  value={newOption}
+                  onChange={e => setNewOption(e.target.value)}
+                  onKeyDown={e => e.key === "Enter" && handleAddOption()}
+                  placeholder="例: 価格が合わなかった"
+                  style={{ flex: 1, minWidth: 0, boxSizing: "border-box", padding: "7px 12px", borderRadius: 8, border: `1px solid ${color}50`, fontSize: 13, fontWeight: 700, outline: "none" }}
+                />
+                <button
+                  onClick={handleAddOption}
+                  disabled={!newOption.trim()}
+                  style={{ display: "flex", alignItems: "center", gap: 4, padding: "7px 14px", borderRadius: 8, border: `1px solid ${color}80`, backgroundColor: newOption.trim() ? bg : "transparent", color, fontSize: 12, fontWeight: 800, cursor: newOption.trim() ? "pointer" : "default", opacity: newOption.trim() ? 1 : 0.5, flexShrink: 0, whiteSpace: "nowrap" }}
+                >
+                  <Plus size={13} /> 追加
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* 再アプローチ設定（dormant タイプのみ） */}
+          {isDormant && (
+            <div style={{ marginTop: 14 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color, marginBottom: 8 }}>🔁 再アプローチ設定</div>
+              <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", gap: isMobile ? 14 : 20, flexWrap: "wrap", alignItems: isMobile ? "stretch" : "flex-start" }}>
+                <div>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: THEME.textMuted, marginBottom: 6 }}>再アプローチ時期</div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                    {REAPPROACH_MONTH_OPTIONS.map(opt => {
+                      const active = (row.reapproachMonths || 0) === opt.months;
+                      return (
+                        <button key={opt.months} onClick={() => onChange(idx, "reapproachMonths", opt.months)} style={{
+                          padding: "7px 14px", borderRadius: 99, fontSize: 12, fontWeight: 800, cursor: "pointer",
+                          border: `2px solid ${active ? color : THEME.border}`,
+                          backgroundColor: active ? bg : "white",
+                          color: active ? color : THEME.textMuted,
+                        }}>
+                          {opt.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+                {(row.reapproachMonths || 0) > 0 && (
+                  <div style={isMobile ? { width: "100%", boxSizing: "border-box" } : { minWidth: 220 }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: THEME.textMuted, marginBottom: 6 }}>適用シナリオ</div>
+                    <CustomSelect
+                      value={row.reapproachScenarioId || ""}
+                      onChange={v => onChange(idx, "reapproachScenarioId", v)}
+                      color={color}
+                      options={[
+                        { value: "", label: "シナリオを選択しない" },
+                        ...[...new Set(scenarios.map(sc => sc["シナリオID"]))].filter(Boolean).map(sid => ({ value: sid, label: sid }))
+                      ]}
+                    />
+                  </div>
+                )}
+              </div>
+              <div style={{ fontSize: 11, color: THEME.textMuted, marginTop: 8, lineHeight: 1.6 }}>
+                {(row.reapproachMonths || 0) === 0
+                  ? "「なし」の場合、カンバンでこのステータスに移しても再アプローチは予約されません。"
+                  : !row.reapproachScenarioId
+                    ? "適用シナリオを選択すると、カンバンでこのステータスに移したとき再アプローチが予約されます。"
+                    : `カンバンでこのステータスに移すと、${row.reapproachMonths}ヶ月後にシナリオ「${row.reapproachScenarioId}」が自動で予約されます。`}
+              </div>
+            </div>
           )}
         </div>
 
-        {/* 集計 */}
-        <div>
-          <div style={{ fontSize: 11, fontWeight: 700, color, marginBottom: 6 }}>レポート集計</div>
-          <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", fontSize: 12, fontWeight: 700 }}>
-            <input type="checkbox" checked={!!row.reportCount} onChange={e => { onChange(idx, "reportCount", e.target.checked); onChange(idx, "reportArrival", e.target.checked); }} style={{ width: 14, height: 14, accentColor: color }} /> 集計する
-          </label>
-        </div>
+        {canDelete ? (
+          <button onClick={() => onDelete(idx)} style={{ background: "none", border: "none", cursor: "pointer", padding: 6, borderRadius: 8, color, flexShrink: 0 }} title="削除">
+            <Trash2 size={15} />
+          </button>
+        ) : (
+          <div style={{ width: 27, flexShrink: 0 }} />
+        )}
       </div>
-
-      {/* 失注理由の選択肢（lost タイプのみ） */}
-      {isLost && (
-        <div style={{ gridColumn: "1 / -1", marginTop: 4 }}>
-          <div style={{ fontSize: 11, fontWeight: 700, color, marginBottom: 6 }}>失注理由の選択肢</div>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center", marginBottom: 8 }}>
-            {(row.lostReasonOptions || []).map((opt) => (
-              <span key={opt} style={{ display: "flex", alignItems: "center", gap: 4, backgroundColor: "#FEF2F2", color: "#DC2626", padding: "4px 10px", borderRadius: 99, fontSize: 12, fontWeight: 800 }}>
-                {opt}
-                <button onClick={() => handleRemoveOption(opt)} style={{ background: "none", border: "none", cursor: "pointer", padding: 0, color: "#DC2626", lineHeight: 1, fontSize: 14, display: "flex" }}>
-                  <X size={12} />
-                </button>
-              </span>
-            ))}
-            {(row.lostReasonOptions || []).length === 0 && (
-              <span style={{ fontSize: 12, color: "#9CA3AF", fontWeight: 600 }}>選択肢が未設定です（設定なしの場合はフリーテキスト入力になります）</span>
-            )}
-          </div>
-          <div style={{ display: "flex", gap: 6 }}>
-            <input
-              ref={inputRef}
-              value={newOption}
-              onChange={e => setNewOption(e.target.value)}
-              onKeyDown={e => e.key === "Enter" && handleAddOption()}
-              placeholder="例: 価格が合わなかった"
-              style={{ flex: 1, padding: "7px 12px", borderRadius: 8, border: `1px solid ${color}50`, fontSize: 13, fontWeight: 700, outline: "none" }}
-            />
-            <button
-              onClick={handleAddOption}
-              disabled={!newOption.trim()}
-              style={{ display: "flex", alignItems: "center", gap: 4, padding: "7px 14px", borderRadius: 8, border: `1px solid ${color}80`, backgroundColor: newOption.trim() ? bg : "transparent", color, fontSize: 12, fontWeight: 800, cursor: newOption.trim() ? "pointer" : "default", opacity: newOption.trim() ? 1 : 0.5 }}
-            >
-              <Plus size={13} /> 追加
-            </button>
-          </div>
-        </div>
-      )}
-
-      {canDelete ? (
-        <button onClick={() => onDelete(idx)} style={{ background: "none", border: "none", cursor: "pointer", padding: 6, borderRadius: 8, color }} title="削除">
-          <Trash2 size={15} />
-        </button>
-      ) : (
-        <div style={{ width: 27 }} />
-      )}
     </div>
   );
 }
@@ -331,6 +422,7 @@ function SectionHeader({ icon, label, color, canAdd, onAdd, addLabel, note }) {
 export default function StatusSettings({ statuses: statusesProp = [], scenarios = [], onRefresh, gasUrl }) {
   const navigate  = useNavigate();
   const showToast = useToast();
+  const { isMobile } = useWindowWidth();
   const [flowRows,     setFlowRows]     = useState([]);
   const [terminalRows, setTerminalRows] = useState([]);
   const [saving,       setSaving]       = useState(false);
@@ -342,7 +434,7 @@ export default function StatusSettings({ statuses: statusesProp = [], scenarios 
       const terminals = statusesProp.filter(s => s.terminalType);
       setFlowRows(flows.map(s => ({ ...s })));
 
-      const termArr = terminals.map(s => ({ placement: "bottom", ...s }));
+      const termArr = terminals.map(s => ({ placement: "bottom", reapproachMonths: 0, reapproachScenarioId: "", ...s }));
       // 必須ステータスが存在しない場合は補完
       if (!termArr.some(s => s.terminalType === "won"))
         termArr.push({ name: "成約", terminalType: "won", placement: "bottom", scenarioId: "", reportArrival: false, reportCount: true });
@@ -357,7 +449,7 @@ export default function StatusSettings({ statuses: statusesProp = [], scenarios 
         { name: "対応中", terminalType: "", scenarioId: "", reportArrival: false, reportCount: true },
       ]);
       setTerminalRows([
-        { name: "休眠",   terminalType: "dormant",  placement: "bottom", scenarioId: "", reportArrival: false, reportCount: false },
+        { name: "休眠",   terminalType: "dormant",  placement: "bottom", scenarioId: "", reportArrival: false, reportCount: false, reapproachMonths: 0, reapproachScenarioId: "" },
         { name: "成約",   terminalType: "won",      placement: "bottom", scenarioId: "", reportArrival: false, reportCount: true  },
         { name: "失注",   terminalType: "lost",     placement: "bottom", scenarioId: "", reportArrival: false, reportCount: false },
         { name: "除外",   terminalType: "excluded", placement: "right",  scenarioId: "", reportArrival: false, reportCount: false },
@@ -385,11 +477,29 @@ export default function StatusSettings({ statuses: statusesProp = [], scenarios 
     setDragIdx(null);
   };
 
+  // モバイル用：上下ボタンによる並び替え（D&Dの代替）
+  const handleMoveUp = (idx) => {
+    if (idx === 0) return;
+    setFlowRows(prev => {
+      const next = [...prev];
+      [next[idx - 1], next[idx]] = [next[idx], next[idx - 1]];
+      return next;
+    });
+  };
+  const handleMoveDown = (idx) => {
+    setFlowRows(prev => {
+      if (idx === prev.length - 1) return prev;
+      const next = [...prev];
+      [next[idx], next[idx + 1]] = [next[idx + 1], next[idx]];
+      return next;
+    });
+  };
+
   // 終点行操作
   const handleTerminalChange = (idx, key, val) => setTerminalRows(prev => prev.map((r, i) => i === idx ? { ...r, [key]: val } : r));
   const handleTerminalDelete = (idx) => setTerminalRows(prev => prev.filter((_, i) => i !== idx));
   const handleTerminalAdd    = () => {
-    setTerminalRows(prev => [...prev, { name: "終点", terminalType: "dormant", placement: "bottom", scenarioId: "", reportArrival: false, reportCount: false }]);
+    setTerminalRows(prev => [...prev, { name: "終点", terminalType: "dormant", placement: "bottom", scenarioId: "", reportArrival: false, reportCount: false, reapproachMonths: 0, reapproachScenarioId: "" }]);
   };
 
   const usedScenarios = new Set([...flowRows, ...terminalRows].map(r => r.scenarioId).filter(Boolean));
@@ -427,45 +537,49 @@ export default function StatusSettings({ statuses: statusesProp = [], scenarios 
   const excludedRows = terminalRows.map((r, i) => ({ r, i })).filter(({ r }) => r.terminalType === "excluded");
 
   return (
-    <div style={{ minHeight: "100vh", backgroundColor: THEME.bg, padding: "40px 48px" }}>
+    <div style={{ minHeight: "100vh", backgroundColor: THEME.bg, padding: isMobile ? "20px 16px" : "40px 48px", boxSizing: "border-box" }}>
       {/* ヘッダー */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 32 }}>
+      <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", alignItems: isMobile ? "stretch" : "center", justifyContent: "space-between", gap: isMobile ? 14 : 0, marginBottom: isMobile ? 20 : 32 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
           <button onClick={() => navigate(-1)} style={{ background: "none", border: "none", cursor: "pointer", display: "flex", alignItems: "center", gap: 6, color: THEME.textMuted, fontWeight: 800, fontSize: 14 }}>
             <ChevronLeft size={18} /> 戻る
           </button>
-          <h1 style={{ fontSize: 28, fontWeight: 900, color: THEME.textMain, margin: 0 }}>ステータス設定</h1>
+          <h1 style={{ fontSize: isMobile ? 20 : 28, fontWeight: 900, color: THEME.textMain, margin: 0 }}>ステータス設定</h1>
         </div>
-        <button onClick={handleSave} disabled={saving} style={{ display: "flex", alignItems: "center", gap: 8, padding: "12px 28px", backgroundColor: THEME.primary, color: "white", border: "none", borderRadius: 12, fontWeight: 900, fontSize: 15, cursor: "pointer", opacity: saving ? 0.7 : 1 }}>
+        <button onClick={handleSave} disabled={saving} style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, padding: "12px 28px", backgroundColor: THEME.primary, color: "white", border: "none", borderRadius: 12, fontWeight: 900, fontSize: 15, cursor: "pointer", opacity: saving ? 0.7 : 1, ...(isMobile ? { width: "100%", boxSizing: "border-box" } : {}) }}>
           <Save size={16} /> {saving ? "保存中..." : "保存する"}
         </button>
       </div>
 
-      <div style={{ backgroundColor: "#EEF2FF", borderRadius: 12, padding: "14px 20px", marginBottom: 24, fontSize: 13, color: THEME.primary, fontWeight: 700, lineHeight: 1.7 }}>
-        💡 ドラッグで順番を変更できます。終点ステータスは「下部ゾーン」か「右側エリア」への配置を選択できます。
+      <div style={{ backgroundColor: "#EEF2FF", borderRadius: 12, padding: isMobile ? "12px 16px" : "14px 20px", marginBottom: 24, fontSize: isMobile ? 12 : 13, color: THEME.primary, fontWeight: 700, lineHeight: 1.7 }}>
+        {isMobile
+          ? "💡 ↑↓ボタンで順番を変更できます。終点ステータスは「下部ゾーン」か「右側エリア」への配置を選択できます。"
+          : "💡 ドラッグで順番を変更できます。終点ステータスは「下部ゾーン」か「右側エリア」への配置を選択できます。"}
       </div>
 
       {/* ── フロー列（通常 / 契約混在・順番通り） ── */}
       {flowRows.map((s, idx) =>
         s.isFixed ? (
           <ContractRow
-            key={idx} s={s} idx={idx} scenarios={scenarios} usedScenarios={usedScenarios}
+            key={idx} s={s} idx={idx} total={flowRows.length} scenarios={scenarios} usedScenarios={usedScenarios}
             onChange={handleFlowChange} onDelete={handleFlowDelete}
             onDragStart={handleDragStart} onDragOver={handleDragOver} onDrop={handleDrop}
+            onMoveUp={handleMoveUp} onMoveDown={handleMoveDown}
             onPromptAdd={handlePromptAdd} onPromptRemove={handlePromptRemove}
           />
         ) : (
           <StatusRow
-            key={idx} s={s} idx={idx} scenarios={scenarios} usedScenarios={usedScenarios}
+            key={idx} s={s} idx={idx} total={flowRows.length} scenarios={scenarios} usedScenarios={usedScenarios}
             onChange={handleFlowChange} onDelete={handleFlowDelete}
             onDragStart={handleDragStart} onDragOver={handleDragOver} onDrop={handleDrop}
+            onMoveUp={handleMoveUp} onMoveDown={handleMoveDown}
             onPromptAdd={handlePromptAdd} onPromptRemove={handlePromptRemove}
           />
         )
       )}
 
       {/* ── 追加ボタン群 ── */}
-      <div style={{ display: "flex", gap: 10, marginTop: 6 }}>
+      <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", gap: 10, marginTop: 6 }}>
         <button onClick={handleFlowAdd}
           style={{ flex: 1, display: "flex", alignItems: "center", gap: 8, padding: "13px", border: `2px dashed ${THEME.border}`, borderRadius: 12, backgroundColor: "transparent", color: THEME.textMuted, fontWeight: 800, fontSize: 13, cursor: "pointer", justifyContent: "center" }}>
           <Plus size={15} /> ステータスを追加
