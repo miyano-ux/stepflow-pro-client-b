@@ -9,6 +9,18 @@ export const globalStyle = `
   body { margin: 0; font-family: 'Inter', sans-serif; background-color: ${THEME.bg}; color: ${THEME.textMain}; }
   .custom-scrollbar::-webkit-scrollbar { width: 6px; }
   .custom-scrollbar::-webkit-scrollbar-thumb { background: ${THEME.border}; border-radius: 10px; }
+  @keyframes spin {
+    from { transform: rotate(0deg); }
+    to   { transform: rotate(360deg); }
+  }
+  @keyframes fadeSlideIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes shimmer {
+    from { background-position: 200% 0; }
+    to   { background-position: -200% 0; }
+  }
 `;
 
 export const styles = {

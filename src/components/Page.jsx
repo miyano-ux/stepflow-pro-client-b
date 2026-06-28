@@ -16,7 +16,7 @@ import { useWindowWidth } from "../lib/useWindowWidth";
 function Page({ title, subtitle, children, topButton }) {
   const { isMobile } = useWindowWidth();
   return (
-    <div style={{ width: "100%", minHeight: "100vh" }}>
+    <div style={{ width: "100%", minHeight: "100vh", animation: "fadeSlideIn 0.25s ease-out" }}>
       <div style={{ padding: isMobile ? "20px 16px" : "48px 32px", maxWidth: "1440px", margin: "0 auto", boxSizing: "border-box" }}>
 
         {/* ページヘッダー */}

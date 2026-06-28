@@ -16,6 +16,60 @@ import { useWindowWidth } from "../lib/useWindowWidth";
 // 📋 CustomerList - 顧客ダッシュボード
 // ==========================================
 
+// ── Skeleton ユーティリティ ──────────────────────────
+const shimmerStyle = {
+  background: "linear-gradient(90deg, #EDEAF8 25%, #F5F3FF 50%, #EDEAF8 75%)",
+  backgroundSize: "200% 100%",
+  animation: "shimmer 1.5s infinite",
+  borderRadius: 6,
+};
+
+function SkeletonLine({ width = "100%", height = 14 }) {
+  return <div style={{ ...shimmerStyle, width, height }} />;
+}
+
+// PC用：テーブル行 Skeleton
+function SkeletonTableRows({ cols = 5, rows = 8 }) {
+  return Array.from({ length: rows }).map((_, ri) => (
+    <tr key={ri} style={{ backgroundColor: ri % 2 === 0 ? "white" : "#FAFAFA" }}>
+      {Array.from({ length: cols }).map((_, ci) => (
+        <td key={ci} style={{ padding: "20px 24px", borderBottom: "1px solid #F0EFF9" }}>
+          <SkeletonLine width={ci === 0 ? "80px" : ci === cols - 1 ? "60%" : "75%"} />
+        </td>
+      ))}
+      <td style={{ padding: "20px 24px", borderBottom: "1px solid #F0EFF9", borderLeft: "1px solid #F0EFF9" }}>
+        <div style={{ display: "flex", gap: 6, justifyContent: "center" }}>
+          <div style={{ ...shimmerStyle, width: 52, height: 28, borderRadius: 8 }} />
+          <div style={{ ...shimmerStyle, width: 52, height: 28, borderRadius: 8 }} />
+        </div>
+      </td>
+    </tr>
+  ));
+}
+
+// モバイル用：カード Skeleton
+function SkeletonCards({ count = 6 }) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+      {Array.from({ length: count }).map((_, i) => (
+        <div key={i} style={{ backgroundColor: "white", border: "1px solid #E4E2F5", borderRadius: 14, padding: "14px 16px" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+            <SkeletonLine width="40%" height={16} />
+            <div style={{ ...shimmerStyle, width: 64, height: 22, borderRadius: 99 }} />
+          </div>
+          <SkeletonLine width="65%" height={12} />
+          <div style={{ marginTop: 8 }}><SkeletonLine width="50%" height={12} /></div>
+          <div style={{ display: "flex", gap: 8, marginTop: 12, paddingTop: 10, borderTop: "1px solid #E4E2F5" }}>
+            <div style={{ ...shimmerStyle, flex: 1, height: 32, borderRadius: 8 }} />
+            <div style={{ ...shimmerStyle, flex: 1, height: 32, borderRadius: 8 }} />
+            <div style={{ ...shimmerStyle, width: 38, height: 32, borderRadius: 8 }} />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // 日付を "YYYY/MM/DD HH:mm" 形式に変換
 const formatDateJP = (v) => {
   if (!v || v === "-") return "-";
@@ -129,7 +183,7 @@ const localStyles = {
 export default function CustomerList({
   customers = [], displaySettings = [], formSettings = [],
   scenarios = [], statuses = [], staffList = [], scenarioSettings = {}, sources = [],
-  properties = [], gasUrl, onRefresh, onLightRefresh,
+  properties = [], gasUrl, onRefresh, onLightRefresh, isLoading = false,
 }) {
   const showToast = useToast();
   const navigate = useNavigate();
@@ -602,7 +656,7 @@ export default function CustomerList({
               <p style={{ color: THEME.textMuted, fontSize: isMobile ? "12px" : "14px", margin: 0 }}>全 {filtered.length} 名をリスト表示中</p>
               {syncing && (
                 <span style={{ color: THEME.primary, fontSize: "12px", fontWeight: "800", display: "flex", alignItems: "center", gap: 4 }}>
-                  <Loader2 size={12} className="animate-spin" /> 同期中...
+                  <Loader2 size={12} style={{ animation: "spin 0.8s linear infinite" }} /> 同期中...
                 </span>
               )}
             </div>
@@ -741,7 +795,9 @@ export default function CustomerList({
 
             {/* カードリスト */}
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              {filtered.map((c) => {
+              {isLoading ? (
+                <SkeletonCards count={6} />
+              ) : filtered.map((c) => {
                 const cProps = (properties || []).filter(p => String(p.customerId) === String(c.id));
                 const hasProps = cProps.length > 0;
                 const name = `${c["姓"] || ""} ${c["名"] || ""}`.trim() || "-";
@@ -842,7 +898,7 @@ export default function CustomerList({
                 );
               })}
 
-              {filtered.length === 0 && (
+              {!isLoading && filtered.length === 0 && (
                 <div style={{ ...localStyles.card, textAlign: "center", padding: 48, color: THEME.textMuted, fontSize: 14 }}>
                   該当する顧客が見つかりませんでした
                 </div>
@@ -871,7 +927,9 @@ export default function CustomerList({
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((c) => {
+                {isLoading ? (
+                  <SkeletonTableRows cols={vCols.length} rows={8} />
+                ) : filtered.map((c) => {
                   const cProps = (properties || []).filter(p => String(p.customerId) === String(c.id));
                   const hasProps = cProps.length > 0;
                   const isExpanded = expandedRows.has(String(c.id));
@@ -1003,7 +1061,7 @@ export default function CustomerList({
                     </React.Fragment>
                   );
                 })}
-                {filtered.length === 0 && (
+                {!isLoading && filtered.length === 0 && (
                   <tr>
                     <td colSpan={vCols.length + 1} style={{ ...localStyles.tableTd, textAlign: "center", padding: 48, color: THEME.textMuted }}>
                       該当する顧客が見つかりませんでした
