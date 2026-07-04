@@ -31,7 +31,11 @@ const S = {
   col:       { minWidth: "300px", width: "300px", borderRadius: "20px", border: `1px solid ${THEME.border}`, transition: "background-color 0.2s, border-color 0.2s", flexShrink: 0, display: "flex", flexDirection: "column" },
   colHeader: { padding: "16px 16px 12px", flexShrink: 0, borderRadius: "20px 20px 0 0" },
   colCards:  { padding: "0 16px 16px", overflowY: "auto", flex: 1 },
-  card:      { backgroundColor: "#FFF", borderRadius: "14px", padding: "16px", boxShadow: "0 4px 6px -1px rgba(0,0,0,0.05)", cursor: "grab", border: "2px solid transparent", userSelect: "none", transition: "transform 0.15s, box-shadow 0.15s, opacity 0.15s", marginBottom: "10px" },
+  // カード：外側(ドラッグ判定・cursor:grabのみ／transformなし)＋内側(見た目のtransform演出)の2層構成
+  // ※ 同一要素に cursor:grab と transform transition を両方持たせると、Windows+Chromium系ブラウザで
+  //   マウスカーソルが再描画時に消える不具合があるため、cursorとtransformを別要素に分離している
+  cardOuter: { cursor: "grab", userSelect: "none", marginBottom: "10px" },
+  card:      { backgroundColor: "#FFF", borderRadius: "14px", padding: "16px", boxShadow: "0 4px 6px -1px rgba(0,0,0,0.05)", border: "2px solid transparent", transition: "transform 0.15s, box-shadow 0.15s, opacity 0.15s" },
   // 右：終点パネル（bodyと同じ高さ、スクロールしない）
   rightPanel: { width: "240px", flexShrink: 0, display: "flex", flexDirection: "column", borderLeft: `1px solid ${THEME.border}`, marginLeft: "16px", overflow: "hidden", padding: "16px 0 0 0" },
   rightZone:  { flex: 1, padding: "16px 14px", display: "flex", flexDirection: "column", gap: "10px", overflowY: "auto", minHeight: 0 },
@@ -95,6 +99,56 @@ const TERMINAL_VISUAL = {
   lost:     { emoji: "🗑",  color: "#DC2626", bg: "#FEF2F2", border: "#FCA5A5", routeType: "lost"    },
   excluded: { emoji: "🚫", color: "#9CA3AF", bg: "#F3F4F6", border: "#E5E7EB", routeType: null       },
 };
+
+// ─────────────────────────────────────────────────────────
+// 同期中オーバーレイ（画面全体をブロックし、操作不可であることを明示）
+// ─────────────────────────────────────────────────────────
+function SyncOverlay({ show }) {
+  if (!show) return null;
+  const dot = (delay) => ({
+    width: 16, height: 16, borderRadius: "50%", backgroundColor: THEME.primary,
+    animation: `smoosySyncDot 1.1s ${delay}s infinite ease-in-out both`,
+  });
+  return (
+    <div
+      style={{
+        position: "fixed", inset: 0, zIndex: 9999,
+        backgroundColor: "rgba(15,23,42,0.45)", backdropFilter: "blur(3px)",
+        display: "flex", alignItems: "center", justifyContent: "center",
+        cursor: "wait", animation: "smoosySyncFadeIn 0.15s ease-out",
+      }}
+      // 背後への操作を確実に遮断（クリック・ドラッグ等）
+      onClick={e => e.stopPropagation()}
+      onMouseDown={e => e.stopPropagation()}
+      onDragStart={e => e.preventDefault()}
+    >
+      <style>{`
+        @keyframes smoosySyncDot {
+          0%, 80%, 100% { transform: scale(0.5); opacity: 0.35; }
+          40% { transform: scale(1); opacity: 1; }
+        }
+        @keyframes smoosySyncFadeIn {
+          from { opacity: 0; } to { opacity: 1; }
+        }
+      `}</style>
+      <div style={{
+        backgroundColor: "white", borderRadius: 20, padding: "32px 44px",
+        display: "flex", flexDirection: "column", alignItems: "center", gap: 16,
+        boxShadow: "0 24px 48px rgba(0,0,0,0.25)", minWidth: 220,
+      }}>
+        <div style={{ display: "flex", gap: 8 }}>
+          <span style={dot(0)} />
+          <span style={dot(0.15)} />
+          <span style={dot(0.3)} />
+        </div>
+        <div style={{ fontSize: 15, fontWeight: 900, color: THEME.textMain, textAlign: "center" }}>
+          同期中です<br />
+          <span style={{ fontSize: 12, fontWeight: 700, color: THEME.textMuted }}>操作をお待ちください</span>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 // ─────────────────────────────────────────────────────────
 // モーダル群
@@ -1532,6 +1586,9 @@ export default function KanbanBoard({
             onSkip={() => { setPromptModal(null); onRefresh(); }}
           />
         )}
+
+        {/* 同期中：画面全体をブロックし、操作不可であることを明示 */}
+        <SyncOverlay show={syncing} />
       </>
     );
   }
@@ -1637,8 +1694,10 @@ export default function KanbanBoard({
                               draggable
                               onDragStart={e => onDragStart(e, c.id)}
                               onDragEnd={onDragEnd}
-                              style={{ ...S.card, borderColor: dragging ? THEME.primary : "transparent", opacity: dragging ? 0.3 : 1, transform: dragging ? "scale(1.03) rotate(1.5deg)" : "scale(1)", boxShadow: dragging ? "0 16px 32px rgba(91,79,206,0.25)" : S.card.boxShadow }}
+                              style={S.cardOuter}
                             >
+                              {/* 内側：見た目のtransform/opacity演出専用（cursor:grabはこの要素に持たせない） */}
+                              <div style={{ ...S.card, borderColor: dragging ? THEME.primary : "transparent", opacity: dragging ? 0.3 : 1, transform: dragging ? "scale(1.03) rotate(1.5deg)" : "scale(1)", boxShadow: dragging ? "0 16px 32px rgba(91,79,206,0.25)" : S.card.boxShadow }}>
                               <Link
                                 to={`/detail/${c.id}`}
                                 onClick={e => e.stopPropagation()}
@@ -1685,6 +1744,7 @@ export default function KanbanBoard({
                                   </span>
                                 </div>
                               )}
+                              </div>
                             </div>
                           );
                         })}
@@ -1842,6 +1902,9 @@ export default function KanbanBoard({
           onSkip={() => { setPromptModal(null); onRefresh(); }}
         />
       )}
+
+      {/* 同期中：画面全体をブロックし、操作不可であることを明示 */}
+      <SyncOverlay show={syncing} />
     </>
   );
 }
