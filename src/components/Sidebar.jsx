@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Columns, UserPlus, BarChart3, LogOut,
   ChevronLeft, ChevronRight, ChevronDown,
   MessageSquare, Copy, Users, Settings, Globe,
-  Menu, X
+  ShieldCheck, Menu, X
 } from 'lucide-react';
 import { useWindowWidth } from '../lib/useWindowWidth';
 
@@ -27,13 +27,25 @@ const MAIN_ITEMS = [
   { name: "新規登録",      path: "/add",        icon: <UserPlus size={18} /> },
 ];
 
+// ── 管理グループ（折りたたみ・設定と同列） ──
+// 請求に関わる SMS 配信数と、ユーザーの管理をここに集約する
+const MANAGEMENT_ITEMS = [
+  { name: "ユーザー",  path: "/users",     icon: <Users size={16} /> },
+  { name: "SMS配信",   path: "/sms-usage", icon: <MessageSquare size={16} /> },
+];
+
 // ── 設定グループ（折りたたみ） ──
 const SETTINGS_ITEMS = [
   { name: "管理項目設定",  path: "/master-settings",  icon: <Settings size={16} /> },
   { name: "テンプレート",  path: "/templates",         icon: <Copy size={16} /> },
-  { name: "ユーザー管理",  path: "/users",             icon: <Users size={16} /> },
   { name: "媒体連携設定",  path: "/source-integrations", icon: <Globe size={16} /> },
 ];
+
+// 管理グループに含まれるパスかどうか
+const isManagementPath = (pathname) =>
+  MANAGEMENT_ITEMS.some((item) =>
+    pathname === item.path || (item.path !== "/" && pathname.startsWith(item.path))
+  );
 
 // 設定グループに含まれるパスかどうか
 const isSettingsPath = (pathname) =>
@@ -51,6 +63,8 @@ const Sidebar = ({ onLogout }) => {
   const [mobileOpen, setMobileOpen] = useState(false);
   // 設定グループは現在地が設定内なら自動展開
   const [settingsOpen, setSettingsOpen] = useState(() => isSettingsPath(location.pathname));
+  // 管理グループは現在地が管理内なら自動展開
+  const [managementOpen, setManagementOpen] = useState(() => isManagementPath(location.pathname));
 
   // ページ遷移したらモバイルメニューは自動で閉じる
   useEffect(() => {
@@ -109,6 +123,52 @@ const Sidebar = ({ onLogout }) => {
     );
   };
 
+  // ── 折りたたみグループ（管理／設定 共通） ──
+  // ※ コンポーネントではなく関数として呼び出すことで、再レンダリング時の
+  //    アンマウント（＝開閉アニメーションのちらつき）を防ぐ
+  const renderGroup = ({ label, icon, items, open, setOpen, active }) => (
+    <div style={{ marginTop: "16px" }}>
+      <button
+        onClick={() => setOpen((o) => !o)}
+        title={!(isMobile || expanded) ? label : undefined}
+        style={{
+          display: "flex", alignItems: "center",
+          width: "100%", padding: "8px 16px",
+          background: "none", border: "none", cursor: "pointer",
+          justifyContent: (isMobile || expanded) ? "flex-start" : "center",
+          color: active ? ACCENT : MUTED,
+        }}
+      >
+        <span style={{ flexShrink: 0, display: "flex", alignItems: "center" }}>{icon}</span>
+        {(isMobile || expanded) && (
+          <>
+            <span style={{ marginLeft: 10, fontSize: 11, fontWeight: 800, letterSpacing: "0.06em", textTransform: "uppercase", flex: 1, textAlign: "left" }}>
+              {label}
+            </span>
+            <ChevronDown
+              size={14}
+              style={{
+                transform: open ? "rotate(180deg)" : "rotate(0deg)",
+                transition: "transform 0.2s",
+                color: MUTED,
+              }}
+            />
+          </>
+        )}
+      </button>
+
+      <div style={{
+        maxHeight: open ? "400px" : "0px",
+        overflow: "hidden",
+        transition: "max-height 0.25s ease",
+      }}>
+        {items.map((item) => (
+          <NavItem key={item.path} item={item} small />
+        ))}
+      </div>
+    </div>
+  );
+
   // ── ナビ本体（PC/モバイル共通の中身。位置・幅だけ出し分ける） ──
   const NavContent = () => (
     <>
@@ -118,47 +178,25 @@ const Sidebar = ({ onLogout }) => {
           <NavItem key={item.path} item={item} />
         ))}
 
-        {/* 設定グループ（折りたたみ） */}
-        <div style={{ marginTop: "16px" }}>
-          <button
-            onClick={() => setSettingsOpen((o) => !o)}
-            title={!(isMobile || expanded) ? "設定" : undefined}
-            style={{
-              display: "flex", alignItems: "center",
-              width: "100%", padding: "8px 16px",
-              background: "none", border: "none", cursor: "pointer",
-              justifyContent: (isMobile || expanded) ? "flex-start" : "center",
-              color: isSettingsPath(location.pathname) ? ACCENT : MUTED,
-            }}
-          >
-            <Settings size={16} style={{ flexShrink: 0 }} />
-            {(isMobile || expanded) && (
-              <>
-                <span style={{ marginLeft: 10, fontSize: 11, fontWeight: 800, letterSpacing: "0.06em", textTransform: "uppercase", flex: 1, textAlign: "left" }}>
-                  設定
-                </span>
-                <ChevronDown
-                  size={14}
-                  style={{
-                    transform: settingsOpen ? "rotate(180deg)" : "rotate(0deg)",
-                    transition: "transform 0.2s",
-                    color: MUTED,
-                  }}
-                />
-              </>
-            )}
-          </button>
+        {/* 管理グループ（折りたたみ） */}
+        {renderGroup({
+          label: "管理",
+          icon: <ShieldCheck size={16} />,
+          items: MANAGEMENT_ITEMS,
+          open: managementOpen,
+          setOpen: setManagementOpen,
+          active: isManagementPath(location.pathname),
+        })}
 
-          <div style={{
-            maxHeight: settingsOpen ? "400px" : "0px",
-            overflow: "hidden",
-            transition: "max-height 0.25s ease",
-          }}>
-            {SETTINGS_ITEMS.map((item) => (
-              <NavItem key={item.path} item={item} small />
-            ))}
-          </div>
-        </div>
+        {/* 設定グループ（折りたたみ） */}
+        {renderGroup({
+          label: "設定",
+          icon: <Settings size={16} />,
+          items: SETTINGS_ITEMS,
+          open: settingsOpen,
+          setOpen: setSettingsOpen,
+          active: isSettingsPath(location.pathname),
+        })}
       </nav>
 
       {/* ログアウト */}

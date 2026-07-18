@@ -186,3 +186,46 @@ export const downloadCSV = (rows, filename) => {
   link.download = filename;
   link.click();
 };
+
+/**
+ * SMS本文 → 送信通数（課金通数）を算出する
+ *
+ * SMSは本文の文字種で符号化方式が変わり、1通あたりの上限文字数が異なる。
+ *   - 半角英数字のみ（GSM-7）: 1通=160文字 / 2通以上は153文字ごと
+ *   - 全角を含む（UCS-2）    : 1通=70文字  / 2通以上は67文字ごと
+ *
+ * 料金レンジ表との対応（全角）:
+ *   1〜70=1通 / 71〜134=2通 / 135〜201=3通 / 202〜268=4通 / 269〜335=5通 ...
+ * 料金レンジ表との対応（半角英数字）:
+ *   1〜160=1通 / 161〜306=2通 / 307〜459=3通 / 460〜612=4通 / 613〜765=5通 ...
+ *
+ * ※ gas_updated.js / license_gas.js の smsUnits_() と同一ロジック。
+ *    どれかを直したら全て直すこと。
+ *
+ * @param {string} text SMS本文
+ * @returns {number} 送信通数
+ */
+const GSM7_BASIC = "@\u00a3$\u00a5\u00e8\u00e9\u00f9\u00ec\u00f2\u00c7\n\u00d8\u00f8\r\u00c5\u00e5\u0394_\u03a6\u0393\u039b\u03a9\u03a0\u03a8\u03a3\u0398\u039e\u00c6\u00e6\u00df\u00c9 !\"#\u00a4%&'()*+,-./0123456789:;<=>?\u00a1ABCDEFGHIJKLMNOPQRSTUVWXYZ\u00c4\u00d6\u00d1\u00dc\u00a7\u00bf abcdefghijklmnopqrstuvwxyz\u00e4\u00f6\u00f1\u00fc\u00e0";
+// 拡張文字は2文字分としてカウントされる
+const GSM7_EXT = "^{}\\[~]|\u20ac";
+
+export const smsUnits = (text) => {
+  // 送信時に CRLF→LF へ正規化するため、通数計算も同じ文字列で行う
+  const s = String(text ?? "").replace(/\r\n/g, "\n");
+  if (!s) return 1; // 配信済みレコードは最低1通として扱う
+
+  // ① GSM-7（半角英数字のみ）で送れるか判定しつつ、拡張文字は2文字で数える
+  let isGsm7 = true;
+  let gsmLen = 0;
+  for (const ch of s) {
+    if (GSM7_BASIC.indexOf(ch) >= 0)     gsmLen += 1;
+    else if (GSM7_EXT.indexOf(ch) >= 0)  gsmLen += 2;
+    else { isGsm7 = false; break; }
+  }
+  if (isGsm7) return gsmLen <= 160 ? 1 : Math.ceil(gsmLen / 153);
+
+  // ② 全角を含む場合は UCS-2。JSのlengthはUTF-16符号単位数なので
+  //    絵文字（サロゲートペア）が2文字分になる挙動もSMS仕様と一致する。
+  const len = s.length;
+  return len <= 70 ? 1 : Math.ceil(len / 67);
+};

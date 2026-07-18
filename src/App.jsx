@@ -45,6 +45,7 @@ import ContractTypeManager   from "./pages/ContractTypeManager";
 import MasterSettings        from "./pages/MasterSettings";
 import SourceIntegrationIndex  from "./pages/SourceIntegrationIndex";
 import SourceIntegrationDetail from "./pages/SourceIntegrationDetail";
+import SmsUsageReport          from "./pages/SmsUsageReport";
 
 // ── pages (公開ページ) ────────────────────────────
 import PublicMemberPage       from "./pages/PublicMemberPage.jsx";
@@ -319,10 +320,11 @@ function App() {
               <Route path="/gmail-settings" element={<GmailSettings gmailSettings={d?.gmailSettings} scenarios={d?.scenarios} formSettings={d?.formSettings} statuses={d?.statuses} sources={d?.sources} staffList={staffList} groups={d?.groups} clientInfo={d?.clientInfo ?? {}} onRefresh={refresh} />} />
               <Route path="/import-errors" element={<ImportErrorList errors={d?.importErrors} onRefresh={refresh} />} />
 
-              {/* ユーザー管理 */}
+              {/* 管理（ユーザー / SMS配信） */}
               <Route path="/users" element={<UserManager staffList={staffList} groups={d?.groups} statuses={d?.statuses} onRefreshStaff={refreshStaff} onRefresh={refresh} masterUrl={MASTER_WHITELIST_API} companyName={CLIENT_COMPANY_NAME} gasUrl={GAS_URL} />} />
               <Route path="/users/add" element={<UserForm masterUrl={MASTER_WHITELIST_API} onRefreshStaff={refreshStaff} staffList={staffList} />} />
               <Route path="/users/edit/:id" element={<UserForm masterUrl={MASTER_WHITELIST_API} onRefreshStaff={refreshStaff} />} />
+              <Route path="/sms-usage" element={<SmsUsageReport isLoading={load} deliveryLogs={d?.deliveryLogs} customers={d?.customers} />} />
 
               {/* 分析・トラッキング */}
               <Route path="/analysis" element={<ReportIndex />} />
