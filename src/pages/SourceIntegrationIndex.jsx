@@ -181,6 +181,47 @@ export const SUPPORTED_SOURCES = [
       { key: "課金ステータス",            label: "課金ステータス" },
     ],
   },
+  {
+    key:           "zubat_fudousan",
+    name:          "ズバット不動産売却",
+    domain:        "zba.jp",
+    requiresLogin: true,
+    description:   "ログイン後にAPIから査定依頼内容を取得します",
+    color:         "#E11D48",
+    bgColor:       "#FFF1F2",
+    // ⚠️ sourceFields の key はズバットAPIのJSONキー。
+    //    顧客側GAS _buildZubatCust の extracted キーと一致させること。
+    //    ・氏名(name)/カナ(name_kana) は "姓 名" 結合文字列 → GAS側で姓名分割
+    //    ・email/現住所などの詳細は order/detail、memo等は order/list 由来
+    sourceFields: [
+      { key: "name",              label: "氏名（姓 名）" },
+      { key: "name_kana",         label: "氏名カナ（セイ メイ）" },
+      { key: "tel",               label: "電話番号" },
+      { key: "email",             label: "メールアドレス" },
+      { key: "current_address",   label: "現住所" },
+      { key: "property_type",     label: "物件種別" },
+      { key: "layout",            label: "間取り" },
+      { key: "exclusive_area",    label: "専有面積" },
+      { key: "land_area",         label: "土地面積" },
+      { key: "building_ages",     label: "築年" },
+      { key: "property_status",   label: "物件の状況" },
+      { key: "property_owner",    label: "物件の所有者" },
+      { key: "assessment_method", label: "査定方法（机上／訪問）" },
+      { key: "assessment_reason", label: "査定理由" },
+      { key: "sale_time",         label: "売却希望時期" },
+      { key: "contact_day",       label: "連絡希望日" },
+      { key: "contact_time",      label: "連絡希望時間" },
+      { key: "address1",          label: "住所：都道府県" },
+      { key: "address2",          label: "住所：市区町村" },
+      { key: "address3",          label: "住所：町域" },
+      { key: "address4",          label: "住所：番地" },
+      { key: "address5",          label: "住所：建物名" },
+      { key: "send_count",        label: "同時紹介社数" },
+      { key: "companyName",       label: "割当会社名" },
+      { key: "created_at",        label: "査定依頼日時" },
+      { key: "memo",              label: "対応履歴メモ（※進行中案件の履歴・要注意）" },
+    ],
+  },
 ];
 
 function SourceCard({ src, credsStatus, clientInfo, onClick }) {
