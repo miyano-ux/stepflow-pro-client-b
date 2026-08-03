@@ -152,15 +152,15 @@ function DrillModal({ statusName, customers, staffList, avgDays, isTerminal, onC
 
 // ── メイン ───────────────────────────────────────────
 export default function AnalysisReport({ customers = [], statuses = [], trackingLogs = [], staffList = [], statusHistory = [] }) {
-  // 【ペイロード分離】statusHistory は props ではなくマウント時に個別取得（全件）
-  const [fetchedStatusHistory, setFetchedStatusHistory] = useState(null);
+  // 【サーバサイド集計】全件取得はやめ、GAS で計算済みのフェーズ別平均滞在日数を取得する
+  const [avgDaysMap, setAvgDaysMap] = useState({});
   useEffect(() => {
     let alive = true;
     (async () => {
       try {
-        const res = await apiCall.post(GAS_URL, { action: "getStatusHistory" });
-        if (alive) setFetchedStatusHistory(res?.statusHistory || []);
-      } catch (e) { console.warn("[AnalysisReport] getStatusHistory 取得失敗", e); }
+        const res = await apiCall.post(GAS_URL, { action: "getAnalysisSummary" });
+        if (alive) setAvgDaysMap(res?.avgDaysMap || {});
+      } catch (e) { console.warn("[AnalysisReport] getAnalysisSummary 取得失敗", e); }
     })();
     return () => { alive = false; };
   }, []);
@@ -216,37 +216,7 @@ export default function AnalysisReport({ customers = [], statuses = [], tracking
 
   const maxCount = Math.max(...chartData.map(d => d.count), 1);
 
-  // ── フェーズ別平均滞在日数 ──
-  const avgDaysMap = useMemo(() => {
-    const byCustomer = {};
-    ((fetchedStatusHistory ?? statusHistory) || []).forEach(h => {
-      const cid = h["顧客ID"];
-      if (!byCustomer[cid]) byCustomer[cid] = [];
-      byCustomer[cid].push({
-        status: h["ステータス"],
-        ts: new Date(String(h["変更日時"]).replace(/\//g, "-").replace(" ", "T")),
-      });
-    });
-
-    const daysPerStatus = {};
-    Object.values(byCustomer).forEach(events => {
-      events.sort((a, b) => a.ts - b.ts);
-      for (let i = 0; i < events.length - 1; i++) {
-        const st   = events[i].status;
-        const days = (events[i + 1].ts - events[i].ts) / 86400000;
-        if (days >= 0 && days < 365) {
-          if (!daysPerStatus[st]) daysPerStatus[st] = [];
-          daysPerStatus[st].push(days);
-        }
-      }
-    });
-
-    const result = {};
-    Object.entries(daysPerStatus).forEach(([st, arr]) => {
-      result[st] = arr.reduce((a, b) => a + b, 0) / arr.length;
-    });
-    return result;
-  }, [statusHistory, fetchedStatusHistory]);
+  // フェーズ別平均滞在日数は getAnalysisSummary で取得済み（上部 avgDaysMap state を使用）
 
   const phaseTransitions = useMemo(() =>
     chartStatuses
