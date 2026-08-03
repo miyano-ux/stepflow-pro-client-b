@@ -7,14 +7,12 @@ import { apiCall, formatDate, smartNormalizePhone } from "../lib/utils";
 import Page from "../components/Page";
 import SmartDateTimePicker from "../components/SmartDateTimePicker";
 import { useToast } from "../ToastContext";
-import { useWindowWidth } from "../lib/useWindowWidth";
 
 function CustomerSchedule({ customers = [], deliveryLogs = [], onRefresh }) {
   const navigate  = useNavigate();
   const { id }    = useParams();
   const location  = useLocation();
   const showToast = useToast();
-  const { isMobile } = useWindowWidth();
 
   const justScheduled = location.state?.justScheduled || false;
 
@@ -27,6 +25,19 @@ function CustomerSchedule({ customers = [], deliveryLogs = [], onRefresh }) {
   const [showSuccess, setShowSuccess]   = useState(justScheduled);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
+  // 【ペイロード分離】配信ログは props ではなく getCustomerBundle で顧客単位に取得する
+  const [fetchedLogs, setFetchedLogs] = useState(null);
+  const reloadLogs = useCallback(async () => {
+    if (!id) return;
+    try {
+      const res = await apiCall.post(GAS_URL, { action: "getCustomerBundle", customerId: id });
+      setFetchedLogs(res?.deliveryLogs || []);
+    } catch (e) {
+      console.warn("[CustomerSchedule] getCustomerBundle 取得失敗", e);
+    }
+  }, [id]);
+  useEffect(() => { reloadLogs(); }, [reloadLogs]);
+
   useEffect(() => {
     if (!justScheduled) return;
     setShowSuccess(true);
@@ -34,6 +45,7 @@ function CustomerSchedule({ customers = [], deliveryLogs = [], onRefresh }) {
     const timer = setTimeout(async () => {
       setIsRefreshing(true);
       await onRefresh();
+      await reloadLogs();
       setIsRefreshing(false);
       setShowSuccess(false);
     }, 2500);
@@ -43,9 +55,10 @@ function CustomerSchedule({ customers = [], deliveryLogs = [], onRefresh }) {
   const handleManualRefresh = useCallback(async () => {
     setIsRefreshing(true);
     await onRefresh();
+    await reloadLogs();
     setIsRefreshing(false);
     setShowSuccess(false);
-  }, [onRefresh]);
+  }, [onRefresh, reloadLogs]);
 
   if (!customers.length || !c) {
     return (
@@ -56,7 +69,7 @@ function CustomerSchedule({ customers = [], deliveryLogs = [], onRefresh }) {
   }
 
   const cP = smartNormalizePhone(c["電話番号"]);
-  const allLogs = (deliveryLogs || []).filter(
+  const allLogs = ((fetchedLogs ?? deliveryLogs) || []).filter(
     (l) => smartNormalizePhone(l["電話番号"]) === cP
   );
 
@@ -93,6 +106,7 @@ function CustomerSchedule({ customers = [], deliveryLogs = [], onRefresh }) {
         newMessage: edit.m,
       });
       await onRefresh();
+      await reloadLogs();
       setEdit(null);
     } catch (e) {
       showToast("更新に失敗しました: " + e.message, "error");
@@ -110,6 +124,7 @@ function CustomerSchedule({ customers = [], deliveryLogs = [], onRefresh }) {
         logId: deleteTarget["ログID"],
       });
       await onRefresh();
+      await reloadLogs();
       setDeleteTarget(null);
     } catch (e) {
       showToast("削除に失敗しました: " + e.message, "error");
@@ -127,8 +142,8 @@ function CustomerSchedule({ customers = [], deliveryLogs = [], onRefresh }) {
   const LogCard = ({ l, isNested = false }) => (
     <div style={{
       ...styles.card,
-      padding: isMobile ? "14px" : "16px",
-      marginLeft: isNested ? (isMobile ? "16px" : "40px") : "0",
+      padding: "16px",
+      marginLeft: isNested ? "40px" : "0",
       marginTop: isNested ? "8px" : "16px",
       borderLeft: `6px solid ${
         l["ステータス"] === "配信済み" ? THEME.success
@@ -139,7 +154,7 @@ function CustomerSchedule({ customers = [], deliveryLogs = [], onRefresh }) {
       position: "relative",
       boxShadow: isNested ? "none" : styles.card.boxShadow,
     }}>
-      {isNested && !isMobile && (
+      {isNested && (
         <div style={{
           position: "absolute", left: "-24px", top: "-20px",
           width: "24px", height: "46px",
@@ -148,7 +163,7 @@ function CustomerSchedule({ customers = [], deliveryLogs = [], onRefresh }) {
         }} />
       )}
 
-      <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", justifyContent: "space-between", alignItems: isMobile ? "stretch" : "center", gap: isMobile ? 10 : 0 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <div>
           <span style={{ ...styles.badge, ...getBadgeStyle(l["ステータス"]) }}>
             {l["ステータス"]}
@@ -158,19 +173,12 @@ function CustomerSchedule({ customers = [], deliveryLogs = [], onRefresh }) {
               ? `完了: ${formatDate(l["完了日時"])}`
               : `予定: ${formatDate(l["配信予定日時"])}`}
           </span>
-          {!isMobile && (
-            <span style={{ marginLeft: "12px", color: THEME.textMuted, fontSize: "11px" }}>
-              {l["ステップ名"]}
-            </span>
-          )}
-        </div>
-        {isMobile && l["ステップ名"] && (
-          <span style={{ color: THEME.textMuted, fontSize: "11px" }}>
+          <span style={{ marginLeft: "12px", color: THEME.textMuted, fontSize: "11px" }}>
             {l["ステップ名"]}
           </span>
-        )}
+        </div>
 
-        <div style={{ display: "flex", gap: "8px", alignItems: "center", ...(isMobile ? { justifyContent: "flex-end" } : {}) }}>
+        <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
           {l["ステータス"] === "エラー" && (
             <button
               onClick={() => handleResend(l["内容"], l["ログID"], l["ステップ名"])}
@@ -225,9 +233,9 @@ function CustomerSchedule({ customers = [], deliveryLogs = [], onRefresh }) {
         {/* ── 登録直後 成功バナー ── */}
         {showSuccess && (
           <div style={{
-            display: "flex", flexDirection: isMobile ? "column" : "row", alignItems: isMobile ? "stretch" : "center", justifyContent: "space-between",
+            display: "flex", alignItems: "center", justifyContent: "space-between",
             backgroundColor: "#F0FDF4", border: "1px solid #86EFAC",
-            borderRadius: "12px", padding: isMobile ? "14px 16px" : "14px 20px", marginBottom: "24px", gap: 12,
+            borderRadius: "12px", padding: "14px 20px", marginBottom: "24px", gap: 12,
           }}>
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
               <CheckCircle2 size={20} color={THEME.success} />
@@ -246,11 +254,10 @@ function CustomerSchedule({ customers = [], deliveryLogs = [], onRefresh }) {
                 <button
                   onClick={handleManualRefresh}
                   style={{
-                    display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+                    display: "flex", alignItems: "center", gap: 6,
                     background: "none", border: `1px solid ${THEME.success}`,
                     borderRadius: 8, padding: "6px 14px", cursor: "pointer",
                     color: THEME.success, fontSize: 12, fontWeight: 800,
-                    ...(isMobile ? { width: "100%", boxSizing: "border-box" } : {}),
                   }}
                 >
                   <RefreshCw size={12} /> 今すぐ更新
@@ -313,12 +320,11 @@ function CustomerSchedule({ customers = [], deliveryLogs = [], onRefresh }) {
           style={{
             position: "fixed", inset: 0, backgroundColor: "rgba(0,0,0,0.6)",
             display: "flex", justifyContent: "center", alignItems: "center", zIndex: 3000,
-            padding: isMobile ? 16 : 0, boxSizing: "border-box",
           }}
         >
           <div onClick={(e) => e.stopPropagation()} style={{
-            ...styles.card, width: isMobile ? "100%" : "550px", maxWidth: "550px", padding: isMobile ? "24px" : "32px",
-            boxShadow: "0 20px 25px -5px rgba(0,0,0,0.1)", boxSizing: "border-box",
+            ...styles.card, width: "550px", padding: "32px",
+            boxShadow: "0 20px 25px -5px rgba(0,0,0,0.1)",
           }}>
             <h3 style={{ marginBottom: "24px", fontSize: "20px", fontWeight: "900", marginTop: 0 }}>
               配信予定の変更
@@ -356,12 +362,11 @@ function CustomerSchedule({ customers = [], deliveryLogs = [], onRefresh }) {
           style={{
             position: "fixed", inset: 0, backgroundColor: "rgba(0,0,0,0.6)",
             display: "flex", justifyContent: "center", alignItems: "center", zIndex: 3000,
-            padding: isMobile ? 16 : 0, boxSizing: "border-box",
           }}
         >
           <div onClick={(e) => e.stopPropagation()} style={{
-            ...styles.card, width: isMobile ? "100%" : "460px", maxWidth: "460px", padding: isMobile ? "24px" : "32px",
-            boxShadow: "0 20px 25px -5px rgba(0,0,0,0.1)", boxSizing: "border-box",
+            ...styles.card, width: "460px", padding: "32px",
+            boxShadow: "0 20px 25px -5px rgba(0,0,0,0.1)",
           }}>
             <div style={{
               width: 52, height: 52, borderRadius: "50%",

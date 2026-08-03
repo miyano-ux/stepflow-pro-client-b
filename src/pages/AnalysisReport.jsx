@@ -1,7 +1,8 @@
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Activity, Timer, X, ChevronLeft } from "lucide-react";
-import { THEME as APP_THEME } from "../lib/constants";
+import { THEME as APP_THEME, GAS_URL } from "../lib/constants";
+import { apiCall } from "../lib/utils";
 import { StaffDropdown } from "../components/StaffDropdown";
 import { useWindowWidth } from "../lib/useWindowWidth";
 
@@ -151,6 +152,20 @@ function DrillModal({ statusName, customers, staffList, avgDays, isTerminal, onC
 
 // ── メイン ───────────────────────────────────────────
 export default function AnalysisReport({ customers = [], statuses = [], trackingLogs = [], staffList = [], statusHistory = [] }) {
+  // 【ペイロード分離】statusHistory は props ではなくマウント時に個別取得（全件）
+  const [fetchedStatusHistory, setFetchedStatusHistory] = useState(null);
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const res = await apiCall.post(GAS_URL, { action: "getStatusHistory" });
+        if (alive) setFetchedStatusHistory(res?.statusHistory || []);
+      } catch (e) { console.warn("[AnalysisReport] getStatusHistory 取得失敗", e); }
+    })();
+    return () => { alive = false; };
+  }, []);
+
+
   const [filterStaff, setFilterStaff] = useState("");
   const [drillStatus, setDrillStatus] = useState(null);
   const navigate = useNavigate();
@@ -204,7 +219,7 @@ export default function AnalysisReport({ customers = [], statuses = [], tracking
   // ── フェーズ別平均滞在日数 ──
   const avgDaysMap = useMemo(() => {
     const byCustomer = {};
-    (statusHistory || []).forEach(h => {
+    ((fetchedStatusHistory ?? statusHistory) || []).forEach(h => {
       const cid = h["顧客ID"];
       if (!byCustomer[cid]) byCustomer[cid] = [];
       byCustomer[cid].push({
@@ -231,7 +246,7 @@ export default function AnalysisReport({ customers = [], statuses = [], tracking
       result[st] = arr.reduce((a, b) => a + b, 0) / arr.length;
     });
     return result;
-  }, [statusHistory]);
+  }, [statusHistory, fetchedStatusHistory]);
 
   const phaseTransitions = useMemo(() =>
     chartStatuses

@@ -1,11 +1,11 @@
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useState, useEffect } from "react";
 import {
   MessageSquare, TrendingUp, TrendingDown, Minus,
   Clock, AlertTriangle, Download, ChevronDown, ChevronUp, Info,
 } from "lucide-react";
-import { THEME } from "../lib/constants";
+import { THEME, GAS_URL } from "../lib/constants";
 import { useWindowWidth } from "../lib/useWindowWidth";
-import { formatDate, downloadCSV, smsUnits } from "../lib/utils";
+import { formatDate, downloadCSV, smsUnits, apiCall } from "../lib/utils";
 
 // ==========================================
 // 📊 SMS配信レポート
@@ -74,6 +74,20 @@ const isManualSms = (log) => {
 };
 
 export default function SmsUsageReport({ isLoading = false, deliveryLogs = [], customers = [] }) {
+  // 【ペイロード分離】deliveryLogs は props ではなくマウント時に個別取得（全件）
+  const [fetchedLogs, setFetchedLogs] = useState(null);
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const res = await apiCall.post(GAS_URL, { action: "getDeliveryLogs" });
+        if (alive) setFetchedLogs(res?.deliveryLogs || []);
+      } catch (e) { console.warn("[SmsUsageReport] getDeliveryLogs 取得失敗", e); }
+    })();
+    return () => { alive = false; };
+  }, []);
+
+
   const { isMobile } = useWindowWidth();
   const [range, setRange]           = useState(12);
   const [openMonth, setOpenMonth]   = useState(null); // ドリルダウン対象の月キー
@@ -91,7 +105,7 @@ export default function SmsUsageReport({ isLoading = false, deliveryLogs = [], c
 
   // ── 月別集計 ───────────────────────────────────
   const { months, byMonth, totals, pending } = useMemo(() => {
-    const logs = Array.isArray(deliveryLogs) ? deliveryLogs : [];
+    const logs = Array.isArray(fetchedLogs ?? deliveryLogs) ? (fetchedLogs ?? deliveryLogs) : [];
     const keys = buildMonthKeys(range);
     const keySet = new Set(keys);
 
@@ -159,7 +173,7 @@ export default function SmsUsageReport({ isLoading = false, deliveryLogs = [], c
       totals: sum,
       pending: { count: pendingCount, units: pendingUnits },
     };
-  }, [deliveryLogs, range]);
+  }, [deliveryLogs, fetchedLogs, range]);
 
   const thisMonth = byMonth[byMonth.length - 1] || { units: 0, count: 0, error: 0 };
   const lastMonth = byMonth[byMonth.length - 2] || { units: 0, count: 0 };

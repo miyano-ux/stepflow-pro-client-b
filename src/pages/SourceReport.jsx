@@ -1,7 +1,8 @@
 import React, { useMemo, useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { GitBranch, ChevronLeft } from "lucide-react";
-import { THEME as APP_THEME } from "../lib/constants";
+import { THEME as APP_THEME, GAS_URL } from "../lib/constants";
+import { apiCall } from "../lib/utils";
 import { useWindowWidth } from "../lib/useWindowWidth";
 
 const THEME = APP_THEME;
@@ -203,6 +204,20 @@ export default function SourceReport({
   statusHistory = [],
   properties = [],
 }) {
+
+  // 【ペイロード分離】statusHistory は props ではなくマウント時に個別取得（全件）
+  const [fetchedStatusHistory, setFetchedStatusHistory] = useState(null);
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const res = await apiCall.post(GAS_URL, { action: "getStatusHistory" });
+        if (alive) setFetchedStatusHistory(res?.statusHistory || []);
+      } catch (e) { console.warn("[SourceReport] getStatusHistory 取得失敗", e); }
+    })();
+    return () => { alive = false; };
+  }, []);
+
   const navigate = useNavigate();
   const { isMobile } = useWindowWidth();
   const [periodCP, setPeriodCP]     = useState({ from: "", to: "" });  // 契約獲得力
@@ -310,8 +325,8 @@ export default function SourceReport({
 
   // ── 新④⑤共通：月フィルター ───────────────────────
   const wonEntries = useMemo(() =>
-    statusHistory.filter(h => wonStatusNames.includes((h["ステータス"] || "").trim())),
-    [statusHistory, wonStatusNames]
+    (fetchedStatusHistory ?? statusHistory).filter(h => wonStatusNames.includes((h["ステータス"] || "").trim())),
+    [statusHistory, fetchedStatusHistory, wonStatusNames]
   );
 
   // 成約データ（変更日時）の利用可能な月範囲（input[type=month]のmin/max用）

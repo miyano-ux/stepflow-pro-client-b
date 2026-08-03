@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from "react";
+import React, { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { useParams, useNavigate, useLocation } from "react-router-dom";
 import axios from "axios";
 import {
@@ -452,8 +452,30 @@ export default function CustomerDetail({
   }, [customer, syncingCount, location.state, id, isEditing]);
 
   // ステータス履歴（この顧客のものだけ）＋楽観的更新エントリをマージ
+  // 【ペイロード分離】履歴系は props ではなく getCustomerBundle で顧客単位に取得する
+  const [fetchedStatusHistory, setFetchedStatusHistory] = useState(null);
+  const [fetchedTrackingLogs, setFetchedTrackingLogs]   = useState(null);
+  const reloadBundle = useCallback(async () => {
+    if (!id) return;
+    try {
+      const res = await axios.post(
+        GAS_URL,
+        JSON.stringify({ action: "getCustomerBundle", customerId: id }),
+        { headers: { "Content-Type": "text/plain;charset=utf-8" } }
+      );
+      const data = typeof res.data === "string" ? JSON.parse(res.data) : res.data;
+      if (data && data.status === "success") {
+        setFetchedStatusHistory(data.statusHistory || []);
+        setFetchedTrackingLogs(data.trackingLogs || []);
+      }
+    } catch (e) {
+      console.warn("[CustomerDetail] getCustomerBundle 取得失敗", e);
+    }
+  }, [id]);
+  useEffect(() => { reloadBundle(); }, [reloadBundle]);
+
   const customerStatusHistory = useMemo(() => {
-    const base = (statusHistory || [])
+    const base = ((fetchedStatusHistory ?? statusHistory) || [])
       .filter(h => String(h["顧客ID"]) === String(id))
       .sort((a, b) => new Date(a["変更日時"]) - new Date(b["変更日時"]));
     if (!pendingHistoryEntry) return base;
@@ -463,14 +485,14 @@ export default function CustomerDetail({
            Math.abs(new Date(h["変更日時"]) - new Date(pendingHistoryEntry["変更日時"])) < 5000
     );
     return alreadySynced ? base : [...base, pendingHistoryEntry];
-  }, [statusHistory, id, pendingHistoryEntry]);
+  }, [statusHistory, fetchedStatusHistory, id, pendingHistoryEntry]);
 
   const customerLogs = useMemo(
     () =>
-      (trackingLogs || [])
+      ((fetchedTrackingLogs ?? trackingLogs) || [])
         .filter((log) => String(log.customer_id) === String(id) && parseInt(log.click_count || 0) > 0)
         .sort((a, b) => new Date(b.last_clicked_at) - new Date(a.last_clicked_at)),
-    [trackingLogs, id]
+    [trackingLogs, fetchedTrackingLogs, id]
   );
 
   const handleSave = async () => {
@@ -525,6 +547,7 @@ export default function CustomerDetail({
       Promise.resolve(onRefresh()).finally(() => {
         setSyncingCount((p) => Math.max(0, p - 1));
         setPendingHistoryEntry(null);
+        reloadBundle();
       });
     } catch {
       showToast("更新に失敗しました", "error");
@@ -592,6 +615,7 @@ export default function CustomerDetail({
             { headers: { "Content-Type": "text/plain;charset=utf-8" } }
           );
           onRefresh();
+          reloadBundle();
         } catch { /* silent fail - formDataは更新済み */ }
       }
     }
@@ -646,6 +670,7 @@ export default function CustomerDetail({
         { headers: { "Content-Type": "text/plain;charset=utf-8" } }
       );
       onRefresh();
+      reloadBundle();
     } catch {
       // 失敗時：仮エントリを除去して差し戻す
       setLocalProperties(prev => prev.filter(p => p.id !== tempId));
@@ -671,6 +696,7 @@ export default function CustomerDetail({
         { headers: { "Content-Type": "text/plain;charset=utf-8" } }
       );
       onRefresh();
+      reloadBundle();
     } catch {
       setLocalProperties(prevProperties);
       showToast("物件の更新に失敗しました", "error");
@@ -701,6 +727,7 @@ export default function CustomerDetail({
             { headers: { "Content-Type": "text/plain;charset=utf-8" } }
           );
           onRefresh();
+          reloadBundle();
         } catch {
           deletedIdsRef.current.delete(propId);
           setLocalProperties(prevProperties);
