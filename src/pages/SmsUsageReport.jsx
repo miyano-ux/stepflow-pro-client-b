@@ -74,24 +74,47 @@ const isManualSms = (log) => {
 };
 
 export default function SmsUsageReport({ isLoading = false, deliveryLogs = [], customers = [] }) {
-  // 【ペイロード分離】deliveryLogs は props ではなくマウント時に個別取得（全件）
-  const [fetchedLogs, setFetchedLogs] = useState(null);
-  useEffect(() => {
-    let alive = true;
-    (async () => {
-      try {
-        const res = await apiCall.post(GAS_URL, { action: "getDeliveryLogs" });
-        if (alive) setFetchedLogs(res?.deliveryLogs || []);
-      } catch (e) { console.warn("[SmsUsageReport] getDeliveryLogs 取得失敗", e); }
-    })();
-    return () => { alive = false; };
-  }, []);
+  // 【サーバサイド集計】全件取得はやめ、GAS で集計済みのサマリーを取得する
+  const [summary, setSummary]               = useState(null);
+  const [summaryLoading, setSummaryLoading] = useState(true);
+  const [monthDetail, setMonthDetail]       = useState({ key: null, logs: [], loading: false });
 
 
   const { isMobile } = useWindowWidth();
   const [range, setRange]           = useState(12);
   const [openMonth, setOpenMonth]   = useState(null); // ドリルダウン対象の月キー
   const [showRanges, setShowRanges] = useState(false);
+
+  // range 変更のたびにサーバ集計サマリーを取得
+  useEffect(() => {
+    let alive = true;
+    setSummaryLoading(true);
+    (async () => {
+      try {
+        const res = await apiCall.post(GAS_URL, { action: "getSmsUsageSummary", range });
+        if (alive && res) setSummary(res);
+      } catch (e) { console.warn("[SmsUsageReport] getSmsUsageSummary 取得失敗", e); }
+      finally { if (alive) setSummaryLoading(false); }
+    })();
+    return () => { alive = false; };
+  }, [range]);
+
+  // ドリルダウン：月を開いたらその月の配信明細だけを取得
+  useEffect(() => {
+    if (!openMonth) { setMonthDetail({ key: null, logs: [], loading: false }); return; }
+    let alive = true;
+    setMonthDetail({ key: openMonth, logs: [], loading: true });
+    (async () => {
+      try {
+        const res = await apiCall.post(GAS_URL, { action: "getSmsUsageMonthDetail", monthKey: openMonth });
+        if (alive) setMonthDetail({ key: openMonth, logs: res?.logs || [], loading: false });
+      } catch (e) {
+        console.warn("[SmsUsageReport] getSmsUsageMonthDetail 取得失敗", e);
+        if (alive) setMonthDetail({ key: openMonth, logs: [], loading: false });
+      }
+    })();
+    return () => { alive = false; };
+  }, [openMonth]);
 
   const customerNameById = useMemo(() => {
     const map = {};
@@ -104,76 +127,10 @@ export default function SmsUsageReport({ isLoading = false, deliveryLogs = [], c
   }, [customers]);
 
   // ── 月別集計 ───────────────────────────────────
-  const { months, byMonth, totals, pending } = useMemo(() => {
-    const logs = Array.isArray(fetchedLogs ?? deliveryLogs) ? (fetchedLogs ?? deliveryLogs) : [];
-    const keys = buildMonthKeys(range);
-    const keySet = new Set(keys);
-
-    const acc = {};
-    keys.forEach((k) => {
-      acc[k] = {
-        key: k,
-        count: 0,        // 配信件数
-        units: 0,        // 送信通数（課金対象）
-        manualUnits: 0,  // うち個別SMS
-        autoUnits: 0,    // うちシナリオ自動
-        multi: 0,        // 2通以上になった件数
-        error: 0,        // 配信エラー件数
-        logs: [],
-      };
-    });
-
-    let pendingCount = 0;
-    let pendingUnits = 0;
-
-    logs.forEach((log) => {
-      const status = String(log?.["ステータス"] || "").trim();
-
-      if (status === STATUS_PENDING) {
-        pendingCount += 1;
-        pendingUnits += smsUnits(log?.["内容"]);
-        return;
-      }
-      if (status === STATUS_CANCELED) return;
-
-      // 配信済みは完了日時、エラーは完了日時が入らないため予定日時で月を決める
-      const stamp = log?.["完了日時"] || log?.["配信予定日時"];
-      const mk = toMonthKey(stamp);
-      if (!mk || !keySet.has(mk)) return;
-
-      if (status === STATUS_SENT) {
-        const u = smsUnits(log?.["内容"]);
-        acc[mk].count += 1;
-        acc[mk].units += u;
-        if (u > 1) acc[mk].multi += 1;
-        if (isManualSms(log)) acc[mk].manualUnits += u;
-        else acc[mk].autoUnits += u;
-        acc[mk].logs.push({ ...log, _units: u });
-      } else if (status === STATUS_ERROR) {
-        acc[mk].error += 1;
-      }
-    });
-
-    const list = keys.map((k) => acc[k]);
-    const sum = list.reduce(
-      (a, m) => ({
-        count:       a.count       + m.count,
-        units:       a.units       + m.units,
-        manualUnits: a.manualUnits + m.manualUnits,
-        autoUnits:   a.autoUnits   + m.autoUnits,
-        multi:       a.multi       + m.multi,
-        error:       a.error       + m.error,
-      }),
-      { count: 0, units: 0, manualUnits: 0, autoUnits: 0, multi: 0, error: 0 }
-    );
-
-    return {
-      months: keys,
-      byMonth: list,
-      totals: sum,
-      pending: { count: pendingCount, units: pendingUnits },
-    };
-  }, [deliveryLogs, fetchedLogs, range]);
+  const months  = summary?.months  || buildMonthKeys(range);
+  const byMonth = summary?.byMonth || months.map((k) => ({ key: k, count: 0, units: 0, manualUnits: 0, autoUnits: 0, multi: 0, error: 0 }));
+  const totals  = summary?.totals  || { count: 0, units: 0, manualUnits: 0, autoUnits: 0, multi: 0, error: 0 };
+  const pending = summary?.pending || { count: 0, units: 0 };
 
   const thisMonth = byMonth[byMonth.length - 1] || { units: 0, count: 0, error: 0 };
   const lastMonth = byMonth[byMonth.length - 2] || { units: 0, count: 0 };
@@ -461,7 +418,11 @@ export default function SmsUsageReport({ isLoading = false, deliveryLogs = [], c
                       <tr>
                         <td colSpan={8} style={{ padding: 0, backgroundColor: "#F8FAFC", borderBottom: `1px solid ${THEME.border}` }}>
                           <div style={{ maxHeight: 320, overflowY: "auto", padding: "8px 12px 14px" }} className="custom-scrollbar">
-                            {m.logs.length === 0 ? (
+                            {monthDetail.loading ? (
+                              <div style={{ padding: 20, textAlign: "center", fontSize: 12, color: THEME.textMuted }}>
+                                読み込み中…
+                              </div>
+                            ) : monthDetail.logs.length === 0 ? (
                               <div style={{ padding: 20, textAlign: "center", fontSize: 12, color: THEME.textMuted }}>
                                 配信実績がありません
                               </div>
@@ -480,7 +441,7 @@ export default function SmsUsageReport({ isLoading = false, deliveryLogs = [], c
                                   </tr>
                                 </thead>
                                 <tbody>
-                                  {m.logs
+                                  {monthDetail.logs
                                     .slice()
                                     .sort((a, b) => new Date(b["完了日時"] || b["配信予定日時"]) - new Date(a["完了日時"] || a["配信予定日時"]))
                                     .map((log, i) => (
