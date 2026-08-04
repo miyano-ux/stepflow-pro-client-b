@@ -2,9 +2,9 @@ import React, { useMemo, useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Activity, Timer, X, ChevronLeft } from "lucide-react";
 import { THEME as APP_THEME, GAS_URL } from "../lib/constants";
-import { apiCall } from "../lib/utils";
 import { StaffDropdown } from "../components/StaffDropdown";
 import { useWindowWidth } from "../lib/useWindowWidth";
+import { apiCall } from "../lib/utils";
 
 const THEME = { ...APP_THEME, colors: ["#4F46E5","#6366F1","#818CF8","#A5B4FC","#C7D2FE","#E0E7FF"] };
 
@@ -152,20 +152,6 @@ function DrillModal({ statusName, customers, staffList, avgDays, isTerminal, onC
 
 // ── メイン ───────────────────────────────────────────
 export default function AnalysisReport({ customers = [], statuses = [], trackingLogs = [], staffList = [], statusHistory = [] }) {
-  // 【サーバサイド集計】全件取得はやめ、GAS で計算済みのフェーズ別平均滞在日数を取得する
-  const [avgDaysMap, setAvgDaysMap] = useState({});
-  useEffect(() => {
-    let alive = true;
-    (async () => {
-      try {
-        const res = await apiCall.post(GAS_URL, { action: "getAnalysisSummary" });
-        if (alive) setAvgDaysMap(res?.avgDaysMap || {});
-      } catch (e) { console.warn("[AnalysisReport] getAnalysisSummary 取得失敗", e); }
-    })();
-    return () => { alive = false; };
-  }, []);
-
-
   const [filterStaff, setFilterStaff] = useState("");
   const [drillStatus, setDrillStatus] = useState(null);
   const navigate = useNavigate();
@@ -216,7 +202,24 @@ export default function AnalysisReport({ customers = [], statuses = [], tracking
 
   const maxCount = Math.max(...chartData.map(d => d.count), 1);
 
-  // フェーズ別平均滞在日数は getAnalysisSummary で取得済み（上部 avgDaysMap state を使用）
+  // ── フェーズ別平均滞在日数（サーバサイド集計）──
+  // 【ペイロード分離 / サーバ集計】旧実装は statusHistory プロップ（getAppData の全件）から
+  //   クライアント側で計算していたが、getAppData が履歴を返さなくなったため、
+  //   マウント時に getAnalysisSummary を呼び、集計済みの {ステータス名: 平均日数} を受け取る。
+  //   集計仕様（0〜365日で隣接イベント差分を平均）は GAS 側と一致。結果は GAS で10分キャッシュ。
+  const [avgDaysMap, setAvgDaysMap] = useState({});
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const res = await apiCall.post(GAS_URL, { action: "getAnalysisSummary" });
+        if (alive) setAvgDaysMap(res?.avgDaysMap || {});
+      } catch (e) {
+        console.warn("[AnalysisReport] getAnalysisSummary 取得失敗", e);
+      }
+    })();
+    return () => { alive = false; };
+  }, []);
 
   const phaseTransitions = useMemo(() =>
     chartStatuses
@@ -280,7 +283,7 @@ export default function AnalysisReport({ customers = [], statuses = [], tracking
                           <div style={{
                             width: "60%", borderRadius: "8px 8px 2px 2px",
                             backgroundColor: barColor, position: "relative",
-                            height: `${Math.max((d.count / maxCount) * 100, d.count > 0 ? 4 : 0)}%`,
+                            height: `${Math.max((d.count / maxCount) * 85, d.count > 0 ? 4 : 0)}%`,
                             transition: "height 0.8s ease, filter 0.15s",
                             minHeight: d.count > 0 ? 8 : 0,
                             opacity: isTerminal ? 0.85 : 1,
