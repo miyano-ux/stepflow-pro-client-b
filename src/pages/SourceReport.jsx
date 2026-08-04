@@ -206,14 +206,14 @@ export default function SourceReport({
 }) {
 
   // 【ペイロード分離】statusHistory は props ではなくマウント時に個別取得（全件）
-  const [fetchedStatusHistory, setFetchedStatusHistory] = useState(null);
+  const [fetchedWonEntries, setFetchedWonEntries] = useState(null);
   useEffect(() => {
     let alive = true;
     (async () => {
       try {
-        const res = await apiCall.post(GAS_URL, { action: "getStatusHistory" });
-        if (alive) setFetchedStatusHistory(res?.statusHistory || []);
-      } catch (e) { console.warn("[SourceReport] getStatusHistory 取得失敗", e); }
+        const res = await apiCall.post(GAS_URL, { action: "getSourceWonEntries" });
+        if (alive) setFetchedWonEntries(res?.wonEntries || []);
+      } catch (e) { console.warn("[SourceReport] getSourceWonEntries 取得失敗", e); }
     })();
     return () => { alive = false; };
   }, []);
@@ -325,8 +325,8 @@ export default function SourceReport({
 
   // ── 新④⑤共通：月フィルター ───────────────────────
   const wonEntries = useMemo(() =>
-    (fetchedStatusHistory ?? statusHistory).filter(h => wonStatusNames.includes((h["ステータス"] || "").trim())),
-    [statusHistory, fetchedStatusHistory, wonStatusNames]
+    (fetchedWonEntries ?? []).filter(h => wonStatusNames.includes((h["ステータス"] || "").trim())),
+    [fetchedWonEntries, wonStatusNames]
   );
 
   // 成約データ（変更日時）の利用可能な月範囲（input[type=month]のmin/max用）
