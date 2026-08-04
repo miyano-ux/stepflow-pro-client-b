@@ -121,20 +121,41 @@ export const parseLocalDate = (dateStr, isEnd = false) => {
  * GAS への POST リクエストを共通化する
  */
 export const apiCall = {
-  post: async (url, data) => {
+  // opts.retry: true/false でリトライ可否を明示指定可能。未指定なら action が get* の
+  //             読み取り系だけ自動リトライ対象になる（更新系POSTの二重実行を防ぐため）。
+  post: async (url, data, opts = {}) => {
     if (!url) throw new Error("GAS URLが設定されていません（VITE_GAS_URL を確認してください）");
     const body = JSON.stringify(data);
-    console.log("[apiCall.post] action:", data?.action, "url:", url?.slice(0, 60));
-    const res = await axios.post(url, body, {
-      headers: { "Content-Type": "text/plain;charset=utf-8" },
-    });
-    // GASが302リダイレクト→doGetを返す場合など、statusフィールドがない場合もエラー扱い
-    const result = typeof res.data === "string" ? JSON.parse(res.data) : res.data;
-    console.log("[apiCall.post] response:", result?.status, result?.message || "");
-    if (!result || result.status !== "success") {
-      throw new Error(result?.message || "GASからエラーレスポンスが返りました");
+    const action = data?.action || "";
+    // GAS WebアプリのPOSTは 302 → script.googleusercontent.com/.../echo の一時URLへ
+    // リダイレクトされるが、この一時URLがまれに 404（「ページが見つかりません」HTML）を
+    // 返す既知の事象がある。読み取り系（get*）は冪等なので数回だけ再試行して自己回復させる。
+    const retryable   = opts.retry != null ? opts.retry : /^get/i.test(action);
+    const maxAttempts = retryable ? 3 : 1;
+    let lastErr;
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        console.log("[apiCall.post] action:", action, `(試行 ${attempt}/${maxAttempts})`, "url:", url?.slice(0, 60));
+        const res = await axios.post(url, body, {
+          headers: { "Content-Type": "text/plain;charset=utf-8" },
+        });
+        // 一時URLの404はHTML文字列で返るため、JSON.parse 失敗 or status≠success を失敗扱いにする
+        const result = typeof res.data === "string" ? JSON.parse(res.data) : res.data;
+        if (!result || result.status !== "success") {
+          throw new Error(result?.message || "GASからエラーレスポンスが返りました");
+        }
+        console.log("[apiCall.post] response:", result?.status, result?.message || "");
+        return result;
+      } catch (e) {
+        lastErr = e;
+        if (attempt < maxAttempts) {
+          await new Promise(r => setTimeout(r, 400 * attempt)); // 0.4s, 0.8s の指数バックオフ
+          continue;
+        }
+      }
     }
-    return result;
+    console.warn("[apiCall.post] リトライ上限に到達:", action, lastErr?.message || lastErr);
+    throw lastErr;
   },
 };
 

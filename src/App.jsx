@@ -142,26 +142,41 @@ function App() {
 
   const refresh = useCallback(async () => {
     if (!userRef.current) return;
-    try {
-      const [gasRes] = await Promise.all([
-        axios.get(`${GAS_URL}?_t=${Date.now()}`),
-        refreshStaff(),
-      ]);
-      const data = gasRes?.data || {};
-      if (data.statuses) {
-        data.statuses = [...data.statuses].sort((a, b) => (Number(a.order) || 0) - (Number(b.order) || 0));
+    // doGet(getAppData) も GAS の 302 → script.googleusercontent.com/.../echo の
+    // 一時URLが 404（「ページが見つかりません」HTML）を返すことがある。1万件で ~669kB と
+    // 大きく当たりやすいので、数回リトライしてから初めてエラー画面に落とす。
+    const MAX_ATTEMPTS = 3;
+    for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+      try {
+        const [gasRes] = await Promise.all([
+          axios.get(`${GAS_URL}?_t=${Date.now()}`),
+          attempt === 1 ? refreshStaff() : Promise.resolve(),
+        ]);
+        const data = gasRes?.data;
+        // 一時URLの404はHTML文字列で返るため、JSONオブジェクトでなければ失敗扱いにしてリトライ
+        if (!data || typeof data !== "object" || Array.isArray(data)) {
+          throw new Error("GASレスポンスが想定形式(JSON)ではありません");
+        }
+        if (data.statuses) {
+          data.statuses = [...data.statuses].sort((a, b) => (Number(a.order) || 0) - (Number(b.order) || 0));
+        }
+        setD(data);
+        setLoadError(false);
+        const local = getDisplaySettings();
+        if (!local && data.displaySettings?.length > 0) {
+          setDisplaySettings(data.displaySettings);
+        }
+        setLoad(false);
+        return;
+      } catch (e) {
+        if (attempt < MAX_ATTEMPTS) {
+          await new Promise(r => setTimeout(r, 500 * attempt)); // 0.5s, 1.0s の指数バックオフ
+          continue;
+        }
+        console.error("[refresh] データ取得に失敗しました（リトライ上限）", e);
+        setLoadError(true);
+        setLoad(false);
       }
-      setD(data);
-      setLoadError(false);
-      const local = getDisplaySettings();
-      if (!local && data.displaySettings?.length > 0) {
-        setDisplaySettings(data.displaySettings);
-      }
-    } catch (e) {
-      console.error("[refresh] データ取得に失敗しました", e);
-      setLoadError(true);
-    } finally {
-      setLoad(false);
     }
   }, [getDisplaySettings, refreshStaff]);
 
