@@ -1,6 +1,6 @@
 import React, { useMemo, useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { Activity, Timer, X, ChevronLeft } from "lucide-react";
+import { Activity, Timer, X, ChevronLeft, Loader2 } from "lucide-react";
 import { THEME as APP_THEME, GAS_URL } from "../lib/constants";
 import { StaffDropdown } from "../components/StaffDropdown";
 import { useWindowWidth } from "../lib/useWindowWidth";
@@ -208,14 +208,21 @@ export default function AnalysisReport({ customers = [], statuses = [], tracking
   //   マウント時に getAnalysisSummary を呼び、集計済みの {ステータス名: 平均日数} を受け取る。
   //   集計仕様（0〜365日で隣接イベント差分を平均）は GAS 側と一致。結果は GAS で10分キャッシュ。
   const [avgDaysMap, setAvgDaysMap] = useState({});
+  const [loadingSummary, setLoadingSummary] = useState(true);
+  const [summaryError, setSummaryError]     = useState(false);
   useEffect(() => {
     let alive = true;
+    setLoadingSummary(true);
+    setSummaryError(false);
     (async () => {
       try {
         const res = await apiCall.post(GAS_URL, { action: "getAnalysisSummary" });
         if (alive) setAvgDaysMap(res?.avgDaysMap || {});
       } catch (e) {
         console.warn("[AnalysisReport] getAnalysisSummary 取得失敗", e);
+        if (alive) setSummaryError(true);
+      } finally {
+        if (alive) setLoadingSummary(false);
       }
     })();
     return () => { alive = false; };
@@ -318,6 +325,18 @@ export default function AnalysisReport({ customers = [], statuses = [], tracking
               <Timer size={18} color={THEME.primary} /> フェーズ別平均滞在日数
             </h3>
 
+            {loadingSummary ? (
+              <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 12, padding: "40px 0", color: THEME.textMuted }}>
+                <Loader2 size={30} color={THEME.primary} style={{ animation: "spin 1s linear infinite" }} />
+                <div style={{ fontSize: 13, fontWeight: 800 }}>集計しています…</div>
+                <div style={{ fontSize: 11 }}>初回はデータ量により時間がかかることがあります</div>
+              </div>
+            ) : summaryError ? (
+              <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 6, padding: "40px 0", color: THEME.textMuted }}>
+                <div style={{ fontSize: 13, fontWeight: 800 }}>集計データを取得できませんでした</div>
+                <div style={{ fontSize: 11 }}>ページを再読み込みしてお試しください</div>
+              </div>
+            ) : (
             <div style={{ display: "flex", alignItems: "stretch", overflowX: "auto", paddingBottom: 8, gap: 0 }}>
               {phaseTransitions.map((pt, i) => {
                 const days = pt.avgDays;
@@ -359,6 +378,7 @@ export default function AnalysisReport({ customers = [], statuses = [], tracking
                 );
               })}
             </div>
+            )}
 
             {/* 停滞色分け凡例 */}
             <div style={{ marginTop: 20, padding: "14px 18px", backgroundColor: "#F8FAFC", borderRadius: 12, display: "flex", gap: 28, flexWrap: "wrap", alignItems: "center" }}>

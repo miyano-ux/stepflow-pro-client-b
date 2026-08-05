@@ -3,7 +3,7 @@ import { Link, useNavigate, useLocation } from "react-router-dom";
 import axios from "axios";
 import {
   Search, SlidersHorizontal, Download, Send,
-  Trash2, AlertCircle, ArrowUpDown, ChevronDown, ChevronUp, Loader2,
+  Trash2, AlertCircle, ArrowUpDown, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Loader2,
   UserRound, Check, ExternalLink, Filter, ArrowDownUp,
 } from "lucide-react";
 import { THEME } from "../lib/constants";
@@ -71,6 +71,21 @@ function SkeletonCards({ count = 6 }) {
 }
 
 // 日付を "YYYY/MM/DD HH:mm" 形式に変換
+// ページネーション: 表示するページ番号の並びを作る（先頭2・末尾2・現在±1、間は "…" で省略）
+function buildPageList(current, total) {
+  if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
+  const wanted = new Set([1, 2, total - 1, total, current - 1, current, current + 1]);
+  const sorted = [...wanted].filter((p) => p >= 1 && p <= total).sort((a, b) => a - b);
+  const out = [];
+  let prev = 0;
+  for (const p of sorted) {
+    if (p - prev > 1) out.push("…");
+    out.push(p);
+    prev = p;
+  }
+  return out;
+}
+
 const formatDateJP = (v) => {
   if (!v || v === "-") return "-";
   const d = new Date(v);
@@ -332,6 +347,23 @@ export default function CustomerList({
     }
     return res;
   }, [localCustomers, search, dateRange, sort]);
+
+  // ── ページネーション ─────────────────────────────────────
+  // 1万件規模でも全件を一度にDOM描画しないよう、filtered を現在ページ分だけ切り出す。
+  const PAGE_SIZE_OPTIONS = [25, 50, 100, 200];
+  const [pageSize, setPageSize] = useState(50);
+  const [page, setPage] = useState(1);
+  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+  // 検索・日付・並び替え・表示件数が変わったら1ページ目に戻す
+  useEffect(() => { setPage(1); }, [search, dateRange, sort, pageSize]);
+  // 削除等で総ページ数が減り、現在ページが範囲外になったら丸める
+  useEffect(() => { setPage((p) => Math.min(p, totalPages)); }, [totalPages]);
+  const paged = useMemo(
+    () => filtered.slice((page - 1) * pageSize, page * pageSize),
+    [filtered, page, pageSize]
+  );
+  const pageStart = filtered.length === 0 ? 0 : (page - 1) * pageSize + 1;
+  const pageEnd   = Math.min(page * pageSize, filtered.length);
 
   const handleExportCSV = () => {
     // CSV は表示設定に関わらず全カラムを出力する
@@ -653,7 +685,7 @@ export default function CustomerList({
               {isMobile ? "顧客一覧" : "顧客ダッシュボード"}
             </h1>
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: isMobile ? 4 : 8 }}>
-              <p style={{ color: THEME.textMuted, fontSize: isMobile ? "12px" : "14px", margin: 0 }}>全 {filtered.length} 名をリスト表示中</p>
+              <p style={{ color: THEME.textMuted, fontSize: isMobile ? "12px" : "14px", margin: 0 }}>全 {filtered.length} 名中 {pageStart}–{pageEnd} 名を表示</p>
               {syncing && (
                 <span style={{ color: THEME.primary, fontSize: "12px", fontWeight: "800", display: "flex", alignItems: "center", gap: 4 }}>
                   <Loader2 size={12} style={{ animation: "spin 0.8s linear infinite" }} /> 同期中...
@@ -797,7 +829,7 @@ export default function CustomerList({
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               {isLoading ? (
                 <SkeletonCards count={6} />
-              ) : filtered.map((c) => {
+              ) : paged.map((c) => {
                 const cProps = (properties || []).filter(p => String(p.customerId) === String(c.id));
                 const hasProps = cProps.length > 0;
                 const name = `${c["姓"] || ""} ${c["名"] || ""}`.trim() || "-";
@@ -929,7 +961,7 @@ export default function CustomerList({
               <tbody>
                 {isLoading ? (
                   <SkeletonTableRows cols={vCols.length} rows={8} />
-                ) : filtered.map((c) => {
+                ) : paged.map((c) => {
                   const cProps = (properties || []).filter(p => String(p.customerId) === String(c.id));
                   const hasProps = cProps.length > 0;
                   const isExpanded = expandedRows.has(String(c.id));
@@ -1073,6 +1105,82 @@ export default function CustomerList({
           </div>
         </div>
         )}
+
+        {/* ページネーション（PC/モバイル共通） */}
+        {!isLoading && filtered.length > 0 && (() => {
+          const goTo = (p) => setPage(Math.min(Math.max(1, p), totalPages));
+          const btnBase = {
+            minWidth: 40, height: 40, padding: "0 10px", borderRadius: 10,
+            border: `1px solid ${THEME.border}`, backgroundColor: "white",
+            color: THEME.textMain, fontWeight: 800, fontSize: 14,
+            cursor: "pointer", display: "inline-flex", alignItems: "center", justifyContent: "center",
+          };
+          const disabled = { opacity: 0.4, cursor: "not-allowed" };
+          return (
+            <nav
+              aria-label="ページネーション"
+              style={{ marginTop: 20, display: "flex", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", gap: 12 }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: isMobile ? 12 : 13, color: THEME.textMuted }}>
+                <label htmlFor="cl-page-size">表示件数</label>
+                <select
+                  id="cl-page-size"
+                  value={pageSize}
+                  onChange={(e) => setPageSize(Number(e.target.value))}
+                  style={{ height: 40, borderRadius: 10, border: `1px solid ${THEME.border}`, padding: "0 8px", backgroundColor: "white", color: THEME.textMain, fontWeight: 700, cursor: "pointer" }}
+                >
+                  {PAGE_SIZE_OPTIONS.map((n) => <option key={n} value={n}>{n} 件</option>)}
+                </select>
+                <span aria-live="polite">全 {filtered.length} 名中 {pageStart}–{pageEnd} 名</span>
+              </div>
+
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <button
+                  type="button"
+                  onClick={() => goTo(page - 1)}
+                  disabled={page <= 1}
+                  aria-label="前のページ"
+                  style={{ ...btnBase, ...(page <= 1 ? disabled : {}) }}
+                >
+                  <ChevronLeft size={16} />
+                </button>
+
+                {!isMobile && buildPageList(page, totalPages).map((p, i) =>
+                  p === "…" ? (
+                    <span key={`gap-${i}`} aria-hidden="true" style={{ minWidth: 24, textAlign: "center", color: THEME.textMuted }}>…</span>
+                  ) : (
+                    <button
+                      type="button"
+                      key={p}
+                      onClick={() => goTo(p)}
+                      aria-label={`${p}ページ目へ移動`}
+                      aria-current={p === page ? "page" : undefined}
+                      style={{ ...btnBase, ...(p === page ? { backgroundColor: THEME.primary, borderColor: THEME.primary, color: "white" } : {}) }}
+                    >
+                      {p}
+                    </button>
+                  )
+                )}
+
+                {isMobile && (
+                  <span style={{ fontSize: 13, fontWeight: 800, color: THEME.textMain, padding: "0 8px" }} aria-live="polite">
+                    {page} / {totalPages}
+                  </span>
+                )}
+
+                <button
+                  type="button"
+                  onClick={() => goTo(page + 1)}
+                  disabled={page >= totalPages}
+                  aria-label="次のページ"
+                  style={{ ...btnBase, ...(page >= totalPages ? disabled : {}) }}
+                >
+                  <ChevronRight size={16} />
+                </button>
+              </div>
+            </nav>
+          );
+        })()}
 
       </div>
 
