@@ -1,7 +1,7 @@
 import React, { useMemo, useState, useEffect } from "react";
 import {
   MessageSquare, TrendingUp, TrendingDown, Minus,
-  Clock, AlertTriangle, Download, ChevronDown, ChevronUp, Info,
+  Clock, AlertTriangle, Download, ChevronDown, ChevronUp, Info, Loader2,
 } from "lucide-react";
 import { THEME, GAS_URL } from "../lib/constants";
 import { useWindowWidth } from "../lib/useWindowWidth";
@@ -176,7 +176,9 @@ export default function SmsUsageReport({ isLoading = false, deliveryLogs = [], c
       </div>
       <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
         <span style={{ fontSize: isMobile ? 28 : 36, fontWeight: 900, color, lineHeight: 1 }}>
-          {isLoading ? "—" : value.toLocaleString()}
+          {(isLoading || summaryLoading)
+            ? <Loader2 size={isMobile ? 24 : 30} color={color} style={{ animation: "spin 1s linear infinite" }} />
+            : value.toLocaleString()}
         </span>
         <span style={{ fontSize: 13, fontWeight: 700, color: THEME.textMuted }}>{unit}</span>
       </div>
@@ -296,6 +298,15 @@ export default function SmsUsageReport({ isLoading = false, deliveryLogs = [], c
             sub="配信失敗のため課金対象外"
           />
         </div>
+
+        {/* 集計ローディング表示 */}
+        {summaryLoading && (
+          <Card style={{ padding: "28px 24px", marginBottom: isMobile ? 16 : 24, display: "flex", alignItems: "center", justifyContent: "center", gap: 12, color: THEME.textMuted }}>
+            <Loader2 size={22} color={THEME.primary} style={{ animation: "spin 1s linear infinite" }} />
+            <span style={{ fontSize: 13, fontWeight: 800 }}>集計しています…</span>
+            <span style={{ fontSize: 12 }}>初回は配信ログの集計に時間がかかることがあります</span>
+          </Card>
+        )}
 
         {/* ── 月別グラフ ── */}
         <Card style={{ padding: isMobile ? "18px 16px" : "28px 32px", marginBottom: isMobile ? 16 : 24 }}>
