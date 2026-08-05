@@ -1,6 +1,6 @@
 import React, { useMemo, useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import { GitBranch, ChevronLeft } from "lucide-react";
+import { GitBranch, ChevronLeft, Loader2 } from "lucide-react";
 import { THEME as APP_THEME, GAS_URL } from "../lib/constants";
 import { apiCall } from "../lib/utils";
 import { useWindowWidth } from "../lib/useWindowWidth";
@@ -207,13 +207,22 @@ export default function SourceReport({
 
   // 【ペイロード分離】statusHistory は props ではなくマウント時に個別取得（全件）
   const [fetchedWonEntries, setFetchedWonEntries] = useState(null);
+  const [loadingWon, setLoadingWon] = useState(true);
+  const [wonError, setWonError]     = useState(false);
   useEffect(() => {
     let alive = true;
+    setLoadingWon(true);
+    setWonError(false);
     (async () => {
       try {
         const res = await apiCall.post(GAS_URL, { action: "getSourceWonEntries" });
         if (alive) setFetchedWonEntries(res?.wonEntries || []);
-      } catch (e) { console.warn("[SourceReport] getSourceWonEntries 取得失敗", e); }
+      } catch (e) {
+        console.warn("[SourceReport] getSourceWonEntries 取得失敗", e);
+        if (alive) setWonError(true);
+      } finally {
+        if (alive) setLoadingWon(false);
+      }
     })();
     return () => { alive = false; };
   }, []);
@@ -513,6 +522,19 @@ export default function SourceReport({
           </p>
         </header>
 
+        {loadingWon ? (
+          <div style={{ ...card, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 12, padding: "64px 0", color: THEME.textMuted }}>
+            <Loader2 size={32} color={THEME.primary} style={{ animation: "spin 1s linear infinite" }} />
+            <div style={{ fontSize: 14, fontWeight: 800 }}>集計しています…</div>
+            <div style={{ fontSize: 12 }}>初回はステータス履歴を集計するため時間がかかることがあります</div>
+          </div>
+        ) : wonError ? (
+          <div style={{ ...card, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8, padding: "64px 0", color: THEME.textMuted }}>
+            <div style={{ fontSize: 14, fontWeight: 800 }}>集計データを取得できませんでした</div>
+            <div style={{ fontSize: 12 }}>ページを再読み込みしてお試しください</div>
+          </div>
+        ) : (
+        <>
         {/* ── ⑤ 契約獲得力 ── */}
         <div style={card}>
           <SectionTitle color="#7C3AED">
@@ -887,8 +909,9 @@ export default function SourceReport({
             })}
           </div>
         )}
+        </>
+        )}
 
-        
       </div>
     </div>
   );
