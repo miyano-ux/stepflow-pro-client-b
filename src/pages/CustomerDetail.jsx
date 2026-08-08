@@ -404,6 +404,9 @@ export default function CustomerDetail({
 
   // ── 物件管理ステート（楽観的UI） ──────────────────────────
   const [localProperties, setLocalProperties] = useState([]);
+  // reloadBundle が取得する自顧客の物件（サーバ真値）。物件抽出 useEffect より前に宣言する
+  // （後方で宣言すると依存配列評価時に初期化前アクセスになりレンダーが落ちるため）。
+  const [fetchedProperties, setFetchedProperties] = useState(null);
   const deletedIdsRef = useRef(new Set());
   const [propModal,   setPropModal]   = useState({ open: false, mode: "add", data: {} });
   const [propSyncing, setPropSyncing] = useState(false);
@@ -458,7 +461,6 @@ export default function CustomerDetail({
   // 【ペイロード分離】履歴系は props ではなく getCustomerBundle で顧客単位に取得する
   const [fetchedStatusHistory, setFetchedStatusHistory] = useState(null);
   const [fetchedTrackingLogs, setFetchedTrackingLogs]   = useState(null);
-  const [fetchedProperties, setFetchedProperties]       = useState(null);
   const reloadBundle = useCallback(async () => {
     if (!id) return;
     try {
