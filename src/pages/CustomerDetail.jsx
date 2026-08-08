@@ -379,7 +379,7 @@ const CustomField = ({ field, isEditing, value, onChange }) => {
 export default function CustomerDetail({
   customers = [], formSettings = [], statuses = [], sources = [],
   contractTypes = [], trackingLogs = [], staffList = [], groups = [],
-  statusHistory = [], properties: allProperties = [], scenarios = [], gasUrl, onRefresh,
+  statusHistory = [], properties: allProperties = [], scenarios = [], gasUrl, onRefresh, onLightRefresh,
 }) {
   const showToast = useToast();
   const { id } = useParams();
@@ -423,10 +423,13 @@ export default function CustomerDetail({
     return `¥${n.toLocaleString()}万`;
   };
 
-  // allProperties から自分の分だけ抽出（削除済みIDを除外・仮エントリを引き継ぐ）
+  // 自顧客の物件を抽出（削除済みIDを除外・仮エントリを引き継ぐ）。
+  // 保存後は reloadBundle が取得した fetchedProperties（サーバ真値）を優先し、
+  // 未取得時のみ props(allProperties) にフォールバックする。
   useEffect(() => {
+    const source = (fetchedProperties ?? allProperties) || [];
     setLocalProperties(prev => {
-      const filtered = (allProperties || [])
+      const filtered = source
         .filter(p => String(p.customerId) === String(id))
         .filter(p => !deletedIdsRef.current.has(p.id));
       const pendingTemps = prev.filter(
@@ -434,7 +437,7 @@ export default function CustomerDetail({
       );
       return [...pendingTemps, ...filtered];
     });
-  }, [allProperties, id]);
+  }, [fetchedProperties, allProperties, id]);
 
   const customer = useMemo(
     () => customers.find((c) => String(c.id) === String(id)),
@@ -455,6 +458,7 @@ export default function CustomerDetail({
   // 【ペイロード分離】履歴系は props ではなく getCustomerBundle で顧客単位に取得する
   const [fetchedStatusHistory, setFetchedStatusHistory] = useState(null);
   const [fetchedTrackingLogs, setFetchedTrackingLogs]   = useState(null);
+  const [fetchedProperties, setFetchedProperties]       = useState(null);
   const reloadBundle = useCallback(async () => {
     if (!id) return;
     try {
@@ -467,12 +471,19 @@ export default function CustomerDetail({
       if (data && data.status === "success") {
         setFetchedStatusHistory(data.statusHistory || []);
         setFetchedTrackingLogs(data.trackingLogs || []);
+        setFetchedProperties(data.properties || []);
       }
     } catch (e) {
       console.warn("[CustomerDetail] getCustomerBundle 取得失敗", e);
     }
   }, [id]);
   useEffect(() => { reloadBundle(); }, [reloadBundle]);
+
+  // 一覧側（App の d.customers）だけを更新する軽量リフレッシュ。
+  // 詳細自身の履歴・トラッキング・物件は reloadBundle が担うため、
+  // 保存後に重い全取得（onRefresh＝getAppData）を走らせる必要はない。
+  // onLightRefresh 未配線の場合のみ従来どおり onRefresh にフォールバック。
+  const listRefresh = onLightRefresh || onRefresh;
 
   const customerStatusHistory = useMemo(() => {
     const base = ((fetchedStatusHistory ?? statusHistory) || [])
@@ -544,7 +555,7 @@ export default function CustomerDetail({
       setFormData(snapshot);
       // 成功モーダルを表示（OK押下後に編集モードを終了）
       setPropSuccess({ open: true, message: "顧客情報を保存しました。", _onClose: () => setIsEditing(false) });
-      Promise.resolve(onRefresh()).finally(() => {
+      Promise.resolve(listRefresh()).finally(() => {
         setSyncingCount((p) => Math.max(0, p - 1));
         setPendingHistoryEntry(null);
         reloadBundle();
@@ -614,7 +625,7 @@ export default function CustomerDetail({
             JSON.stringify({ action: "updateFields", id: customer.id, fields: Object.fromEntries(updates) }),
             { headers: { "Content-Type": "text/plain;charset=utf-8" } }
           );
-          onRefresh();
+          listRefresh();
           reloadBundle();
         } catch { /* silent fail - formDataは更新済み */ }
       }
@@ -669,7 +680,7 @@ export default function CustomerDetail({
         JSON.stringify({ action: "addProperty", customerId: id, ...formData }),
         { headers: { "Content-Type": "text/plain;charset=utf-8" } }
       );
-      onRefresh();
+      listRefresh();
       reloadBundle();
     } catch {
       // 失敗時：仮エントリを除去して差し戻す
@@ -695,7 +706,7 @@ export default function CustomerDetail({
         JSON.stringify({ action: "updateProperty", id: propId, ...formData }),
         { headers: { "Content-Type": "text/plain;charset=utf-8" } }
       );
-      onRefresh();
+      listRefresh();
       reloadBundle();
     } catch {
       setLocalProperties(prevProperties);
@@ -726,7 +737,7 @@ export default function CustomerDetail({
             JSON.stringify({ action: "deleteProperty", id: propId }),
             { headers: { "Content-Type": "text/plain;charset=utf-8" } }
           );
-          onRefresh();
+          listRefresh();
           reloadBundle();
         } catch {
           deletedIdsRef.current.delete(propId);
