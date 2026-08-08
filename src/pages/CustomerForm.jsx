@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { FileSpreadsheet, SlidersHorizontal, Upload } from "lucide-react";
+import { FileSpreadsheet, SlidersHorizontal, Upload, Loader2 } from "lucide-react";
 import axios from "axios";
 import { THEME, GAS_URL } from "../lib/constants";
 import { styles } from "../lib/styles";
@@ -27,7 +27,7 @@ import { useWindowWidth } from "../lib/useWindowWidth";
  * @param {string} masterUrl - マスタAPIのURL
  * @param {function} onRefresh - データ再取得コールバック
  */
-function CustomerForm({ formSettings = [], scenarios = [], statuses = [], staffList = [], sources = [], groups = [], contractTypes = [], onRefresh }) {
+function CustomerForm({ formSettings = [], scenarios = [], statuses = [], staffList = [], sources = [], groups = [], contractTypes = [], onRefresh, isLoading = false }) {
   const showToast = useToast();
   const navigate = useNavigate();
   const { isMobile } = useWindowWidth();
@@ -399,6 +399,18 @@ function CustomerForm({ formSettings = [], scenarios = [], statuses = [], staffL
     setSuccessModal(null);
     navigate("/", { state: { newCustomer: optimisticCustomer } });
   };
+
+  // 初回ロード中は formSettings/statuses/sources 等が未取得で入力項目が欠けるため、
+  // 不完全なフォームを見せずローディング表示にする。
+  if (isLoading) {
+    return (
+      <div style={{ minHeight: "60vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 16, color: THEME.textMuted }}>
+        <Loader2 size={44} color={THEME.primary} style={{ animation: "spin 0.9s linear infinite" }} />
+        <div style={{ fontSize: 14, fontWeight: 800 }}>読み込み中…</div>
+        <div style={{ fontSize: 12 }}>フォームの項目を準備しています</div>
+      </div>
+    );
+  }
 
   return (
     <>
