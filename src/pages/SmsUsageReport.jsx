@@ -319,6 +319,13 @@ export default function SmsUsageReport({ isLoading = false, deliveryLogs = [], c
             </div>
           </div>
 
+          {summaryLoading ? (
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 12, height: isMobile ? 140 : 200, color: THEME.textMuted }}>
+              <Loader2 size={26} color={THEME.primary} style={{ animation: "spin 1s linear infinite" }} />
+              <span style={{ fontSize: 12, fontWeight: 800 }}>集計しています…</span>
+            </div>
+          ) : (
+          <>
           <div style={{
             display: "flex", alignItems: "flex-end", gap: isMobile ? 4 : 8,
             height: isMobile ? 140 : 200, overflowX: "auto", paddingBottom: 4,
@@ -370,6 +377,8 @@ export default function SmsUsageReport({ isLoading = false, deliveryLogs = [], c
               </div>
             ))}
           </div>
+          </>
+          )}
         </Card>
 
         {/* ── 月別明細テーブル ── */}
@@ -394,7 +403,16 @@ export default function SmsUsageReport({ isLoading = false, deliveryLogs = [], c
                 </tr>
               </thead>
               <tbody>
-                {[...byMonth].reverse().map((m) => (
+                {summaryLoading ? (
+                  <tr>
+                    <td colSpan={8} style={{ padding: "36px 12px", textAlign: "center", color: THEME.textMuted }}>
+                      <div style={{ display: "inline-flex", alignItems: "center", gap: 10 }}>
+                        <Loader2 size={20} color={THEME.primary} style={{ animation: "spin 1s linear infinite" }} />
+                        <span style={{ fontSize: 12, fontWeight: 800 }}>集計しています…</span>
+                      </div>
+                    </td>
+                  </tr>
+                ) : [...byMonth].reverse().map((m) => (
                   <React.Fragment key={m.key}>
                     <tr
                       onClick={() => setOpenMonth(openMonth === m.key ? null : m.key)}
