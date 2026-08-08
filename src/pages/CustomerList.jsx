@@ -828,7 +828,10 @@ export default function CustomerList({
             {/* カードリスト */}
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
               {isLoading ? (
-                <SkeletonCards count={6} />
+                <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 16, padding: "72px 0", color: THEME.textMuted }}>
+                  <Loader2 size={44} color={THEME.primary} style={{ animation: "spin 0.9s linear infinite" }} />
+                  <div style={{ fontSize: 14, fontWeight: 800 }}>読み込み中…</div>
+                </div>
               ) : paged.map((c) => {
                 const cProps = (properties || []).filter(p => String(p.customerId) === String(c.id));
                 const hasProps = cProps.length > 0;
@@ -960,7 +963,14 @@ export default function CustomerList({
               </thead>
               <tbody>
                 {isLoading ? (
-                  <SkeletonTableRows cols={vCols.length} rows={8} />
+                  <tr>
+                    <td colSpan={99} style={{ padding: "80px 0", textAlign: "center", color: THEME.textMuted }}>
+                      <div style={{ display: "inline-flex", flexDirection: "column", alignItems: "center", gap: 16 }}>
+                        <Loader2 size={44} color={THEME.primary} style={{ animation: "spin 0.9s linear infinite" }} />
+                        <div style={{ fontSize: 14, fontWeight: 800 }}>読み込み中…</div>
+                      </div>
+                    </td>
+                  </tr>
                 ) : paged.map((c) => {
                   const cProps = (properties || []).filter(p => String(p.customerId) === String(c.id));
                   const hasProps = cProps.length > 0;
