@@ -536,11 +536,17 @@ export default function CustomerDetail({
       const nextStatus = snapshot["対応ステータス"] || "";
       applyOptimisticStatusHistory(prevStatus, nextStatus);
 
-      await axios.post(
+      const updateRes = await axios.post(
         gasUrl,
         JSON.stringify({ action: "update", id, data: snapshot }),
         { headers: { "Content-Type": "text/plain;charset=utf-8" } }
       );
+      // GAS は電話番号重複などの業務エラーを HTTP 200 + { status: "error" } で返すため、
+      // レスポンス本文を必ず判定する（判定しないと保存失敗でも成功モーダルが出る）
+      const updateResult = typeof updateRes.data === "string" ? JSON.parse(updateRes.data) : updateRes.data;
+      if (!updateResult || updateResult.status !== "success") {
+        throw new Error(updateResult?.message || "保存に失敗しました");
+      }
 
       // 失注ステータスへ変更した場合は失注理由を確実に保存する。
       // ※ update は既存列のみ書き込むため、失注理由列が無い環境でも
@@ -562,8 +568,9 @@ export default function CustomerDetail({
         setPendingHistoryEntry(null);
         reloadBundle();
       });
-    } catch {
-      showToast("更新に失敗しました", "error");
+    } catch (err) {
+      // 重複電話番号などGAS側の業務エラーはメッセージをそのまま表示する
+      showToast(err?.message || "更新に失敗しました", "error");
       setSyncingCount(0);
       setPendingHistoryEntry(null); // 失敗時はエントリを取り消し
     }
