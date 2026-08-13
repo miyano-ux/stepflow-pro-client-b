@@ -1237,15 +1237,17 @@ export default function CustomerList({
       {/* 確認モーダル */}
       {confirmModal.open && (() => {
         const { customer, field, newValue, oldValue } = confirmModal;
-        // 成約・休眠ステータスのラベルと適用シナリオを取得
-        const wonLabel     = statuses[statuses.length - 3]?.name;
-        const dormantLabel = statuses[statuses.length - 2]?.name;
-        const isWon     = field === "対応ステータス" && newValue === wonLabel;
-        const isDormant = field === "対応ステータス" && newValue === dormantLabel;
+        // 成約・休眠ステータスと適用シナリオを取得
+        // ※ terminalType で識別し、各ステータスに紐付いた scenarioId を参照する
+        //   （旧 scenarioSettings.wonScenarioId/dormantScenarioId は廃止済みのため使用しない）
+        const wonStatus     = statuses.find(s => s.terminalType === "won");
+        const dormantStatus = statuses.find(s => s.terminalType === "dormant");
+        const isWon     = field === "対応ステータス" && newValue === wonStatus?.name;
+        const isDormant = field === "対応ステータス" && newValue === dormantStatus?.name;
         const appliedScenarioId = isWon
-          ? scenarioSettings?.wonScenarioId
+          ? (wonStatus?.scenarioId || "")
           : isDormant
-          ? scenarioSettings?.dormantScenarioId
+          ? (dormantStatus?.scenarioId || "")
           : null;
         const scenarioStepCount = appliedScenarioId
           ? scenarios.filter((s) => s["シナリオID"] === appliedScenarioId).length
