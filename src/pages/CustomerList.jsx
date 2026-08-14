@@ -448,12 +448,14 @@ export default function CustomerList({
 
     // ステータス変更の場合、紐づくシナリオIDも一緒にセットする
     // → GAS の update アクションがシナリオIDの変化を検知して配信スケジューリングを実行する
+    // ※ 紐付けが無いステータス（自動シナリオ =「設定しない」）へ変更した場合は "" を送る。
+    //   送らないと GAS 側で prevScenarioId === nextScenarioId となり、旧シナリオの
+    //   「配信待ち」が中止されず、顧客シートのシナリオID列にも旧IDが残留する。
+    //   カンバン（applyScenario: scenarioId || ""）／顧客詳細（シナリオIDを "" にクリア）と挙動を揃える。
     const extraPatch = {};
     if (field === "対応ステータス") {
       const statusDef = (statuses || []).find(s => s.name === newValue);
-      if (statusDef?.scenarioId) {
-        extraPatch["シナリオID"] = statusDef.scenarioId;
-      }
+      extraPatch["シナリオID"] = statusDef?.scenarioId || "";
     }
 
     // ① ストアとローカル状態を同時に即時更新
@@ -473,9 +475,9 @@ export default function CustomerList({
       if (onLightRefresh) onLightRefresh(); else onRefresh();
     } catch {
       // ロールバック
-      customerStore.patch(cid, { [field]: customer[field], ...Object.fromEntries(Object.keys(extraPatch).map(k => [k, customer[k]])) });
+      customerStore.patch(cid, { [field]: customer[field], ...Object.fromEntries(Object.keys(extraPatch).map(k => [k, customer[k] ?? ""])) });
       pendingMap.current.delete(cid);
-      setLocalCustomers((prev) => prev.map((c) => String(c.id) === cid ? { ...c, [field]: customer[field], ...Object.fromEntries(Object.keys(extraPatch).map(k => [k, customer[k]])) } : c));
+      setLocalCustomers((prev) => prev.map((c) => String(c.id) === cid ? { ...c, [field]: customer[field], ...Object.fromEntries(Object.keys(extraPatch).map(k => [k, customer[k] ?? ""])) } : c));
       showToast("更新に失敗しました", "error");
     } finally {
       pendingMap.current.delete(cid);
