@@ -44,6 +44,46 @@ function makeFingerprint(rule) {
   ].join("\x00");
 }
 
+// ── 📩 抽出ロジック（gas_updated.js の _extractNameFromBody_ / _extractPhoneFromBody_ /
+//    _extractCustomFromBody_ と同一仕様。テスト実行の結果と実際の取り込み結果を一致させる）──
+//    従来は `キー + "\\s*(.+)"` だったため、
+//      1) `\\s*` が改行も飲み込み、値が空欄のとき次の行を値として拾う
+//      2) `(.+)` が行末まで取るため、キーワードの後ろに文章が続く実メールで
+//         「山田太郎 様よりお問い合わせです。今後の…」のように後続文章を丸ごと吸収する
+//    という問題があった。
+const matchAfterKey = (body, key) => {
+  if (!key) return null;
+  const m = String(body || "").match(new RegExp(key + "[ \t　]*(.+)"));
+  return m ? m[1] : null;
+};
+const cleanNameValue = (v) => {
+  let s = String(v == null ? "" : v).trim();
+  if (!s) return "";
+  s = s.split(/[、。，．]/)[0];                    // 句読点以降を切る
+  s = s.replace(/[（(【\[<＜「『].*$/, "");        // 括弧以降を切る
+  const h = s.replace(/[\s　]*(様|さま|サマ|さん|殿|御中).*$/, ""); // 敬称以降を切る
+  if (h.replace(/[\s　]/g, "")) s = h;
+  return s.replace(/[\s　]+/g, " ").trim();
+};
+const extractNameValue = (body, key) => {
+  const raw = matchAfterKey(body, key);
+  return raw == null ? "" : cleanNameValue(raw);
+};
+const extractPhoneValue = (body, key) => {
+  if (!key) return "";
+  const m = String(body || "").match(new RegExp(key + "[ \t　]*([\\d\\-－ー０-９]+)"));
+  if (!m) return "";
+  return m[1]
+    .replace(/[０-９]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xFEE0))
+    .replace(/[－ー]/g, "-")
+    .trim();
+};
+// カスタム項目は住所・要望など長文が正当なため、同一行の末尾まで取る
+const extractCustomValue = (body, key) => {
+  const raw = matchAfterKey(body, key);
+  return raw == null ? "" : raw.trim();
+};
+
 const EMPTY_DATA = {
   subject: "", nameKey: "氏名：", phoneKey: "電話番号：",
   status: "", source: "", staffEmail: "", scenarioID: "", customKeys: [],
@@ -273,10 +313,16 @@ export default function GmailSettings({
   const handleTest = () => {
     if (!testBody) return showToast("テスト用の本文を入力してください", "warning");
     try {
-      const extract = (key) => { if (!key) return "－"; const m = testBody.match(new RegExp(key + "\\s*(.+)")); return m ? m[1].trim() : "抽出失敗"; };
-      const customs = {};
-      (modal.data.customKeys || []).forEach(({ fieldName, keyword }) => { if (fieldName && keyword) customs[fieldName] = extract(keyword); });
-      setParsePreview({ name: extract(modal.data.nameKey), phone: extract(modal.data.phoneKey), customs });
+      const orDash   = (key, v) => (!key ? "－" : (v || "抽出失敗"));
+      const customs  = {};
+      (modal.data.customKeys || []).forEach(({ fieldName, keyword }) => {
+        if (fieldName && keyword) customs[fieldName] = orDash(keyword, extractCustomValue(testBody, keyword));
+      });
+      setParsePreview({
+        name:  orDash(modal.data.nameKey,  extractNameValue(testBody,  modal.data.nameKey)),
+        phone: orDash(modal.data.phoneKey, extractPhoneValue(testBody, modal.data.phoneKey)),
+        customs,
+      });
     } catch { showToast("キーの形式が正しくありません", "info"); }
   };
 
