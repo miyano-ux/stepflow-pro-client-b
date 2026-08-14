@@ -109,7 +109,7 @@ function SyncingBadge({ syncing }) {
 export default function GmailSettings({
   gmailSettings = [], scenarios = [], formSettings = [],
   statuses = [], sources = [], staffList = [], groups = [],
-  clientInfo = {}, onRefresh,
+  clientInfo = {}, onRefresh, isLoading = false,
 }) {
   const showToast = useToast();
   const navigate  = useNavigate();
@@ -511,7 +511,18 @@ export default function GmailSettings({
             );
           })}
 
-          {localSettings.length === 0 && (
+          {/* 読込中はスケルトンを出す（CustomerList.jsx と同じ方針）。
+              取得前に「ルールがまだありません」を出すと、既存ルールが
+              消えたように見えてしまうため。 */}
+          {isLoading && localSettings.length === 0 && (
+            <div style={{ ...styles.card, padding: 48, textAlign: "center", color: THEME.textMuted, gridColumn: "1 / -1", display: "flex", alignItems: "center", justifyContent: "center", gap: 10 }}>
+              <Loader2 size={18} style={{ animation: "spin 1s linear infinite" }} />
+              <span style={{ fontSize: 13, fontWeight: 700 }}>ルールを読み込んでいます...</span>
+              <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
+            </div>
+          )}
+
+          {!isLoading && localSettings.length === 0 && (
             <div style={{ ...styles.card, padding: 48, textAlign: "center", color: THEME.textMuted, gridColumn: "1 / -1" }}>
               <div style={{ fontSize: 32, marginBottom: 12 }}>📭</div>
               <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 8 }}>ルールがまだありません</div>

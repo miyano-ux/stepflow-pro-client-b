@@ -321,6 +321,50 @@ export default function SourceIntegrationDetail({
   const [mappingSaving, setMappingSaving] = useState(false);
   const [mappingSaved,  setMappingSaved]  = useState(false);
 
+  // ── 🔧 props 到着後のハイドレート（再読込直後の空表示・保存内容消失の修正）──
+  //   App.jsx は GAS からのデータ取得完了前でもルートを描画するため、
+  //   初回マウント時の props は空（sourceIntegrations=[] / fieldMappings={}）になる。
+  //   上記 useState は初期値を props から取るだけで再同期しないため、
+  //   データ到着後も「保存したはずの設定が空のまま」に見えていた。
+  //   データが到着した最初の1回だけ、サーバー値で state を作り直す。
+  //   （以降はユーザーの編集内容を上書きしないよう hydratedRef でガードする）
+  const hydratedRef = useRef(false);
+  useEffect(() => {
+    if (hydratedRef.current) return;
+    const arrived =
+      (sourceIntegrations && sourceIntegrations.length > 0) ||
+      (fieldMappings  && Object.keys(fieldMappings).length  > 0) ||
+      (sourceLoginIds && Object.keys(sourceLoginIds).length > 0);
+    if (!arrived) return;   // まだ取得前
+    hydratedRef.current = true;
+
+    const rule = (sourceIntegrations || []).find(r => r["sourceKey"] === sourceKey) || {};
+
+    setRuleForm({
+      source:     rule["流入元"]         || src.name,
+      status:     rule["対応ステータス"] || "",
+      staffEmail: rule["担当者メール"]   || "",
+      scenarioId: rule["シナリオID"]     || "",
+    });
+
+    try { setNotifyUsers(JSON.parse(rule["通知先ユーザー"] || "[]")); }
+    catch { setNotifyUsers([]); }
+
+    setNotifyMessage(
+      rule["通知文言"] || `${src.name}から反響がありました。確認をお願いします。`
+    );
+
+    const saved = (fieldMappings && fieldMappings[sourceKey]) || [];
+    const m = {};
+    saved.forEach(({ fromField, toColumn }) => { if (fromField) m[fromField] = toColumn || ""; });
+    setFieldMapping(m);
+
+    if (sourceLoginIds && sourceLoginIds[sourceKey]) {
+      setLoginForm(f => (f.loginId ? f : { ...f, loginId: sourceLoginIds[sourceKey] }));
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sourceIntegrations, fieldMappings, sourceLoginIds, sourceKey]);
+
   const scenarioIds             = [...new Set((scenarios || []).map(s => s["シナリオID"]).filter(Boolean))];
   const statusLinkedScenarioIds = new Set((statuses || []).map(st => st.scenarioId).filter(Boolean));
   const unlinkedScenarioIds     = scenarioIds.filter(sid => !statusLinkedScenarioIds.has(sid));
@@ -474,10 +518,12 @@ export default function SourceIntegrationDetail({
   const isConfigured = src.requiresLogin ? !!sourceCredsStatus?.[sourceKey] : true;
 
   // 認証済みの場合は最初からマスク状態（未編集）にする
+  //   ※ sourceCredsStatus も取得完了前は空のため、isConfigured の確定後に
+  //     再評価する（再読込直後に認証済みでも編集状態で表示される問題の修正）。
   useEffect(() => {
     setPwEditing(!isConfigured);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sourceKey]);
+  }, [sourceKey, isConfigured]);
 
   return (
     <Page
