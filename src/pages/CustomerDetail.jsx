@@ -376,25 +376,6 @@ const CustomField = ({ field, isEditing, value, onChange }) => {
 
 // ─────────────────────────────────────────────────────────
 
-// GAS は業務エラー（電話番号重複など）を HTTP 200 + { status: "error", code, message }
-// で返すため、axios は例外を投げない。レスポンス本文を必ず判定する必要がある。
-// ・ContentService の設定次第で本文が文字列で届くケースがあるため両対応にする
-// ・status が "success" でなければ Error を throw し、呼び出し側の catch で扱う
-const GAS_ERROR_FLAG = "__gasBusinessError";
-function assertGasSuccess(res, fallbackMessage) {
-  let body = res?.data;
-  if (typeof body === "string") {
-    try { body = JSON.parse(body); } catch { body = null; }
-  }
-  if (!body || body.status !== "success") {
-    const err = new Error(body?.message || fallbackMessage);
-    err[GAS_ERROR_FLAG] = true;
-    err.code = body?.code || "";
-    throw err;
-  }
-  return body;
-}
-
 export default function CustomerDetail({
   customers = [], formSettings = [], statuses = [], sources = [],
   contractTypes = [], trackingLogs = [], staffList = [], groups = [],
@@ -543,7 +524,7 @@ export default function CustomerDetail({
           snapshot = { ...snapshot, "担当者メール": res.data.email };
           setFormData(snapshot);
         } else {
-          showToast("グループ割り当てに失敗しました: " + (res.data?.message || ""), "error");
+          showToast("グループ割り当てに失敗しました: " + (res.data?.message || "", "error"));
           setSyncingCount(0);
           return;
         }
@@ -562,19 +543,21 @@ export default function CustomerDetail({
       );
       // GAS は電話番号重複などの業務エラーを HTTP 200 + { status: "error" } で返すため、
       // レスポンス本文を必ず判定する（判定しないと保存失敗でも成功モーダルが出る）
-      assertGasSuccess(updateRes, "保存に失敗しました");
+      const updateResult = typeof updateRes.data === "string" ? JSON.parse(updateRes.data) : updateRes.data;
+      if (!updateResult || updateResult.status !== "success") {
+        throw new Error(updateResult?.message || "保存に失敗しました");
+      }
 
       // 失注ステータスへ変更した場合は失注理由を確実に保存する。
       // ※ update は既存列のみ書き込むため、失注理由列が無い環境でも
       //   列を自動追加する saveLostReason を併用して取りこぼしを防ぐ。
       const nextStatusDef = (statuses || []).find(s => s.name === nextStatus);
       if (nextStatusDef?.terminalType === "lost" && snapshot["失注理由"]) {
-        const lostRes = await axios.post(
+        await axios.post(
           gasUrl,
           JSON.stringify({ action: "saveLostReason", id, reason: snapshot["失注理由"] }),
           { headers: { "Content-Type": "text/plain;charset=utf-8" } }
         );
-        assertGasSuccess(lostRes, "失注理由の保存に失敗しました");
       }
 
       setFormData(snapshot);
@@ -586,16 +569,10 @@ export default function CustomerDetail({
         reloadBundle();
       });
     } catch (err) {
-      // 電話番号重複などGAS側の業務エラーは、GASが返したメッセージをそのまま表示する。
-      // 通信エラー（axiosの英語メッセージ）は従来通りの日本語文言にフォールバックする。
-      showToast(
-        err?.[GAS_ERROR_FLAG] ? (err.message || "更新に失敗しました") : "更新に失敗しました",
-        "error"
-      );
+      // 重複電話番号などGAS側の業務エラーはメッセージをそのまま表示する
+      showToast(err?.message || "更新に失敗しました", "error");
       setSyncingCount(0);
-      setPendingHistoryEntry(null); // 失敗時はエントリを取り消し（楽観的タイムラインをロールバック）
-      // ※ 業務エラー時は setIsEditing(false) を呼ばないため編集モードが維持され、
-      //   入力値（formData）も保持されたまま電話番号を修正して再保存できる
+      setPendingHistoryEntry(null); // 失敗時はエントリを取り消し
     }
   };
 
@@ -1151,21 +1128,22 @@ export default function CustomerDetail({
           </div>
         </div>
 
-        {/* 右列：ステータス遷移 ＋ アクティビティ */}
+        {/* 右列：ステータス遷移 ＋ クリック履歴 */}
         <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
 
         {/* ステータス遷移タイムライン */}
         <StatusTimeline history={customerStatusHistory} />
 
-        {/* アクティビティログ */}
+        {/* クリック履歴（トラッキングURLのクリックのみ。編集やステータス変更は
+            隣の StatusTimeline が担当する） */}
         <div style={styles.card}>
           <h3 style={{ fontSize: 14, fontWeight: 800, color: THEME.textMuted, marginTop: 0, marginBottom: 20, display: "flex", alignItems: "center", gap: 8 }}>
-            <History size={15} /> アクティビティ
+            <History size={15} /> クリック履歴
           </h3>
 
           {customerLogs.length === 0 ? (
             <div style={{ textAlign: "center", padding: "40px 0", color: THEME.textMuted, fontSize: 13 }}>
-              アクティビティはまだありません
+              まだクリックされていません
             </div>
           ) : (
             <div style={{ maxHeight: 560, overflowY: "auto" }}>

@@ -331,6 +331,16 @@ export default function UserManager({
             { headers: { "Content-Type": "text/plain;charset=utf-8" } }
           );
           if (res.data.status === "success") {
+            // 顧客リストの担当者メールを未割当（空欄）に戻す：孤立参照の防止
+            try {
+              await axios.post(
+                GAS_URL,
+                JSON.stringify({ action: "unassignStaff", email }),
+                { headers: { "Content-Type": "text/plain;charset=utf-8" } }
+              );
+            } catch {
+              showToast("担当顧客の未割当処理に失敗しました。顧客リストをご確認ください", "error");
+            }
             // 該当メールアドレスを含むグループを検出して更新
             const affectedGroups = localGroups.filter(g => {
               const members = g["メンバーメール"] ? g["メンバーメール"].split(",").map(s => s.trim()).filter(Boolean) : [];
@@ -352,6 +362,7 @@ export default function UserManager({
               }));
             }
             await onRefreshStaff();
+            if (onRefresh) onRefresh();
           } else {
             showToast("失敗: " + res.data.message, "error");
           }

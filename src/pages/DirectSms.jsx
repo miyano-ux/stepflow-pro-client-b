@@ -281,7 +281,13 @@ function DirectSms({ customers = [], templates = [], staffList = [], onRefresh, 
       setMsg(updatedMsg);
     } catch (e) {
       console.error(e);
-      showToast("トラッキングURLへの変換に失敗しました。Vercelの環境変数BASE_URLが正しく設定されているか確認してください。", "error");
+      // api/t/create.js が失敗理由ごとに message を返すので、それをそのまま見せる。
+      // 固定文言（旧: BASE_URL を確認してください）は原因の誤認を招くため使わない。
+      const detail = e?.response?.data?.message;
+      showToast(
+        detail || "トラッキングURLへの変換に失敗しました。時間をおいて再試行してください。",
+        "error"
+      );
     } finally {
       setIsConverting(false);
     }
