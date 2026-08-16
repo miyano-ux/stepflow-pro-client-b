@@ -69,8 +69,18 @@ function CustomerSchedule({ customers = [], deliveryLogs = [], onRefresh }) {
   }
 
   const cP = smartNormalizePhone(c["電話番号"]);
+  // 【C4-002】getCustomerBundle は「顧客ID ∪ 電話番号」でサーバー側フィルタ済み
+  // （gas_updated.js:1344-1347）。ここで電話番号だけの絞り込みを重ねると、
+  // 顧客ID でしか紐づかない行（電話番号が空／登録後に電話番号を変更した等）を
+  // 取りこぼして「シートに4件あるのにUIは0件」になる。
+  // CustomerDetail の statusHistory / properties / trackingLogs と同様、
+  // サーバーと同一キーで突合する。
+  // ※ cP が空のときに電話番号突合を行わないのは、電話番号未登録の顧客で
+  //   "" === "" が成立し他顧客の空電話ログを拾ってしまうのを防ぐため。
   const allLogs = ((fetchedLogs ?? deliveryLogs) || []).filter(
-    (l) => smartNormalizePhone(l["電話番号"]) === cP
+    (l) =>
+      (l["顧客ID"] && String(l["顧客ID"]) === String(id)) ||
+      (cP && smartNormalizePhone(l["電話番号"]) === cP)
   );
 
   const scenarioParentLogs = allLogs
