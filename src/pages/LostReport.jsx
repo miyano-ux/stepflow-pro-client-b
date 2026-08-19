@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { Trash2, ChevronLeft } from "lucide-react";
+import { Trash2, ChevronLeft, Loader2 } from "lucide-react";
 import { THEME as APP_THEME } from "../lib/constants";
 import { StaffDropdown } from "../components/StaffDropdown";
 import { useWindowWidth } from "../lib/useWindowWidth";
@@ -8,21 +8,41 @@ import { useWindowWidth } from "../lib/useWindowWidth";
 const THEME = APP_THEME;
 const BAR_COLORS = ["#EF4444","#F97316","#EAB308","#84CC16","#06B6D4","#8B5CF6","#EC4899","#6B7280"];
 
-export default function LostReport({ customers = [], statuses = [], staffList = [] }) {
+export default function LostReport({ customers = [], statuses = [], staffList = [], isLoading = false }) {
   const navigate  = useNavigate();
   const [filterStaff, setFilterStaff] = useState("");
   const { isMobile } = useWindowWidth();
 
-  const lostStatus = statuses.find(s => s.terminalType === "lost") || statuses[statuses.length - 1];
-  const lostLabel  = lostStatus?.name || "失注";
+  // 【E5-004】失注ステータスは terminalType だけで解決する。
+  //   旧実装の `|| statuses[statuses.length - 1]` は、terminalType==="lost" が
+  //   見つからないときにマスタ最終行（既定では「除外」/ StatusSettings.jsx:476）を
+  //   失注とみなすため、エラーを出さずに全件0件（＝空表示）へ化けていた。
+  //   判定方法は CustomerDetail.jsx:993 / KanbanBoard.jsx:1177 に揃える。
+  // 【E3-009】ステータス名は必ず trim して突合する（SourceReport.jsx:283-296 と同方針）。
+  const lostStatus = statuses.find(s => s.terminalType === "lost");
+  const lostLabel  = (lostStatus?.name || "失注").trim();
+
+  // 【E5-004】レポートの母数からは excluded を常に除外する。
+  //   設計決定事項（StatusAnalysisReport.jsx:56-64 / SourceReport.jsx:256-265）に揃える。
+  const excludedNames = useMemo(
+    () => new Set(statuses.filter(s => s.terminalType === "excluded").map(s => (s.name || "").trim())),
+    [statuses]
+  );
+  const baseCustomers = useMemo(
+    () => customers.filter(c => !excludedNames.has((c["対応ステータス"] || "").trim())),
+    [customers, excludedNames]
+  );
+
+  // 担当者フィルタ済みの母集団（失注率の分母・分子で同じ母集団を使う）
+  const scopedCustomers = useMemo(
+    () => filterStaff ? baseCustomers.filter(c => c["担当者メール"] === filterStaff) : baseCustomers,
+    [baseCustomers, filterStaff]
+  );
 
   // 担当者フィルタ済みの失注顧客
-  const lostCustomers = useMemo(() =>
-    customers.filter(c =>
-      (c["対応ステータス"] || "").trim() === lostLabel &&
-      (!filterStaff || c["担当者メール"] === filterStaff)
-    ),
-    [customers, lostLabel, filterStaff]
+  const lostCustomers = useMemo(
+    () => scopedCustomers.filter(c => (c["対応ステータス"] || "").trim() === lostLabel),
+    [scopedCustomers, lostLabel]
   );
 
   // 失注理由集計
@@ -40,10 +60,10 @@ export default function LostReport({ customers = [], statuses = [], staffList = 
   const maxCount = Math.max(...reasonData.map(d => d.count), 1);
   const totalLost = lostCustomers.length;
 
-  // 担当者別失注数
+  // 担当者別失注数（担当者フィルタに関わらず全担当者の内訳を出す）
   const byStaff = useMemo(() => {
     const map = {};
-    customers.filter(c => (c["対応ステータス"] || "").trim() === lostLabel).forEach(c => {
+    baseCustomers.filter(c => (c["対応ステータス"] || "").trim() === lostLabel).forEach(c => {
       const email = c["担当者メール"] || "未割当";
       map[email] = (map[email] || 0) + 1;
     });
@@ -53,7 +73,7 @@ export default function LostReport({ customers = [], statuses = [], staffList = 
         return { name: staff ? `${staff.lastName} ${staff.firstName}` : (email === "未割当" ? "未割当" : email), count };
       })
       .sort((a, b) => b.count - a.count);
-  }, [customers, lostLabel, staffList]);
+  }, [baseCustomers, lostLabel, staffList]);
 
   return (
     <div style={{ minHeight: "100vh", backgroundColor: THEME.bg, padding: isMobile ? "20px 16px" : "40px 56px", boxSizing: "border-box" }}>
@@ -75,11 +95,21 @@ export default function LostReport({ customers = [], statuses = [], staffList = 
           </div>
         </header>
 
+        {/* 【E3-015】App 側の全体データ取得中は空状態ではなくスピナーを出す。
+            これが無いと props が空配列のまま「失注データがありません」を誤表示する。
+            SourceReport.jsx:548-556 と同方針。 */}
+        {isLoading ? (
+          <div style={{ backgroundColor: "white", borderRadius: 16, border: `1px solid ${THEME.border}`, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 12, padding: "64px 0", color: THEME.textMuted }}>
+            <Loader2 size={32} color={THEME.primary} style={{ animation: "spin 1s linear infinite" }} />
+            <div style={{ fontSize: 14, fontWeight: 800 }}>集計しています…</div>
+          </div>
+        ) : (
+        <>
         {/* サマリ */}
         <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr 1fr", gap: isMobile ? 12 : 20, marginBottom: 32 }}>
           {[
             { label: "失注総数", value: totalLost, unit: "件", color: "#DC2626", bg: "#FEF2F2" },
-            { label: "失注率", value: customers.length > 0 ? `${Math.round(customers.filter(c => (c["対応ステータス"] || "").trim() === lostLabel).length / customers.length * 100)}%` : "–", unit: "", color: "#D97706", bg: "#FFFBEB" },
+            { label: "失注率", value: scopedCustomers.length > 0 ? `${Math.round(totalLost / scopedCustomers.length * 100)}%` : "–", unit: "", color: "#D97706", bg: "#FFFBEB" },
             { label: "理由記録率", value: lostCustomers.length > 0 ? `${Math.round(lostCustomers.filter(c => c["失注理由"]).length / lostCustomers.length * 100)}%` : "–", unit: "", color: "#059669", bg: "#ECFDF5" },
           ].map(({ label, value, unit, color, bg }) => (
             <div key={label} style={{ backgroundColor: "white", borderRadius: 16, border: `1px solid ${THEME.border}`, padding: isMobile ? "16px 20px" : "20px 24px", boxShadow: "0 2px 8px rgba(0,0,0,0.03)" }}>
@@ -134,6 +164,8 @@ export default function LostReport({ customers = [], statuses = [], staffList = 
             {byStaff.length === 0 && <div style={{ textAlign: "center", color: THEME.textMuted, padding: 30 }}>データなし</div>}
           </div>
         </div>
+        </>
+        )}
       </div>
     </div>
   );

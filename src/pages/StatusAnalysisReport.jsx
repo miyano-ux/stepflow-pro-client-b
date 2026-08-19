@@ -52,8 +52,14 @@ export default function StatusAnalysisReport({
   const navigate = useNavigate();
   const [filterStaff, setFilterStaff] = useState("");
 
+  // 【E4-003】レポート集計対象の判定は「レポート集計」チェック（reportCount）だけで行う。
+  //   placement は KanbanBoard.jsx:1106-1120 のとおり「カンバンのどこに置くか」を
+  //   決めるレイアウト設定であり、レポートの集計可否とは無関係のため判定に使わない。
+  //   （E0-003 で placement を判定に混ぜた結果、ステータス設定で「レポート集計:集計する」を
+  //     ONにしても下部配置の終点ステータスが黙って集計対象外になっていた）
+  //   excluded のみ設計決定事項どおり常に除外する。
   const reportStatuses = useMemo(
-    () => statuses.filter(s => s.reportCount),
+    () => statuses.filter(s => s.reportCount && s.terminalType !== "excluded"),
     [statuses]
   );
 
@@ -77,11 +83,23 @@ export default function StatusAnalysisReport({
     return map;
   }, [filteredCustomers, sourceNames]);
 
+  // 【E4-008】流入元がマスタに無い顧客（空欄・削除済み流入元）は記事の仕様どおり集計対象外。
+  //   ただし「何件が対象外なのか」を画面から把握できるよう件数だけ算出して表示する。
+  //   判定は bySource（上）の裏返しにするため、比較条件を完全一致のまま揃える。
+  const sourceNameSet = useMemo(() => new Set(sourceNames), [sourceNames]);
+  const unassigned = useMemo(
+    () => filteredCustomers.filter(c => !sourceNameSet.has(c["流入元"] || "")),
+    [filteredCustomers, sourceNameSet]
+  );
+
   const statusData = useMemo(() =>
     reportStatuses.map((st, si) => {
       const rows = sourceNames.map(src => {
         const list = bySource[src] || [];
-        const reached = list.filter(c => (c["対応ステータス"] || "").trim() === st.name);
+        // 【E2-002】比較条件をカンバン（KanbanBoard.jsx:1352）に揃える。
+        //   旧実装は st.name を trim していなかったため、ステータス設定の名称に
+        //   前後空白が混じると顧客一覧・カンバンより過少にカウントされていた。
+        const reached = list.filter(c => (c["対応ステータス"] || "").trim() === (st.name || "").trim());
         const count = reached.length;
         const daysList = reached
           .map(c => daysElapsed(c["ステータス変更日"] || c["登録日"]))
@@ -91,9 +109,13 @@ export default function StatusAnalysisReport({
       });
       const maxCount = Math.max(...rows.map(d => d.count), 1);
       const grandTotal = rows.reduce((s, d) => s + d.count, 0);
-      return { status: st.name, rows, maxCount, grandTotal, color: COLORS[si % COLORS.length] };
+      // 【E4-008】流入元マスタに無い顧客のうち、このステータスに到達している件数（集計対象外）
+      const excludedCount = unassigned.filter(
+        c => (c["対応ステータス"] || "").trim() === (st.name || "").trim()
+      ).length;
+      return { status: st.name, rows, maxCount, grandTotal, excludedCount, color: COLORS[si % COLORS.length] };
     }),
-    [reportStatuses, sourceNames, bySource]
+    [reportStatuses, sourceNames, bySource, unassigned]
   );
 
   // 担当者リスト（staffList 未指定時は顧客データのメールから補完してフィルターを必ず表示）
@@ -146,6 +168,16 @@ export default function StatusAnalysisReport({
           )}
         </div>
 
+        {/* 【E4-008】集計対象外（流入元がマスタに無い顧客）の件数表示 */}
+        {unassigned.length > 0 && (
+          <div style={{
+            backgroundColor: "#FFFBEB", border: "1px solid #FDE68A", color: "#92400E",
+            borderRadius: 12, padding: "12px 16px", marginBottom: 20, fontSize: 13, fontWeight: 700,
+          }}>
+            流入元が未設定（またはマスタ未登録）の顧客 {unassigned.length} 件は、本レポートの集計対象外です。
+          </div>
+        )}
+
         {/* ステータス別グラフ */}
         {reportStatuses.length === 0 ? (
           <div style={{ ...card, textAlign: "center", color: THEME.textMuted, padding: 60 }}>
@@ -159,6 +191,11 @@ export default function StatusAnalysisReport({
                 {sg.status}
                 <span style={{ fontSize: 13, fontWeight: 700, color: THEME.textMuted, marginLeft: 8 }}>
                   合計 {sg.grandTotal} 件到達
+                  {sg.excludedCount > 0 && (
+                    <span style={{ color: "#B45309", marginLeft: 8 }}>
+                      （流入元未設定 {sg.excludedCount} 件は対象外）
+                    </span>
+                  )}
                 </span>
               </SectionTitle>
 

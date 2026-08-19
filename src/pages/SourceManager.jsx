@@ -109,7 +109,7 @@ function SuccessModal({ open, message, onClose }) {
   );
 }
 
-export default function SourceManager({ sources = [], onRefresh, gasUrl = GAS_URL }) {
+export default function SourceManager({ sources = [], onRefresh, gasUrl = GAS_URL, isLoading = false }) {
   const showToast = useToast();
   const { isMobile } = useWindowWidth();
 
@@ -273,7 +273,22 @@ export default function SourceManager({ sources = [], onRefresh, gasUrl = GAS_UR
               顧客登録・編集画面の「流入元」ドロップダウンに表示されます
             </p>
 
-            {localSources.length === 0 ? (
+            {isLoading && localSources.length === 0 ? (
+              /* 読込中はスケルトンを出す（GmailSettings.jsx と同じ方針）。
+                 取得前に「まだ流入元が登録されていません」を出すと、
+                 既存の流入元が消えたように見えてしまうため。 */
+              <div style={{
+                padding: "40px 0", textAlign: "center",
+                color: THEME.textMuted, fontSize: 14,
+                background: "#F8FAFC", borderRadius: 12,
+                border: `1.5px dashed ${THEME.border}`,
+                display: "flex", alignItems: "center", justifyContent: "center", gap: 10,
+              }}>
+                <Loader2 size={18} style={{ animation: "spin 1s linear infinite" }} />
+                <span style={{ fontSize: 13, fontWeight: 700 }}>流入元を読み込んでいます...</span>
+                <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
+              </div>
+            ) : localSources.length === 0 ? (
               <div style={{
                 padding: "40px 0", textAlign: "center",
                 color: THEME.textMuted, fontSize: 14,

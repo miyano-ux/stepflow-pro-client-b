@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import {
   Lock, Trash2, Plus, ChevronDown, ChevronUp,
@@ -8,6 +8,7 @@ import { THEME, GAS_URL } from "../lib/constants";
 import { styles } from "../lib/styles";
 import { apiCall } from "../lib/utils";
 import Page from "../components/Page";
+import ConfirmModal from "../components/ConfirmModal";
 import { useToast } from "../ToastContext";
 import { useWindowWidth } from "../lib/useWindowWidth";
 
@@ -34,7 +35,7 @@ function buildItems(formSettings) {
   }));
 }
 
-export default function FormSettings({ formSettings = [], sheetCustomColumns = [], onRefresh }) {
+export default function FormSettings({ formSettings = [], sheetCustomColumns = [], customers = [], isLoading = false, onRefresh }) {
   const nav = useNavigate();
   const location = useLocation();
   const from = location.state?.from;
@@ -43,11 +44,42 @@ export default function FormSettings({ formSettings = [], sheetCustomColumns = [
   const showToast = useToast();
   const { isMobile } = useWindowWidth();
 
-  // 初回マウント時のみ初期化（useEffectなし → 無限ループ防止）
   const [items, setItems]         = useState(() => buildItems(formSettings));
   const [openIndex, setOpenIndex] = useState(null);
   const [saving, setSaving]       = useState(false);
   const [saved, setSaved]         = useState(false);
+  const [confirmModal, setConfirmModal] = useState(null);
+
+  // ── 【G2-012】props 到着後の再同期 ────────────────────────────────
+  // App.jsx は load=true の間もルートを描画する（App.jsx:287-289）ため、
+  // /form-settings に直接アクセス／再読み込みすると GAS 取得完了前の
+  // formSettings=[]（App.jsx:74）を初期値として掴み、以後 items が空のまま
+  // 固定される＝既存カスタム項目が0件に見える。
+  // ColumnSettings.jsx:127-170 / StatusSettings.jsx:448-479 と同じく props を
+  // state へ同期する。取り込みは「最初にデータが届いた1回だけ」に限定し、
+  // 編集中の上書き・無限ループを防ぐ。
+  const hydratedRef = useRef((formSettings || []).length > 0);
+  useEffect(() => {
+    if (hydratedRef.current) return;
+    if (!formSettings || formSettings.length === 0) return;
+    hydratedRef.current = true;
+    setItems(buildItems(formSettings));
+  }, [formSettings]);
+
+  // ── 【G2-012】削除対象の項目とその影響件数 ──────────────────────
+  // カスタム項目は「名称」で顧客シートの列と紐づき、定義から消すと GAS が
+  // 顧客シートの該当列ごと削除する（gas_updated.js:1001-1015）。
+  // StatusSettings.jsx:433-446（G1-006）と同じ考え方で削除前に件数を提示する。
+  const removedFields = useMemo(() => {
+    const keep = new Set(items.map(i => String(i.name || "").trim()).filter(Boolean));
+    return (formSettings || [])
+      .map(f => String(f?.name || "").trim())
+      .filter(n => n && !keep.has(n))
+      .map(n => ({
+        name: n,
+        count: (customers || []).filter(c => String(c?.[n] ?? "").trim() !== "").length,
+      }));
+  }, [items, formSettings, customers]);
 
   // ── 項目操作 ──────────────────────────────────────
   const updateItem = useCallback((index, patch) =>
@@ -74,13 +106,7 @@ export default function FormSettings({ formSettings = [], sheetCustomColumns = [
   };
 
   // ── 保存（差分計算はGAS側で行う） ─────────────────
-  const handleSave = async () => {
-    for (const item of items) {
-      if (!item.name.trim()) return showToast("項目名が未入力の項目があります", "warning");
-      if (item.type === "dropdown" && !item.options.filter(o => o.trim()).length)
-        return showToast(`「${item.name}」の選択肢が空です`, "warning");
-    }
-
+  const doSave = async () => {
     const settings = items.map(item => ({
       name:     item.name.trim(),
       type:     item.type,
@@ -97,10 +123,39 @@ export default function FormSettings({ formSettings = [], sheetCustomColumns = [
       nav(backTo);
     } catch (err) {
       console.error("saveFormSettings error:", err);
-      showToast("保存に失敗しました: " + (err?.message || "不明なエラー", "error"));
+      showToast("保存に失敗しました: " + (err?.message || "不明なエラー"), "error");
     } finally {
       setSaving(false);
     }
+  };
+
+  const handleSave = () => {
+    // 【G2-012】読み込み未完了のまま保存すると空定義で全項目を上書きしてしまう
+    if (isLoading) return showToast("項目を読み込み中です。完了までお待ちください", "warning");
+
+    for (const item of items) {
+      if (!item.name.trim()) return showToast("項目名が未入力の項目があります", "warning");
+      if (item.type === "dropdown" && !item.options.filter(o => o.trim()).length)
+        return showToast(`「${item.name}」の選択肢が空です`, "warning");
+    }
+
+    // 【G2-012】既存項目が消える保存は必ず確認モーダルを挟む
+    if (removedFields.length > 0) {
+      const withData = removedFields.filter(f => f.count > 0);
+      setConfirmModal({
+        title: `${removedFields.length}件のカスタム項目を削除します`,
+        message: removedFields
+          .map(f => `・${f.name}${f.count > 0 ? `（入力済み ${f.count} 件）` : "（データなし）"}`)
+          .join("\n"),
+        note: withData.length > 0
+          ? "保存すると顧客リストの該当列ごと削除され、入力済みのデータは復元できません。意図した削除かご確認ください。"
+          : "保存すると項目定義が削除されます。",
+        confirmLabel: "削除して保存する",
+        onConfirm: () => { setConfirmModal(null); doSave(); },
+      });
+      return;
+    }
+    doSave();
   };
 
   // ── レンダリング ──────────────────────────────────
@@ -114,6 +169,16 @@ export default function FormSettings({ formSettings = [], sheetCustomColumns = [
       }
     >
       <div style={{ maxWidth: "720px" }}>
+
+        <ConfirmModal
+          open={!!confirmModal}
+          title={confirmModal?.title || ""}
+          message={confirmModal?.message}
+          note={confirmModal?.note}
+          confirmLabel={confirmModal?.confirmLabel}
+          onConfirm={confirmModal?.onConfirm}
+          onCancel={() => setConfirmModal(null)}
+        />
 
         {/* 案内 */}
         <div style={{ marginBottom: 24, padding: "14px 18px", backgroundColor: "#F8FAFC", borderRadius: 12, border: `1px solid ${THEME.border}`, fontSize: 13, color: THEME.textMuted, lineHeight: 1.6 }}>
@@ -140,7 +205,13 @@ export default function FormSettings({ formSettings = [], sheetCustomColumns = [
             カスタム項目
           </p>
 
-          {items.length === 0 && (
+          {isLoading && items.length === 0 && (
+            <div style={{ textAlign: "center", padding: "40px 20px", color: THEME.textMuted, fontSize: 14, border: `2px dashed ${THEME.border}`, borderRadius: 12, marginBottom: 12 }}>
+              項目を読み込み中...
+            </div>
+          )}
+
+          {!isLoading && items.length === 0 && (
             <div style={{ textAlign: "center", padding: "40px 20px", color: THEME.textMuted, fontSize: 14, border: `2px dashed ${THEME.border}`, borderRadius: 12, marginBottom: 12 }}>
               「+ 項目を追加」ボタンでカスタム項目を作成できます
             </div>
@@ -283,14 +354,16 @@ export default function FormSettings({ formSettings = [], sheetCustomColumns = [
         {/* 保存ボタン */}
         <button
           onClick={handleSave}
-          disabled={saving}
+          disabled={saving || isLoading}
           style={{ ...styles.btn, ...styles.btnPrimary, width: "100%", marginTop: 40, height: 52, fontSize: 15, opacity: saving ? 0.7 : 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 10 }}
         >
-          {saved
-            ? <><CheckCircle2 size={18} /> 同期完了！</>
-            : saving
-              ? "同期中..."
-              : "データに同期して保存"
+          {isLoading
+            ? "読み込み中..."
+            : saved
+              ? <><CheckCircle2 size={18} /> 同期完了！</>
+              : saving
+                ? "同期中..."
+                : "データに同期して保存"
           }
         </button>
       </div>

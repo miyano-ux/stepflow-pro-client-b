@@ -328,15 +328,18 @@ export default function SourceIntegrationDetail({
   //   データ到着後も「保存したはずの設定が空のまま」に見えていた。
   //   データが到着した最初の1回だけ、サーバー値で state を作り直す。
   //   （以降はユーザーの編集内容を上書きしないよう hydratedRef でガードする）
-  const hydratedRef = useRef(false);
+  //   🔧 ガードは「媒体キー単位」で持つ。同じ /source-integrations/:sourceKey
+  //      ルート内で媒体を切り替えてもコンポーネントは再マウントされないため、
+  //      boolean のままだと切替後に前の媒体の値が残ったままになる。
+  const hydratedRef = useRef(null);
   useEffect(() => {
-    if (hydratedRef.current) return;
+    if (hydratedRef.current === sourceKey) return;
     const arrived =
       (sourceIntegrations && sourceIntegrations.length > 0) ||
       (fieldMappings  && Object.keys(fieldMappings).length  > 0) ||
       (sourceLoginIds && Object.keys(sourceLoginIds).length > 0);
     if (!arrived) return;   // まだ取得前
-    hydratedRef.current = true;
+    hydratedRef.current = sourceKey;
 
     const rule = (sourceIntegrations || []).find(r => r["sourceKey"] === sourceKey) || {};
 
@@ -376,6 +379,19 @@ export default function SourceIntegrationDetail({
       headers: { "Content-Type": "text/plain;charset=utf-8" },
     });
 
+  // 🔧 GAS は失敗時も HTTP 200 で {status:"error"} を返す（gas_updated.js 末尾の
+  //   「unknown action」/ catch）。HTTP ステータスだけを見ていると保存できていない
+  //   のに「保存しました」と表示されてしまうため、応答本文で成否を判定する。
+  //   （CustomerDetail.jsx / UserManager.jsx と同じ方針）
+  const apiOk = async (payload) => {
+    const res = await api(payload);
+    const body = res?.data;
+    if (!body || typeof body !== "object" || body.status !== "success") {
+      throw new Error(body?.message || "サーバー側で保存できませんでした");
+    }
+    return body;
+  };
+
   // ── 認証情報の保存 ───────────────────────────────────────────
   const handleSaveCreds = async () => {
     if (!loginForm.loginId) {
@@ -392,7 +408,7 @@ export default function SourceIntegrationDetail({
       const payload = { action: "saveSourceCredentials", sourceKey, loginId: loginForm.loginId };
       // パスワード編集中の場合のみ新しいパスワードを送信
       if (pwEditing) payload.password = loginForm.password;
-      await api(payload);
+      await apiOk(payload);
       setCredsSaved(true);
       setPwEditing(false);
       setLoginForm(p => ({ ...p, password: "" }));
@@ -423,7 +439,7 @@ export default function SourceIntegrationDetail({
   const handleSaveRule = async () => {
     setRuleSaving(true);
     try {
-      await api({
+      await apiOk({
         action:      "saveSourceIntegration",
         sourceKey,
         source:      ruleForm.source,
@@ -437,7 +453,7 @@ export default function SourceIntegrationDetail({
       setTimeout(() => setRuleSaved(false), 2000);
       onRefresh?.();
     } catch (e) {
-      showToast("保存に失敗しました: " + (e?.message || e, "error"));
+      showToast("保存に失敗しました: " + (e?.message || e), "error");
     } finally {
       setRuleSaving(false);
     }
@@ -447,7 +463,7 @@ export default function SourceIntegrationDetail({
   const handleSaveNotify = async () => {
     setNotifySaving(true);
     try {
-      await api({
+      await apiOk({
         action:        "saveSourceIntegration",
         sourceKey,
         source:        ruleForm.source,
@@ -461,7 +477,7 @@ export default function SourceIntegrationDetail({
       setTimeout(() => setNotifySaved(false), 2000);
       onRefresh?.();
     } catch (e) {
-      showToast("保存に失敗しました: " + (e?.message || e, "error"));
+      showToast("保存に失敗しました: " + (e?.message || e), "error");
     } finally {
       setNotifySaving(false);
     }
@@ -475,12 +491,12 @@ export default function SourceIntegrationDetail({
         fromField,
         toColumn: toColumn || "",
       }));
-      await api({ action: "saveFieldMapping", sourceKey, mapping });
+      await apiOk({ action: "saveFieldMapping", sourceKey, mapping });
       setMappingSaved(true);
       setTimeout(() => setMappingSaved(false), 2000);
       onRefresh?.();
     } catch (e) {
-      showToast("保存に失敗しました: " + (e?.message || e, "error"));
+      showToast("保存に失敗しました: " + (e?.message || e), "error");
     } finally {
       setMappingSaving(false);
     }
@@ -511,8 +527,14 @@ export default function SourceIntegrationDetail({
 
   // ── ステータス変更（シナリオ連動制御）──────────────────────────
   const handleStatusChange = (v) => {
-    // ステータスが変わったらシナリオIDはクリア（連動シナリオはUI上で表示のみ）
-    setRuleForm(p => ({ ...p, status: v, scenarioId: "" }));
+    // 🔧 ステータスに連動シナリオがある場合は、その シナリオID を実際に保存値へ入れる。
+    //   （従来は "" のままで、ロック表示は見た目だけ・保存されずに消えていた）
+    //   取り込み時に使われるのは 媒体連携設定シートの「シナリオID」列だけ
+    //   （gas_updated.js: _getIntegrationRule → cust.scenarioID → scheduleScenarioSteps）
+    //   なので、連動シナリオもここで確定させないとシナリオが一切適用されない。
+    //   受信設定（GmailSettings.jsx）と同じ方針に揃える。
+    const statusDef = (statuses || []).find(st => st.name === v);
+    setRuleForm(p => ({ ...p, status: v, scenarioId: statusDef?.scenarioId || "" }));
   };
 
   const isConfigured = src.requiresLogin ? !!sourceCredsStatus?.[sourceKey] : true;

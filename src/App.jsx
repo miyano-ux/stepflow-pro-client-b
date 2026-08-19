@@ -9,6 +9,7 @@ import { jwtDecode } from "jwt-decode";
 // ── lib ──────────────────────────────────────────
 import { CLIENT_COMPANY_NAME, GAS_URL, MASTER_WHITELIST_API, GOOGLE_CLIENT_ID, THEME } from "./lib/constants";
 import { globalStyle, styles } from "./lib/styles";
+import { apiCall } from "./lib/utils";
 
 // ── components ───────────────────────────────────
 import Sidebar from "./components/Sidebar";
@@ -87,30 +88,33 @@ function App() {
     properties: [],
   });
 
-  const getDisplaySettings = useCallback(() => {
-    const email = JSON.parse(localStorage.getItem("sf_user") || "{}")?.email || "default";
+  const getUserEmail = useCallback(() => {
     try {
-      const raw = localStorage.getItem(`sf_display_${email}`);
+      return JSON.parse(localStorage.getItem("sf_user") || "{}")?.email || "default";
+    } catch { return "default"; }
+  }, []);
+
+  const getDisplaySettings = useCallback(() => {
+    try {
+      const raw = localStorage.getItem(`sf_display_${getUserEmail()}`);
       return raw ? JSON.parse(raw) : null;
     } catch { return null; }
-  }, []);
+  }, [getUserEmail]);
 
   const [displaySettings, setDisplaySettings] = useState(() => getDisplaySettings() || []);
 
+  // 表示列設定の保存
+  // ※ GAS（スプレッドシート）を先に確定させ、失敗は呼び出し元へ throw する。
+  //    以前は生の axios.post + catch=console.warn だったため、GAS が HTTP 200 で
+  //    {status:"error"} を返しても（未知アクション/一時URL404など）成功扱いになり、
+  //    localStorage にしか残らない状態を検知できなかった。
+  //    他画面と同じ apiCall.post（utils.js）に統一し status!=="success" を例外化する。
   const saveDisplaySettings = useCallback(async (settings) => {
-    const email = JSON.parse(localStorage.getItem("sf_user") || "{}")?.email || "default";
+    const email = getUserEmail();
+    await apiCall.post(GAS_URL, { action: "saveDisplaySettings", email, settings });
     localStorage.setItem(`sf_display_${email}`, JSON.stringify(settings));
     setDisplaySettings(settings);
-    try {
-      await axios.post(
-        GAS_URL,
-        JSON.stringify({ action: "saveDisplaySettings", settings }),
-        { headers: { "Content-Type": "text/plain;charset=utf-8" } }
-      );
-    } catch (e) {
-      console.warn("[saveDisplaySettings] GAS sync failed (localStorage は保存済み):", e);
-    }
-  }, []);
+  }, [getUserEmail]);
 
   const [load, setLoad] = useState(true);
   const [loadError, setLoadError] = useState(false);
@@ -149,7 +153,7 @@ function App() {
     for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
       try {
         const [gasRes] = await Promise.all([
-          axios.get(`${GAS_URL}?_t=${Date.now()}`),
+          axios.get(`${GAS_URL}?_t=${Date.now()}&email=${encodeURIComponent(getUserEmail())}`),
           attempt === 1 ? refreshStaff() : Promise.resolve(),
         ]);
         const data = gasRes?.data;
@@ -162,9 +166,16 @@ function App() {
         }
         setD(data);
         setLoadError(false);
+        // 別PC/別ブラウザからの復元：localStorage に無ければ GAS の設定を採用し、
+        // 以後は即時反映できるよう localStorage にも書き戻す
         const local = getDisplaySettings();
         if (!local && data.displaySettings?.length > 0) {
           setDisplaySettings(data.displaySettings);
+          try {
+            localStorage.setItem(`sf_display_${getUserEmail()}`, JSON.stringify(data.displaySettings));
+          } catch (err) {
+            console.warn("[refresh] displaySettings の localStorage 書き戻しに失敗", err);
+          }
         }
         setLoad(false);
         return;
@@ -178,7 +189,7 @@ function App() {
         setLoad(false);
       }
     }
-  }, [getDisplaySettings, refreshStaff]);
+  }, [getDisplaySettings, getUserEmail, refreshStaff]);
 
   const lightRefresh = useCallback(async () => {
     if (!GAS_URL) return;
@@ -308,17 +319,17 @@ function App() {
               <Route path="/" element={<CustomerList isLoading={load} customers={d?.customers} displaySettings={displaySettings} formSettings={d?.formSettings} scenarios={d?.scenarios} statuses={d?.statuses} staffList={staffList} scenarioSettings={d?.scenarioSettings} sources={d?.sources} properties={d?.properties} gasUrl={GAS_URL} onRefresh={refresh} onLightRefresh={lightRefresh} />} />
               <Route path="/customers" element={<CustomerList isLoading={load} customers={d?.customers} displaySettings={displaySettings} formSettings={d?.formSettings} scenarios={d?.scenarios} statuses={d?.statuses} staffList={staffList} scenarioSettings={d?.scenarioSettings} sources={d?.sources} properties={d?.properties} gasUrl={GAS_URL} onRefresh={refresh} onLightRefresh={lightRefresh} />} />
               <Route path="/add" element={<CustomerForm scenarios={d?.scenarios} formSettings={d?.formSettings} statuses={d?.statuses} staffList={staffList} sources={d?.sources} groups={d?.groups} contractTypes={d?.contractTypes} onRefresh={refresh} isLoading={load} />} />
-              <Route path="/schedule/:id" element={<CustomerSchedule customers={d?.customers} deliveryLogs={d?.deliveryLogs} onRefresh={refresh} />} />
-              <Route path="/detail/:id" element={<CustomerDetail customers={d?.customers} formSettings={d?.formSettings} statuses={d?.statuses} sources={d?.sources} contractTypes={d?.contractTypes} trackingLogs={d?.trackingLogs} staffList={staffList} groups={d?.groups} statusHistory={d?.statusHistory} properties={d?.properties} scenarios={d?.scenarios} gasUrl={GAS_URL} onRefresh={refresh} onLightRefresh={lightRefresh} />} />
-              <Route path="/direct-sms/:id" element={<DirectSms customers={d?.customers} templates={d?.templates} staffList={staffList} onRefresh={refresh} masterUrl={MASTER_WHITELIST_API} currentUserEmail={user?.email} />} />
+              <Route path="/schedule/:id" element={<CustomerSchedule isLoading={load} customers={d?.customers} deliveryLogs={d?.deliveryLogs} onRefresh={refresh} />} />
+              <Route path="/detail/:id" element={<CustomerDetail isLoading={load} customers={d?.customers} formSettings={d?.formSettings} statuses={d?.statuses} sources={d?.sources} contractTypes={d?.contractTypes} trackingLogs={d?.trackingLogs} staffList={staffList} groups={d?.groups} statusHistory={d?.statusHistory} properties={d?.properties} scenarios={d?.scenarios} gasUrl={GAS_URL} onRefresh={refresh} onLightRefresh={lightRefresh} />} />
+              <Route path="/direct-sms/:id" element={<DirectSms isLoading={load} customers={d?.customers} templates={d?.templates} staffList={staffList} onRefresh={refresh} masterUrl={MASTER_WHITELIST_API} currentUserEmail={user?.email} />} />
 
               {/* 設定 */}
               <Route path="/column-settings" element={<ColumnSettings displaySettings={displaySettings} formSettings={d?.formSettings} onSaveDisplaySettings={saveDisplaySettings} onRefresh={refresh} gasUrl={GAS_URL} />} />
               <Route path="/form-settings" element={<FormSettings formSettings={d?.formSettings} sheetCustomColumns={d?.sheetCustomColumns || []} onRefresh={refresh} />} />
-              <Route path="/sources" element={<SourceManager sources={d?.sources} onRefresh={refresh} gasUrl={GAS_URL} />} />
+              <Route path="/sources" element={<SourceManager sources={d?.sources} onRefresh={refresh} gasUrl={GAS_URL} isLoading={load} />} />
               <Route path="/contract-types" element={<ContractTypeManager contractTypes={d?.contractTypes} onRefresh={refresh} gasUrl={GAS_URL} />} />
-              <Route path="/master-settings" element={<MasterSettings statuses={d?.statuses} sources={d?.sources} contractTypes={d?.contractTypes} scenarios={d?.scenarios} />} />
-              <Route path="/status-settings" element={<StatusSettings statuses={d?.statuses} scenarios={d?.scenarios} onRefresh={refresh} gasUrl={GAS_URL} />} />
+              <Route path="/master-settings" element={<MasterSettings isLoading={load} statuses={d?.statuses} sources={d?.sources} contractTypes={d?.contractTypes} scenarios={d?.scenarios} />} />
+              <Route path="/status-settings" element={<StatusSettings statuses={d?.statuses} scenarios={d?.scenarios} customers={d?.customers} onRefresh={refresh} gasUrl={GAS_URL} />} />
 
               {/* テンプレート・シナリオ */}
               <Route path="/templates" element={<TemplateManager templates={d?.templates} onRefresh={refresh} gasUrl={GAS_URL} />} />
@@ -344,9 +355,12 @@ function App() {
               {/* 分析・トラッキング */}
               <Route path="/analysis" element={<ReportIndex />} />
               <Route path="/analysis/sales" element={<AnalysisReport customers={d?.customers} statuses={d?.statuses} trackingLogs={d?.trackingLogs} staffList={staffList} statusHistory={d?.statusHistory} />} />
-              <Route path="/analysis/source" element={<SourceReport customers={d?.customers} statuses={d?.statuses} sources={d?.sources} contractTypes={d?.contractTypes} statusHistory={d?.statusHistory} properties={d?.properties} />} />
+              <Route path="/analysis/source" element={<SourceReport isLoading={load} customers={d?.customers} statuses={d?.statuses} sources={d?.sources} contractTypes={d?.contractTypes} statusHistory={d?.statusHistory} properties={d?.properties} />} />
               <Route path="/analysis/status" element={<StatusAnalysisReport customers={d?.customers} statuses={d?.statuses} sources={d?.sources} staffList={staffList} />} />
-              <Route path="/analysis/lost" element={<LostReport customers={d?.customers} statuses={d?.statuses} staffList={staffList} />} />
+              {/* 【E5-012】LostReport.jsx:98-106 のローディング表示は isLoading 前提。
+                  未伝播だと取得中に「失注データがありません」＋失注率「–」を誤表示する。
+                  SourceReport（同ファイル 347行）と同方針で load を渡す。 */}
+              <Route path="/analysis/lost" element={<LostReport isLoading={load} customers={d?.customers} statuses={d?.statuses} staffList={staffList} />} />
               <Route path="/tracking" element={<TrackingDashboard />} />
 
               {/* ステータス別リスト */}

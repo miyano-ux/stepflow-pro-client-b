@@ -148,7 +148,7 @@ function VariablePanel({ lastInserted, onInsert }) {
   );
 }
 
-function DirectSms({ customers = [], templates = [], staffList = [], onRefresh, masterUrl, currentUserEmail }) {
+function DirectSms({ customers = [], templates = [], staffList = [], onRefresh, masterUrl, currentUserEmail, isLoading = false }) {
   const showToast = useToast();
   const { id } = useParams();
   const navigate = useNavigate();
@@ -325,6 +325,26 @@ function DirectSms({ customers = [], templates = [], staffList = [], onRefresh, 
       setIsSending(false);
     }
   };
+
+  // 【Z-016 横展開】存在しないID / 削除済みIDを URL 直打ちされた場合、customers に該当行が無く
+  //   c=undefined のまま下のスピナー分岐に固定され、永久ローディングになる（エラー分岐が無い）。
+  //   初回ロード完了後（isLoading=false）かつ該当なしなら 404 相当を表示する。
+  //   判定方針・文言は CustomerDetail（Z-016 本体修正）および CustomerList の
+  //   「!isLoading かつ 0件 →『見つかりませんでした』」に揃える。
+  if (!isLoading && !c) {
+    return (
+      <Page title="該当する顧客が見つかりませんでした">
+        <div style={{ ...styles.card, textAlign: "center", padding: 48 }}>
+          <p style={{ color: THEME.textMuted, fontSize: 14, margin: "0 0 24px", lineHeight: 1.7 }}>
+            指定された顧客ID（{id}）は存在しないか、すでに削除されています。
+          </p>
+          <button onClick={() => navigate("/customers")} style={{ ...styles.btn, ...styles.btnPrimary }}>
+            <ArrowLeft size={16} /> 顧客一覧へ戻る
+          </button>
+        </div>
+      </Page>
+    );
+  }
 
   if (!c) {
     return (

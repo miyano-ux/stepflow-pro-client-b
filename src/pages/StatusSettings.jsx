@@ -1,7 +1,8 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { GripVertical, Plus, Trash2, ChevronLeft, Save, Flag, Trash, X, ChevronUp, ChevronDown } from "lucide-react";
 import CustomSelect from "../components/CustomSelect";
+import ConfirmModal from "../components/ConfirmModal";
 import { THEME, GAS_URL } from "../lib/constants";
 import { styles } from "../lib/styles";
 import { apiCall } from "../lib/utils";
@@ -419,7 +420,7 @@ function SectionHeader({ icon, label, color, canAdd, onAdd, addLabel, note }) {
 }
 
 // ── メイン ────────────────────────────────────────────
-export default function StatusSettings({ statuses: statusesProp = [], scenarios = [], onRefresh, gasUrl }) {
+export default function StatusSettings({ statuses: statusesProp = [], scenarios = [], customers = [], onRefresh, gasUrl }) {
   const navigate  = useNavigate();
   const showToast = useToast();
   const { isMobile } = useWindowWidth();
@@ -427,14 +428,34 @@ export default function StatusSettings({ statuses: statusesProp = [], scenarios 
   const [terminalRows, setTerminalRows] = useState([]);
   const [saving,       setSaving]       = useState(false);
   const [dragIdx,      setDragIdx]      = useState(null);
+  const [confirmModal, setConfirmModal] = useState(null);
+
+  // ── 【G1-006】ステータス名ごとの利用顧客件数 ────────────────────────
+  // ステータスは ID を持たず「名称」だけで顧客レコードと紐づいているため
+  // （顧客リストシートの「対応ステータス」列 / gas_updated.js:1717-1724）、
+  // 削除すると該当顧客の値が宙吊りになる。削除前に件数を提示して誤操作を防ぐ。
+  const usageByName = useMemo(() => {
+    const map = {};
+    (customers || []).forEach(c => {
+      const key = String(c?.["対応ステータス"] || "").trim();
+      if (!key) return;
+      map[key] = (map[key] || 0) + 1;
+    });
+    return map;
+  }, [customers]);
+  const usageOf = (name) => usageByName[String(name || "").trim()] || 0;
 
   useEffect(() => {
     if (statusesProp.length > 0) {
       const flows     = statusesProp.filter(s => !s.terminalType);
       const terminals = statusesProp.filter(s => s.terminalType);
-      setFlowRows(flows.map(s => ({ ...s })));
+      // 【G1-020】読み込み時点の名称を _originalName に控える。
+      // 保存時に現在の name と突き合わせ、改名分だけ GAS へ renames として送る。
+      // （_originalName は saveStatuses のシート書き込み列には含まれないため、
+      //   ペイロードに残っていても保存内容には影響しない）
+      setFlowRows(flows.map(s => ({ ...s, _originalName: s.name })));
 
-      const termArr = terminals.map(s => ({ placement: "bottom", reapproachMonths: 0, reapproachScenarioId: "", ...s }));
+      const termArr = terminals.map(s => ({ placement: "bottom", reapproachMonths: 0, reapproachScenarioId: "", ...s, _originalName: s.name }));
       // 必須ステータスが存在しない場合は補完
       if (!termArr.some(s => s.terminalType === "won"))
         termArr.push({ name: "成約", terminalType: "won", placement: "bottom", scenarioId: "", reportArrival: false, reportCount: true });
@@ -459,7 +480,21 @@ export default function StatusSettings({ statuses: statusesProp = [], scenarios 
 
   // フロー行操作
   const handleFlowChange   = (idx, key, val) => setFlowRows(prev => prev.map((r, i) => i === idx ? { ...r, [key]: val } : r));
-  const handleFlowDelete   = (idx) => setFlowRows(prev => prev.filter((_, i) => i !== idx));
+  // 【G1-006】確認モーダル経由に変更（SourceManager.jsx:213-244 の削除UXに揃える）
+  const handleFlowDelete   = (idx) => {
+    const row = flowRows[idx];
+    const n   = usageOf(row?.name);
+    setConfirmModal({
+      title: `「${row?.name || "（無題）"}」を削除しますか？`,
+      note: n > 0
+        ? `このステータスは現在 ${n} 件の顧客に設定されています。削除すると該当顧客の対応ステータスは無効な値となり、カンバンでは先頭ステータス列に表示されます。先に別のステータスへ付け替えてください。`
+        : "この操作は「保存する」を押すまでシートには反映されません。",
+      onConfirm: () => {
+        setFlowRows(prev => prev.filter((_, i) => i !== idx));
+        setConfirmModal(null);
+      },
+    });
+  };
   const handleFlowAdd      = () => setFlowRows(prev => [...prev, { name: "", terminalType: "", scenarioId: "", reportArrival: false, reportCount: false }]);
   const handlePromptAdd    = (idx, fk) => setFlowRows(prev => prev.map((r, i) => i === idx ? { ...r, promptFields: [...(r.promptFields || []).filter(p => p !== fk), fk] } : r));
   const handlePromptRemove = (idx, pi) => setFlowRows(prev => prev.map((r, i) => i === idx ? { ...r, promptFields: (r.promptFields || []).filter((_, j) => j !== pi) } : r));
@@ -497,7 +532,21 @@ export default function StatusSettings({ statuses: statusesProp = [], scenarios 
 
   // 終点行操作
   const handleTerminalChange = (idx, key, val) => setTerminalRows(prev => prev.map((r, i) => i === idx ? { ...r, [key]: val } : r));
-  const handleTerminalDelete = (idx) => setTerminalRows(prev => prev.filter((_, i) => i !== idx));
+  // 【G1-006】終点ステータスも同様に確認モーダル経由にする
+  const handleTerminalDelete = (idx) => {
+    const row = terminalRows[idx];
+    const n   = usageOf(row?.name);
+    setConfirmModal({
+      title: `「${row?.name || "（無題）"}」を削除しますか？`,
+      note: n > 0
+        ? `このステータスは現在 ${n} 件の顧客に設定されています。削除すると該当顧客の対応ステータスは無効な値になります。先に別のステータスへ付け替えてください。`
+        : "この操作は「保存する」を押すまでシートには反映されません。",
+      onConfirm: () => {
+        setTerminalRows(prev => prev.filter((_, i) => i !== idx));
+        setConfirmModal(null);
+      },
+    });
+  };
   const handleTerminalAdd    = () => {
     setTerminalRows(prev => [...prev, { name: "終点", terminalType: "dormant", placement: "bottom", scenarioId: "", reportArrival: false, reportCount: false, reapproachMonths: 0, reapproachScenarioId: "" }]);
   };
@@ -511,6 +560,19 @@ export default function StatusSettings({ statuses: statusesProp = [], scenarios 
     if (!terminalRows.some(r => r.terminalType === "lost")) { showToast("「失注」ステータスは必須です", "warning"); return; }
 
     const allRows = [...flowRows, ...terminalRows];
+
+    // ── 【G1-031】ステータス名の一意性チェック ────────────────────────
+    // 名称が顧客レコードとの唯一の紐づけキーであるため、重複すると
+    // カンバンの列（key={st.name} / findIndex(s => s.name === ...)）や
+    // 顧客リストのフィルタで実体を区別できなくなる。
+    // 判定方法は既存のシナリオID重複チェック（直下）と同じ方式に揃えている。
+    const names    = allRows.map(r => r.name.trim());
+    const dupNames = names.filter((n, i) => names.indexOf(n) !== i);
+    if (dupNames.length > 0) {
+      showToast(`ステータス名「${[...new Set(dupNames)].join("、")}」が重複しています。名称は一意にしてください。`, "warning");
+      return;
+    }
+
     const sids = allRows.map(r => r.scenarioId).filter(Boolean);
     const dups = sids.filter((id, i) => sids.indexOf(id) !== i);
     if (dups.length > 0) {
@@ -518,9 +580,41 @@ export default function StatusSettings({ statuses: statusesProp = [], scenarios 
       return;
     }
 
+    // ── 【G1-020】改名マイグレーション用の対応表を作る ──────────────
+    // 読み込み時に控えておいた _originalName と現在の name を突き合わせ、
+    // 変わっているものだけ {from, to} で GAS に送る。
+    // GAS 側（saveStatuses）が顧客シートの「対応ステータス」を一括で付け替える。
+    // renames が空配列のときは GAS は顧客シートに一切触らない（従来と同じ挙動）。
+    const renames = allRows
+      .filter(r => r._originalName && r._originalName.trim() !== r.name.trim())
+      .map(r => ({ from: r._originalName.trim(), to: r.name.trim() }));
+
+    // 改名がある場合は、影響件数を提示して確認を取る（無言のデータ書き換えを避ける）
+    if (renames.length > 0) {
+      const detail = renames
+        .map(r => `・「${r.from}」→「${r.to}」（${usageOf(r.from)} 件）`)
+        .join("\n");
+      const total = renames.reduce((sum, r) => sum + usageOf(r.from), 0);
+      setConfirmModal({
+        title: "ステータス名の変更を反映しますか？",
+        message: detail,
+        note: total > 0
+          ? `該当する ${total} 件の顧客の対応ステータスを、新しい名称に一括で書き換えます。`
+          : "該当する顧客はいないため、顧客データは変更されません。",
+        confirmLabel: "保存する",
+        confirmColor: THEME.primary,
+        onConfirm: () => { setConfirmModal(null); doSave(allRows, renames); },
+      });
+      return;
+    }
+
+    doSave(allRows, []);
+  };
+
+  const doSave = async (allRows, renames) => {
     setSaving(true);
     try {
-      await apiCall.post(gasUrl || GAS_URL, { action: "saveStatuses", statuses: allRows });
+      await apiCall.post(gasUrl || GAS_URL, { action: "saveStatuses", statuses: allRows, renames });
       await onRefresh();
       showToast("保存しました", "success");
     } catch {
@@ -538,6 +632,18 @@ export default function StatusSettings({ statuses: statusesProp = [], scenarios 
 
   return (
     <div style={{ minHeight: "100vh", backgroundColor: THEME.bg, padding: isMobile ? "20px 16px" : "40px 48px", boxSizing: "border-box" }}>
+      {/* 【G1-006 / G1-020】破壊的操作の確認モーダル（共通コンポーネント） */}
+      <ConfirmModal
+        open={!!confirmModal}
+        title={confirmModal?.title || ""}
+        message={confirmModal?.message}
+        note={confirmModal?.note}
+        confirmLabel={confirmModal?.confirmLabel}
+        confirmColor={confirmModal?.confirmColor}
+        onConfirm={confirmModal?.onConfirm}
+        onCancel={() => setConfirmModal(null)}
+      />
+
       {/* ヘッダー */}
       <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", alignItems: isMobile ? "stretch" : "center", justifyContent: "space-between", gap: isMobile ? 14 : 0, marginBottom: isMobile ? 20 : 32 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 16 }}>

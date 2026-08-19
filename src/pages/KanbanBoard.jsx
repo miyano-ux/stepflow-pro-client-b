@@ -124,24 +124,42 @@ function ScenarioConfirmModal({ info, onConfirm, onCancel }) {
 }
 
 // 汎用終点モーダル（休眠系 / 除外）
-function DormantModal({ info, scenarios, gasUrl, onDone, onCancel }) {
-  const [selected, setSelected]   = useState(null);
-  const [scenarioId, setScenarioId] = useState("");
-  const [saving, setSaving]       = useState(false);
+function DormantModal({ info, scenarios, gasUrl, onDone, onCancel, showToast }) {
   const OPTS = [
     { months: 1, label: "1ヶ月後" }, { months: 2, label: "2ヶ月後" },
     { months: 3, label: "3ヶ月後" }, { months: 6, label: "6ヶ月後" },
     { months: 12, label: "12ヶ月後" }, { months: 0, label: "設定しない" },
   ];
+  // 【G1-032】ステータス設定（StatusSettings.jsx の「🔁 再アプローチ設定」）で
+  // 事前に設定した内容を初期選択にする。従来は常に空から開始していたため、
+  // 設定画面の「カンバンでこのステータスに移すと N ヶ月後にシナリオ X が
+  // 自動で予約されます」という案内が実装と一致していなかった。
+  // ※ info は開くたびに差し替わるため、呼び出し側で key を付けて再マウントさせる
+  const [selected, setSelected]   = useState(
+    () => OPTS.find(o => o.months === (Number(info?.defaultMonths) || 0)) ?? null
+  );
+  const [scenarioId, setScenarioId] = useState(() => info?.defaultScenarioId || "");
+  const [saving, setSaving]       = useState(false);
   if (!info) return null;
   const handleConfirm = async () => {
     setSaving(true);
-    await axios.post(gasUrl, JSON.stringify({ action: "updateStatus", id: info.customerId, status: info.newStatus, applyScenario: "" }), { headers: { "Content-Type": "text/plain;charset=utf-8" } });
-    if (selected?.months > 0 && scenarioId) {
-      await axios.post(gasUrl, JSON.stringify({ action: "scheduleDormantReapproach", id: info.customerId, months: selected.months, scenarioId }), { headers: { "Content-Type": "text/plain;charset=utf-8" } });
+    try {
+      await axios.post(gasUrl, JSON.stringify({ action: "updateStatus", id: info.customerId, status: info.newStatus, applyScenario: "" }), { headers: { "Content-Type": "text/plain;charset=utf-8" } });
+      if (selected?.months > 0 && scenarioId) {
+        const res  = await axios.post(gasUrl, JSON.stringify({ action: "scheduleDormantReapproach", id: info.customerId, months: selected.months, scenarioId }), { headers: { "Content-Type": "text/plain;charset=utf-8" } });
+        const data = typeof res.data === "string" ? JSON.parse(res.data) : res.data;
+        // 【G1-032】シナリオに配信ステップが1件も無い場合、GAS は何も作らずに
+        // success を返す（無言の空振り）。予約0件をユーザーに伝える。
+        if (data && Number(data.scheduled) === 0) {
+          showToast?.(`シナリオ「${scenarioId}」に配信ステップが登録されていないため、再アプローチの予約は作成されませんでした`, "warning");
+        }
+      }
+      onDone();
+    } catch {
+      showToast?.("処理に失敗しました", "error");
+    } finally {
+      setSaving(false);
     }
-    setSaving(false);
-    onDone();
   };
   return (
     <div style={S.overlay}>
@@ -1169,7 +1187,13 @@ export default function KanbanBoard({
     }
     // 休眠系（dormant）→ 再アプローチモーダル
     if (statusDef?.terminalType === "dormant") {
-      setDormantModal({ customerId: cid, newStatus, prevStatus });
+      // 【G1-032】ステータス設定で事前に指定した再アプローチ時期・シナリオを
+      // モーダルの初期値として渡す（従来は渡しておらず設定が死んでいた）
+      setDormantModal({
+        customerId: cid, newStatus, prevStatus,
+        defaultMonths:     Number(statusDef.reapproachMonths) || 0,
+        defaultScenarioId: statusDef.reapproachScenarioId || "",
+      });
       return;
     }
     // 除外 → シンプル更新（モーダルなし）
@@ -1528,7 +1552,7 @@ export default function KanbanBoard({
 
         {/* モーダル群（PC版と共通） */}
         <ScenarioConfirmModal info={scenarioModal} onConfirm={handleScenarioConfirm} onCancel={() => setScenarioModal(null)} />
-        <DormantModal info={dormantModal} scenarios={scenarios} gasUrl={gasUrl} onDone={handleModalDone} onCancel={() => setDormantModal(null)} />
+        <DormantModal key={dormantModal ? `${dormantModal.customerId}-${dormantModal.newStatus}` : "none"} info={dormantModal} scenarios={scenarios} gasUrl={gasUrl} showToast={showToast} onDone={handleModalDone} onCancel={() => setDormantModal(null)} />
         <LostModal info={lostModal} gasUrl={gasUrl} onDone={handleModalDone} onCancel={() => setLostModal(null)} />
         {wonModal && (
           <WonModal info={wonModal} gasUrl={gasUrl} onDone={handleWonDone} onCancel={() => setWonModal(null)} />
@@ -1825,7 +1849,7 @@ export default function KanbanBoard({
 
       {/* モーダル群 */}
       <ScenarioConfirmModal info={scenarioModal} onConfirm={handleScenarioConfirm} onCancel={() => setScenarioModal(null)} />
-      <DormantModal info={dormantModal} scenarios={scenarios} gasUrl={gasUrl} onDone={handleModalDone} onCancel={() => setDormantModal(null)} />
+      <DormantModal key={dormantModal ? `${dormantModal.customerId}-${dormantModal.newStatus}` : "none"} info={dormantModal} scenarios={scenarios} gasUrl={gasUrl} showToast={showToast} onDone={handleModalDone} onCancel={() => setDormantModal(null)} />
       <LostModal info={lostModal} gasUrl={gasUrl} onDone={handleModalDone} onCancel={() => setLostModal(null)} />
       {wonModal && (
         <WonModal

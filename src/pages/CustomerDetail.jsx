@@ -380,6 +380,7 @@ export default function CustomerDetail({
   customers = [], formSettings = [], statuses = [], sources = [],
   contractTypes = [], trackingLogs = [], staffList = [], groups = [],
   statusHistory = [], properties: allProperties = [], scenarios = [], gasUrl, onRefresh, onLightRefresh,
+  isLoading = false,
 }) {
   const showToast = useToast();
   const { id } = useParams();
@@ -474,11 +475,18 @@ export default function CustomerDetail({
         setFetchedStatusHistory(data.statusHistory || []);
         setFetchedTrackingLogs(data.trackingLogs || []);
         setFetchedProperties(data.properties || []);
+      } else {
+        // 【Z-004】取得失敗時に無言で握りつぶすと fetchedStatusHistory が null のままとなり、
+        //   props の statusHistory（getAppData はペイロード分離で常に空 / gas_updated.js:2876-2882）へ
+        //   フォールバックするため、シートに履歴行があってもタイムラインが
+        //   「まだ履歴がありません」と表示される。0件と取得失敗を区別できるようにする。
+        throw new Error(data?.message || "履歴の取得に失敗しました");
       }
     } catch (e) {
       console.warn("[CustomerDetail] getCustomerBundle 取得失敗", e);
+      showToast("履歴・物件情報の取得に失敗しました（表示が最新でない可能性があります）", "error");
     }
-  }, [id]);
+  }, [id, showToast]);
   useEffect(() => { reloadBundle(); }, [reloadBundle]);
 
   // 一覧側（App の d.customers）だけを更新する軽量リフレッシュ。
@@ -760,6 +768,35 @@ export default function CustomerDetail({
   };
 
   if (!formData) {
+    // 【Z-016】存在しないID / 他企業のIDを URL 直打ちされた場合、customers に該当行が無く
+    //   customer=undefined → formData が null のまま固定され、以前はスピナーが解除されず
+    //   永久ローディングになっていた（エラー分岐そのものが無かった）。
+    //   初回ロード完了後（isLoading=false）かつ該当なしなら 404 相当を表示する。
+    //   判定方針は CustomerList.jsx:938（!isLoading && 0件 →「見つかりませんでした」）、
+    //   画面構成は SourceIntegrationDetail.jsx:231-240（メッセージ＋一覧に戻る）に揃える。
+    if (!isLoading && !customer) {
+      return (
+        <div style={{ minHeight: "100vh", backgroundColor: THEME.bg, padding: isMobile ? "16px" : "40px 48px", boxSizing: "border-box" }}>
+          <button
+            onClick={() => navigate(location.state?.from ?? "/customers")}
+            style={{ background: "none", border: "none", color: THEME.textMuted, cursor: "pointer", display: "flex", alignItems: "center", gap: 6, fontWeight: 700, marginBottom: 16, fontSize: 14 }}
+          >
+            <ArrowLeft size={16} /> {location.state?.from ? "リストに戻る" : "顧客一覧に戻る"}
+          </button>
+          <div style={{ ...styles.card, textAlign: "center", padding: 48 }}>
+            <h1 style={{ fontSize: isMobile ? 18 : 22, fontWeight: 900, color: THEME.textMain, margin: "0 0 8px" }}>
+              該当する顧客が見つかりませんでした
+            </h1>
+            <p style={{ color: THEME.textMuted, fontSize: 14, margin: "0 0 24px", lineHeight: 1.7 }}>
+              指定された顧客ID（{id}）は存在しないか、すでに削除されています。
+            </p>
+            <button onClick={() => navigate("/customers")} style={{ ...styles.btn, ...styles.btnPrimary }}>
+              顧客一覧へ戻る
+            </button>
+          </div>
+        </div>
+      );
+    }
     return (
       <div style={{ display: "flex", justifyContent: "center", alignItems: "center", height: "60vh" }}>
         <Loader2 className="animate-spin" size={40} color={THEME.primary} />
@@ -1128,22 +1165,21 @@ export default function CustomerDetail({
           </div>
         </div>
 
-        {/* 右列：ステータス遷移 ＋ クリック履歴 */}
+        {/* 右列：ステータス遷移 ＋ アクティビティ */}
         <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
 
         {/* ステータス遷移タイムライン */}
         <StatusTimeline history={customerStatusHistory} />
 
-        {/* クリック履歴（トラッキングURLのクリックのみ。編集やステータス変更は
-            隣の StatusTimeline が担当する） */}
+        {/* アクティビティログ */}
         <div style={styles.card}>
           <h3 style={{ fontSize: 14, fontWeight: 800, color: THEME.textMuted, marginTop: 0, marginBottom: 20, display: "flex", alignItems: "center", gap: 8 }}>
-            <History size={15} /> クリック履歴
+            <History size={15} /> アクティビティ
           </h3>
 
           {customerLogs.length === 0 ? (
             <div style={{ textAlign: "center", padding: "40px 0", color: THEME.textMuted, fontSize: 13 }}>
-              まだクリックされていません
+              アクティビティはまだありません
             </div>
           ) : (
             <div style={{ maxHeight: 560, overflowY: "auto" }}>

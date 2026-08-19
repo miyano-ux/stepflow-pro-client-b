@@ -49,7 +49,12 @@ function Section({ icon, title, linkTo, linkLabel, children }) {
   );
 }
 
-function TagList({ items, color = THEME.primary, emptyText = "未設定" }) {
+function TagList({ items, color = THEME.primary, emptyText = "未設定", loading = false }) {
+  // 読込中はスケルトンを出す（SourceManager.jsx:276-290 / GmailSettings.jsx:572-586 と同じ方針）。
+  // 取得前に「〜が登録されていません」を出すと、既存データが消えたように見えてしまうため。
+  if (loading && (!items || items.length === 0)) {
+    return <span style={{ fontSize: 13, color: THEME.textMuted }}>読み込んでいます...</span>;
+  }
   if (!items || items.length === 0) {
     return <span style={{ fontSize: 13, color: THEME.textMuted, fontStyle: "italic" }}>{emptyText}</span>;
   }
@@ -64,7 +69,7 @@ function TagList({ items, color = THEME.primary, emptyText = "未設定" }) {
   );
 }
 
-export default function MasterSettings({ statuses = [], sources = [], contractTypes = [], scenarios = [] }) {
+export default function MasterSettings({ statuses = [], sources = [], contractTypes = [], scenarios = [], isLoading = false }) {
   const { isMobile } = useWindowWidth();
   const flowStatuses = statuses.filter(s => s.terminalType !== "dormant" && s.terminalType !== "lost");
   const terminalStatuses = statuses.filter(s => s.terminalType === "dormant" || s.terminalType === "lost");
@@ -80,7 +85,7 @@ export default function MasterSettings({ statuses = [], sources = [], contractTy
         <Section icon={<Settings size={18} />} title="ステータス設定" linkTo="/status-settings" linkLabel="設定を編集">
           <div style={{ marginBottom: 12 }}>
             <div style={{ fontSize: 11, fontWeight: 800, color: THEME.textMuted, marginBottom: 8 }}>フロー列</div>
-            <TagList items={flowStatuses.map(s => s.scenarioId ? `${s.name} (▶${s.scenarioId})` : s.name)} />
+            <TagList items={flowStatuses.map(s => s.scenarioId ? `${s.name} (▶${s.scenarioId})` : s.name)} loading={isLoading} />
           </div>
           {terminalStatuses.length > 0 && (
             <div>
@@ -142,17 +147,17 @@ export default function MasterSettings({ statuses = [], sources = [], contractTy
 
         {/* 流入元設定 */}
         <Section icon={<Globe size={18} />} title="流入元設定" linkTo="/sources" linkLabel="設定を編集">
-          <TagList items={sources.map(s => `${s.name}（${s.count}件）`)} color="#0891B2" emptyText="流入元が登録されていません" />
+          <TagList items={sources.map(s => `${s.name}（${s.count}件）`)} color="#0891B2" emptyText="流入元が登録されていません" loading={isLoading} />
         </Section>
 
         {/* 契約種別設定 */}
         <Section icon={<FileText size={18} />} title="契約種別設定" linkTo="/contract-types" linkLabel="設定を編集">
-          <TagList items={contractTypes} color="#7C3AED" emptyText="契約種別が登録されていません" />
+          <TagList items={contractTypes} color="#7C3AED" emptyText="契約種別が登録されていません" loading={isLoading} />
         </Section>
 
         {/* シナリオ設定 */}
         <Section icon={<MessageSquare size={18} />} title="シナリオ設定" linkTo="/scenarios" linkLabel="設定を編集">
-          <TagList items={scenarioIds} color="#059669" emptyText="シナリオが登録されていません" />
+          <TagList items={scenarioIds} color="#059669" emptyText="シナリオが登録されていません" loading={isLoading} />
         </Section>
       </div>
     </div>

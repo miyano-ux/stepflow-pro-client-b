@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect } from "react";
+import React, { useMemo, useState, useEffect, useCallback } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Activity, Timer, X, ChevronLeft, Loader2 } from "lucide-react";
 import { THEME as APP_THEME, GAS_URL } from "../lib/constants";
@@ -186,9 +186,26 @@ export default function AnalysisReport({ customers = [], statuses = [], tracking
     [statuses]
   );
 
+  // ── 【G1-007】未知値・空欄の扱いをカンバンに揃える ──────────────
+  // 従来は完全一致のみで数えていたため、削除済みステータス名が残った顧客
+  // （宙吊りデータ）や対応ステータス空欄の顧客がどの棒にも入らず、
+  // 顧客リスト／カンバンの件数と合わなかった。
+  // カンバン（KanbanBoard.jsx の colCustomers）と同一の判定にする:
+  //   「現在値がステータス一覧に存在しない or 空欄」なら先頭列に寄せる
+  const knownStatusNames = useMemo(
+    () => new Set(statuses.map(s => (s.name || "").trim())),
+    [statuses]
+  );
+
+  const matchesStatus = useCallback((c, st, i) => {
+    const cur = (c["対応ステータス"] || "").trim();
+    if (cur === (st.name || "").trim()) return true;
+    return i === 0 && (!cur || !knownStatusNames.has(cur));
+  }, [knownStatusNames]);
+
   const chartData = useMemo(() =>
     chartStatuses.map((st, i) => {
-      const list = filtered.filter(c => (c["対応ステータス"] || "").trim() === st.name);
+      const list = filtered.filter(c => matchesStatus(c, st, i));
       return {
         name: st.name,
         count: list.length,
@@ -197,7 +214,7 @@ export default function AnalysisReport({ customers = [], statuses = [], tracking
         terminalType: st.terminalType,
       };
     }),
-    [filtered, chartStatuses]
+    [filtered, chartStatuses, matchesStatus]
   );
 
   const maxCount = Math.max(...chartData.map(d => d.count), 1);
@@ -242,7 +259,8 @@ export default function AnalysisReport({ customers = [], statuses = [], tracking
 
   const drillData    = drillStatus ? chartData.find(d => d.name === drillStatus) : null;
   const drillAvgDays = drillStatus ? (avgDaysMap[drillStatus] ?? null) : null;
-  const countByStatus = label => filtered.filter(c => (c["対応ステータス"] || "").trim() === label.trim()).length;
+  // 【G1-007】棒グラフと同じ判定を使う（chartData 側で算出済みの件数を引く）
+  const countByStatus = label => (chartData.find(d => d.name === label)?.count ?? 0);
   const maxAvgDays    = Math.max(...phaseTransitions.map(p => p.avgDays ?? 0), 1);
 
   // 下部グリッド列数

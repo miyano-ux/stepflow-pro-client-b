@@ -66,7 +66,7 @@ function ConfirmModal({
 
         {/* 本文 */}
         {message && (
-          <p style={{ margin: "0 0 6px", fontSize: 14, color: "#374151", lineHeight: 1.7 }}>
+          <p style={{ margin: "0 0 6px", fontSize: 14, color: "#374151", lineHeight: 1.7, whiteSpace: "pre-line", textAlign: "left" }}>
             {message}
           </p>
         )}

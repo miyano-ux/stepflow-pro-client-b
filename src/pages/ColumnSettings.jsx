@@ -7,6 +7,7 @@ import {
 import { THEME } from "../lib/constants";
 import { styles } from "../lib/styles";
 import { useWindowWidth } from "../lib/useWindowWidth";
+import { useToast } from "../ToastContext";
 
 // ==========================================
 // ⚙️ ColumnSettings - 表示・検索項目設定
@@ -100,6 +101,7 @@ const DraggableRow = ({ it, idx, total, dragIdx, onDragStart, onDragOver, onDrag
 
 export default function ColumnSettings({ displaySettings = [], formSettings = [], onSaveDisplaySettings }) {
   const navigate = useNavigate();
+  const showToast = useToast();
 
   const [salesItems,   setSalesItems]   = useState([]);
   const [defaultItems, setDefaultItems] = useState([]);
@@ -169,7 +171,10 @@ export default function ColumnSettings({ displaySettings = [], formSettings = []
 
   }, [displaySettings, formSettings]);
 
-  const handleSave = () => {
+  // 【G5-009】GAS への保存完了を待ってから遷移する。
+  // 以前は await せずに navigate していたため、バックエンド保存が失敗しても
+  // 画面上は成功したように見え、localStorage のみに残る状態を検知できなかった。
+  const handleSave = async () => {
     setSaving(true);
     try {
       const expanded = [...salesItems, ...defaultItems, ...customItems].flatMap(it => {
@@ -179,8 +184,12 @@ export default function ColumnSettings({ displaySettings = [], formSettings = []
         ];
         return [{ name: it.key, visible: it.visible, searchable: it.searchable }];
       });
-      onSaveDisplaySettings(expanded);
+      await onSaveDisplaySettings(expanded);
+      showToast("設定を保存しました", "success");
       navigate("/");
+    } catch (e) {
+      console.error("[ColumnSettings] 保存に失敗", e);
+      showToast("設定の保存に失敗しました。時間をおいて再度お試しください。", "error");
     } finally {
       setSaving(false);
     }

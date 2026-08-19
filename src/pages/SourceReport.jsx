@@ -203,6 +203,7 @@ export default function SourceReport({
   contractTypes = [],
   statusHistory = [],
   properties = [],
+  isLoading = false,   // 【E3-015】App の全体データ取得中フラグ（App.jsx:347 から受領）
 }) {
 
   // 【ペイロード分離】statusHistory は props ではなくマウント時に個別取得（全件）
@@ -215,7 +216,9 @@ export default function SourceReport({
     setWonError(false);
     (async () => {
       try {
-        const res = await apiCall.post(GAS_URL, { action: "getSourceWonEntries" });
+        // 【E3-009】GAS 側は成約履歴を600秒キャッシュする。画面を開いた時点の
+        //   最新値を必ず見せるため、レポートを開いたときだけ force で読み直す。
+        const res = await apiCall.post(GAS_URL, { action: "getSourceWonEntries", force: true });
         if (alive) setFetchedWonEntries(res?.wonEntries || []);
       } catch (e) {
         console.warn("[SourceReport] getSourceWonEntries 取得失敗", e);
@@ -250,7 +253,16 @@ export default function SourceReport({
   }, [customers, sourceNames]);
 
   // ── 既存①：流入元×契約種別 ───────────────────────
-  const reportStatuses = useMemo(() => statuses.filter(s => s.reportCount), [statuses]);
+  // 【E4-003】レポート集計対象の判定は「レポート集計」チェック（reportCount）だけで行う。
+  //   placement は KanbanBoard.jsx:1106-1120 のとおり「カンバンのどこに置くか」を
+  //   決めるレイアウト設定であり、レポートの集計可否とは無関係のため判定に使わない。
+  //   （E0-003 で placement を判定に混ぜた結果、ステータス設定で「レポート集計:集計する」を
+  //     ONにしても下部配置の終点ステータスが黙って集計対象外になっていた）
+  //   excluded のみ設計決定事項どおり常に除外する。
+  const reportStatuses = useMemo(
+    () => statuses.filter(s => s.reportCount && s.terminalType !== "excluded"),
+    [statuses]
+  );
 
   const contractData = useMemo(() =>
     sourceNames.map(src => {
@@ -268,12 +280,20 @@ export default function SourceReport({
   );
 
   // ── 既存②：費用対効果 ────────────────────────────
+  // 【E3-009】ステータス名は必ず trim して保持する。
+  //   比較先（顧客の「対応ステータス」/ ステータス履歴の「ステータス」）は
+  //   いずれも .trim() 済みの値で突合しているのに、ここだけ生の s.name を
+  //   使っていたため、ステータス設定の名称に前後空白が混じると
+  //   成約判定が全件 false になり、費用対効果の成約件数と
+  //   契約獲得力（専任率）が丸ごと 0 件になっていた。
+  //   判定条件を KanbanBoard.jsx:1351-1352 / AnalysisReport.jsx:195-204 /
+  //   同ファイル 331行（E2-002 修正済み）に揃える。
   const terminalStatusNames = useMemo(() =>
-    statuses.filter(s => s.terminalType && s.terminalType !== "excluded").map(s => s.name),
+    statuses.filter(s => s.terminalType && s.terminalType !== "excluded").map(s => (s.name || "").trim()),
     [statuses]
   );
   const wonStatusNames = useMemo(() =>
-    statuses.filter(s => s.terminalType === "won").map(s => s.name),
+    statuses.filter(s => s.terminalType === "won").map(s => (s.name || "").trim()),
     [statuses]
   );
 
@@ -317,7 +337,10 @@ export default function SourceReport({
     reportStatuses.map((st, si) => {
       const rows = sourceNames.map(src => {
         const list = bySource[src] || [];
-        const reached = list.filter(c => (c["対応ステータス"] || "").trim() === st.name);
+        // 【E2-002】比較条件をカンバン（KanbanBoard.jsx:1352）に揃える。
+        //   旧実装は st.name を trim していなかったため、ステータス設定の名称に
+        //   前後空白が混じると顧客一覧・カンバンより過少にカウントされていた。
+        const reached = list.filter(c => (c["対応ステータス"] || "").trim() === (st.name || "").trim());
         const count = reached.length;
         const daysList = reached
           .map(c => daysElapsed(c["ステータス変更日"] || c["登録日"]))
@@ -522,7 +545,11 @@ export default function SourceReport({
           </p>
         </header>
 
-        {loadingWon ? (
+        {/* 【E3-015】自前fetch（getSourceWonEntries）だけでなく、App 側の全体データ
+            （customers / sources / statuses）取得中もスピナーを出す。これを見ていないと
+            props が空配列のまま表が描画され、「該当する成約データがありません」を
+            誤表示してしまう。SourceManager.jsx:276-290 / GmailSettings.jsx:572-586 と同方針。 */}
+        {(loadingWon || isLoading) ? (
           <div style={{ ...card, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 12, padding: "64px 0", color: THEME.textMuted }}>
             <Loader2 size={32} color={THEME.primary} style={{ animation: "spin 1s linear infinite" }} />
             <div style={{ fontSize: 14, fontWeight: 800 }}>集計しています…</div>
