@@ -16,6 +16,8 @@ import { THEME } from "../lib/constants";
  * @param {function} onCancel      - キャンセルボタン・オーバーレイ押下時コールバック
  * @param {string}   [confirmLabel] - 確認ボタンラベル（デフォルト: 削除する）
  * @param {string}   [confirmColor] - 確認ボタン色（デフォルト: THEME.danger）
+ * @param {node}     [icon]         - 【G2-015】ヘッダーアイコン（デフォルト: ゴミ箱）
+ * @param {string}   [iconBg]       - 【G2-015】アイコン背景色（デフォルト: 赤系 #FEE2E2）
  */
 function ConfirmModal({
   open,
@@ -26,10 +28,15 @@ function ConfirmModal({
   onCancel,
   confirmLabel = "削除する",
   confirmColor,
+  icon,
+  iconBg,
 }) {
   if (!open) return null;
 
+  // 【G2-015】削除以外（名称変更など）の確認にも使えるよう、アイコンと配色を差し替え可能にする。
+  // 未指定時は従来どおり「赤いゴミ箱」なので既存の呼び出しには影響しない。
   const btnColor = confirmColor || THEME.danger;
+  const circleBg = iconBg || "#FEE2E2";
 
   return (
     <div
@@ -52,11 +59,11 @@ function ConfirmModal({
         {/* アイコン */}
         <div style={{
           width: 64, height: 64, borderRadius: "50%",
-          backgroundColor: "#FEE2E2",
+          backgroundColor: circleBg,
           display: "flex", alignItems: "center", justifyContent: "center",
           margin: "0 auto 20px",
         }}>
-          <Trash2 size={28} color={btnColor} />
+          {icon || <Trash2 size={28} color={btnColor} />}
         </div>
 
         {/* タイトル */}

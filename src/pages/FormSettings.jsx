@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from "react"
 import { useNavigate, useLocation } from "react-router-dom";
 import {
   Lock, Trash2, Plus, ChevronDown, ChevronUp,
-  Type, Calendar, List, ToggleLeft, ToggleRight, GripVertical, X, CheckCircle2, Loader2
+  Type, Calendar, List, ToggleLeft, ToggleRight, GripVertical, X, CheckCircle2, Loader2, Pencil
 } from "lucide-react";
 import { THEME, GAS_URL } from "../lib/constants";
 import { styles } from "../lib/styles";
@@ -24,9 +24,20 @@ const FIELD_TYPES = [
 
 const FIXED_FIELDS = ["姓", "名", "電話番号", "メールアドレス"];
 
+// 【G2-015】顧客リストのシステム管理列（gas_updated.js CUSTOMER_SYSTEM_COLS と対応）。
+// カスタム項目にこれらの名前を付けると既存列と衝突するため、保存前に弾く。
+const RESERVED_FIELDS = [
+  "顧客ID", "登録日", "シナリオID", "配信ステータス", "対応ステータス",
+  "担当者メール", "流入元", "ステータス変更日", "失注理由", "契約種別",
+];
+
 function buildItems(formSettings) {
   return (formSettings || []).map(f => ({
     name:     f.name || "",
+    // 【G2-015】読み込み時点の項目名を保持する。保存時に「名称変更」と「削除＋新規追加」を
+    // 区別するための識別子で、これが無いと名前を変えただけで削除扱いになる。
+    // 新規追加した項目は "" のまま＝リネーム対象外。
+    originalName: f.name || "",
     type:     f.type || "text",
     required: f.required !== false && f.required !== "false",
     options:  (typeof f.options === "string" && f.options)
@@ -80,19 +91,30 @@ export default function FormSettings({ formSettings = [], sheetCustomColumns = [
     return () => { aliveRef.current = false; };
   }, []);
 
-  // ── 【G2-012】削除対象の項目とその影響件数 ──────────────────────
-  // カスタム項目は「名称」で顧客シートの列と紐づき、定義から消すと GAS が
-  // 顧客シートの該当列ごと削除する（gas_updated.js:1001-1015）。
-  // StatusSettings.jsx:433-446（G1-006）と同じ考え方で削除前に件数を提示する。
-  const removedFields = useMemo(() => {
-    const keep = new Set(items.map(i => String(i.name || "").trim()).filter(Boolean));
-    return (formSettings || [])
-      .map(f => String(f?.name || "").trim())
-      .filter(n => n && !keep.has(n))
-      .map(n => ({
-        name: n,
-        count: (customers || []).filter(c => String(c?.[n] ?? "").trim() !== "").length,
-      }));
+  // ── 【G2-012 / G2-015】保存内容の差分（削除・名称変更）─────────────
+  // カスタム項目は「名称」で顧客シートの列と紐づく。旧実装は「現在の項目名」だけで
+  // 差分を取っていたため、名前を変更しただけの項目が『旧名の削除』に見えていた。
+  // originalName を突き合わせることで、削除（項目そのものが無くなった）と
+  // 名称変更（同じ項目の名前だけ変わった）を切り分ける。
+  const { removedFields, renamedFields } = useMemo(() => {
+    const countOf = (n) => (customers || []).filter(c => String(c?.[n] ?? "").trim() !== "").length;
+    const oldNames = (formSettings || []).map(f => String(f?.name || "").trim()).filter(Boolean);
+
+    // 画面に残っている項目の「元の名前」＝削除されていない旧名
+    const survivingOld = new Set(items.map(i => String(i.originalName || "").trim()).filter(Boolean));
+    const currentNames = new Set(items.map(i => String(i.name || "").trim()).filter(Boolean));
+
+    const renamed = items
+      .map(i => ({ from: String(i.originalName || "").trim(), to: String(i.name || "").trim() }))
+      .filter(r => r.from && r.to && r.from !== r.to)
+      .map(r => ({ ...r, count: countOf(r.from) }));
+
+    // 旧名のうち、どの項目にも引き継がれておらず、同名で作り直してもいないものが「削除」
+    const removed = oldNames
+      .filter(n => !survivingOld.has(n) && !currentNames.has(n))
+      .map(n => ({ name: n, count: countOf(n) }));
+
+    return { removedFields: removed, renamedFields: renamed };
   }, [items, formSettings, customers]);
 
   // ── 項目操作 ──────────────────────────────────────
@@ -101,7 +123,7 @@ export default function FormSettings({ formSettings = [], sheetCustomColumns = [
 
   const handleAdd = () => {
     setItems(prev => {
-      const next = [...prev, { name: "", type: "text", required: true, options: [""] }];
+      const next = [...prev, { name: "", type: "text", required: true, options: [""], originalName: "" }];
       setOpenIndex(next.length - 1);
       return next;
     });
@@ -123,6 +145,9 @@ export default function FormSettings({ formSettings = [], sheetCustomColumns = [
   const doSave = async () => {
     const settings = items.map(item => ({
       name:     item.name.trim(),
+      // 【G2-015】GAS 側はこの originalName を見て「列のリネーム」を行い、
+      // 入力済みデータを保持したまま項目名を変更する（gas_updated.js saveFormSettings）。
+      originalName: String(item.originalName || "").trim(),
       type:     item.type,
       required: item.required,
       options:  item.type === "dropdown" ? item.options.filter(o => o.trim()).join(",") : "",
@@ -163,24 +188,78 @@ export default function FormSettings({ formSettings = [], sheetCustomColumns = [
     // 【G2-012】読み込み未完了のまま保存すると空定義で全項目を上書きしてしまう
     if (isLoading) return showToast("項目を読み込み中です。完了までお待ちください", "warning");
 
+    const seen = new Set();
     for (const item of items) {
-      if (!item.name.trim()) return showToast("項目名が未入力の項目があります", "warning");
+      const name = item.name.trim();
+      if (!name) return showToast("項目名が未入力の項目があります", "warning");
+      // 【G2-015】名称変更を許可する以上、固定項目や他項目との衝突は保存前に弾く。
+      // 重複した項目名は顧客シート上で同じ列を指してしまい、データが混ざる。
+      if (FIXED_FIELDS.includes(name) || RESERVED_FIELDS.includes(name))
+        return showToast(`「${name}」は固定項目のため、項目名に使用できません`, "warning");
+      if (seen.has(name)) return showToast(`「${name}」が重複しています`, "warning");
+      seen.add(name);
       if (item.type === "dropdown" && !item.options.filter(o => o.trim()).length)
-        return showToast(`「${item.name}」の選択肢が空です`, "warning");
+        return showToast(`「${name}」の選択肢が空です`, "warning");
     }
 
-    // 【G2-012】既存項目が消える保存は必ず確認モーダルを挟む
-    if (removedFields.length > 0) {
-      const withData = removedFields.filter(f => f.count > 0);
+    // 【G2-015】A→B / B→A のような入れ替えは、どの列をどの列にリネームすべきかが
+    // 一意に決まらず GAS 側もリネームを見送る（＝データが入れ替わったように見える）。
+    // 事故になりやすいので1回の保存では受け付けない。
+    const originals = new Set(items.map(i => String(i.originalName || "").trim()).filter(Boolean));
+    const swapped = items.find(i => {
+      const from = String(i.originalName || "").trim();
+      const to   = String(i.name || "").trim();
+      return from && to && from !== to && originals.has(to);
+    });
+    if (swapped) {
+      return showToast(
+        `「${swapped.name}」は他の項目の元の名前と重複しています。項目名の入れ替えは1項目ずつ保存してください`,
+        "warning"
+      );
+    }
+
+    const hasRemoval = removedFields.length > 0;
+    const hasRename  = renamedFields.length > 0;
+
+    // 【G2-012 / G2-015】既存項目が消える／名前が変わる保存は確認モーダルを挟む。
+    // 名称変更はデータが保持される非破壊操作なので、削除とは文言・配色・アイコンを分ける。
+    if (hasRemoval || hasRename) {
+      const lines = [];
+      if (hasRename) {
+        lines.push("【項目名の変更】");
+        renamedFields.forEach(f => lines.push(
+          `・${f.from} → ${f.to}${f.count > 0 ? `（入力済み ${f.count} 件はそのまま引き継がれます）` : ""}`
+        ));
+      }
+      if (hasRemoval) {
+        if (lines.length) lines.push("");
+        lines.push("【項目の削除】");
+        removedFields.forEach(f => lines.push(
+          `・${f.name}${f.count > 0 ? `（入力済み ${f.count} 件）` : "（データなし）"}`
+        ));
+      }
+
+      const title = hasRemoval
+        ? (hasRename
+            ? `${renamedFields.length}件の名称変更と${removedFields.length}件の削除を保存します`
+            : `${removedFields.length}件のカスタム項目を削除します`)
+        : `${renamedFields.length}件の項目名を変更します`;
+
+      const note = hasRemoval
+        ? (removedFields.some(f => f.count > 0)
+            ? "削除した項目は顧客リストの該当列ごと削除され、入力済みのデータは復元できません。意図した削除かご確認ください。"
+            : "削除した項目は顧客リストから列ごと削除されます。")
+        : "顧客リストの列名を変更するだけで、入力済みのデータはそのまま保持されます。表示設定・媒体連携のマッピングも自動で追従します。";
+
       setConfirmModal({
-        title: `${removedFields.length}件のカスタム項目を削除します`,
-        message: removedFields
-          .map(f => `・${f.name}${f.count > 0 ? `（入力済み ${f.count} 件）` : "（データなし）"}`)
-          .join("\n"),
-        note: withData.length > 0
-          ? "保存すると顧客リストの該当列ごと削除され、入力済みのデータは復元できません。意図した削除かご確認ください。"
-          : "保存すると項目定義が削除されます。",
-        confirmLabel: "削除して保存する",
+        title,
+        message: lines.join("\n"),
+        note,
+        confirmLabel: hasRemoval ? "この内容で保存する" : "名称を変更して保存する",
+        // 削除を含まない場合は破壊的操作ではないため、赤いゴミ箱を出さない
+        confirmColor: hasRemoval ? undefined : THEME.primary,
+        icon:   hasRemoval ? undefined : <Pencil size={26} color={THEME.primary} />,
+        iconBg: hasRemoval ? undefined : "#EEF2FF",
         onConfirm: () => { setConfirmModal(null); doSave(); },
       });
       return;
@@ -206,6 +285,9 @@ export default function FormSettings({ formSettings = [], sheetCustomColumns = [
           message={confirmModal?.message}
           note={confirmModal?.note}
           confirmLabel={confirmModal?.confirmLabel}
+          confirmColor={confirmModal?.confirmColor}
+          icon={confirmModal?.icon}
+          iconBg={confirmModal?.iconBg}
           onConfirm={confirmModal?.onConfirm}
           onCancel={() => setConfirmModal(null)}
         />
