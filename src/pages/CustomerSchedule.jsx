@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { useNavigate, useParams, useLocation } from "react-router-dom";
-import { ArrowLeft, Loader2, Send, CheckCircle2, Trash2, RefreshCw } from "lucide-react";
+import { ArrowLeft, Loader2, Send, CheckCircle2, Trash2, RefreshCw, AlertTriangle } from "lucide-react";
 import { THEME, GAS_URL } from "../lib/constants";
 import { styles } from "../lib/styles";
 import { apiCall, formatDate, smartNormalizePhone } from "../lib/utils";
@@ -26,16 +26,29 @@ function CustomerSchedule({ customers = [], deliveryLogs = [], onRefresh, isLoad
   const [isRefreshing, setIsRefreshing] = useState(false);
 
   // 【ペイロード分離】配信ログは props ではなく getCustomerBundle で顧客単位に取得する
-  const [fetchedLogs, setFetchedLogs] = useState(null);
+  // 【C4-002 / Z-004 横展開】取得失敗を無言で握りつぶすと fetchedLogs が null のままとなり、
+  //   props の deliveryLogs（getAppData はペイロード分離で配信ログを返さない）へフォールバックして
+  //   シートに配信ログがあっても「0件」と表示され、"データが無い" のか "取得に失敗した" のかを
+  //   画面から切り分けられなくなる（GAS の再デプロイ漏れ＝unknown action が典型例）。
+  //   ローディング / エラー / 0件 の3状態を明示的に区別する。CustomerDetail の reloadBundle と同方針。
+  const [fetchedLogs, setFetchedLogs]         = useState(null);
+  const [logsError, setLogsError]             = useState(null);
+  const [isLogsLoading, setIsLogsLoading]     = useState(true);
   const reloadLogs = useCallback(async () => {
     if (!id) return;
+    setIsLogsLoading(true);
     try {
       const res = await apiCall.post(GAS_URL, { action: "getCustomerBundle", customerId: id });
       setFetchedLogs(res?.deliveryLogs || []);
+      setLogsError(null);
     } catch (e) {
       console.warn("[CustomerSchedule] getCustomerBundle 取得失敗", e);
+      setLogsError(e?.message || "配信履歴の取得に失敗しました");
+      showToast("配信履歴の取得に失敗しました（表示が最新でない可能性があります）", "error");
+    } finally {
+      setIsLogsLoading(false);
     }
-  }, [id]);
+  }, [id, showToast]);
   useEffect(() => { reloadLogs(); }, [reloadLogs]);
 
   useEffect(() => {
@@ -163,6 +176,33 @@ function CustomerSchedule({ customers = [], deliveryLogs = [], onRefresh, isLoad
     }
   };
 
+  // ローディング / 取得失敗 / 取得済み の3状態。
+  // 「0件」と表示してよいのは logsState === "ready" のときだけ。
+  const logsState = logsError ? "error" : (fetchedLogs === null ? "loading" : "ready");
+
+  const LogsPlaceholder = ({ label }) => {
+    if (logsState === "loading") {
+      return (
+        <div style={{ padding: "20px", color: THEME.textMuted, fontSize: "14px", textAlign: "center",
+                      display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+          <Loader2 size={16} className="animate-spin" /> 配信履歴を取得中...
+        </div>
+      );
+    }
+    if (logsState === "error") {
+      return (
+        <div style={{ padding: "20px", color: THEME.danger, fontSize: "14px", textAlign: "center" }}>
+          配信履歴を取得できませんでした（0件ではありません）
+        </div>
+      );
+    }
+    return (
+      <div style={{ padding: "20px", color: THEME.textMuted, fontSize: "14px", textAlign: "center" }}>
+        {label}
+      </div>
+    );
+  };
+
   const getBadgeStyle = (status) => {
     if (status === "配信済み") return { backgroundColor: "#D1FAE5", color: THEME.success };
     if (status === "エラー")   return { backgroundColor: "#FEE2E2", color: THEME.danger };
@@ -260,6 +300,42 @@ function CustomerSchedule({ customers = [], deliveryLogs = [], onRefresh, isLoad
     <>
       <Page title="配信状況・履歴" subtitle={`${c["姓"]} ${c["名"]} 様`}>
 
+        {/* ── 【C4-002】配信履歴の取得失敗バナー ──
+            取得に失敗したまま「履歴はありません」と出すと、実データの有無と切り分けできないため明示する ── */}
+        {logsState === "error" && (
+          <div style={{
+            display: "flex", alignItems: "center", justifyContent: "space-between",
+            backgroundColor: "#FEF2F2", border: "1px solid #FECACA",
+            borderRadius: "12px", padding: "14px 20px", marginBottom: "24px", gap: 12,
+          }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <AlertTriangle size={20} color={THEME.danger} />
+              <div>
+                <p style={{ margin: 0, fontWeight: 800, fontSize: 14, color: "#991B1B" }}>
+                  配信履歴を取得できませんでした
+                </p>
+                <p style={{ margin: "2px 0 0", fontSize: 12, color: "#B91C1C" }}>
+                  下の一覧は最新ではありません（「0件」ではなく取得エラーです）。{logsError}
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={reloadLogs}
+              disabled={isLogsLoading}
+              style={{
+                display: "flex", alignItems: "center", gap: 6,
+                background: "none", border: `1px solid ${THEME.danger}`,
+                borderRadius: 8, padding: "6px 14px", cursor: "pointer",
+                color: THEME.danger, fontSize: 12, fontWeight: 800, flexShrink: 0,
+              }}
+            >
+              {isLogsLoading
+                ? <Loader2 size={12} className="animate-spin" />
+                : <><RefreshCw size={12} /> 再読込</>}
+            </button>
+          </div>
+        )}
+
         {/* ── 登録直後 成功バナー ── */}
         {showSuccess && (
           <div style={{
@@ -324,6 +400,9 @@ function CustomerSchedule({ customers = [], deliveryLogs = [], onRefresh, isLoad
                 .map((cl) => <LogCard key={cl["ログID"]} l={cl} isNested={true} />)}
             </div>
           ))}
+          {scenarioParentLogs.length === 0 && (
+            <LogsPlaceholder label="シナリオ配信の履歴はありません" />
+          )}
 
           <h3 style={{
             fontSize: "18px", marginTop: "48px", marginBottom: "20px",
@@ -335,9 +414,7 @@ function CustomerSchedule({ customers = [], deliveryLogs = [], onRefresh, isLoad
           <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
             {pureIndividualLogs.map((il) => <LogCard key={il["ログID"]} l={il} />)}
             {pureIndividualLogs.length === 0 && (
-              <div style={{ padding: "20px", color: THEME.textMuted, fontSize: "14px", textAlign: "center" }}>
-                個別メッセージの履歴はありません
-              </div>
+              <LogsPlaceholder label="個別メッセージの履歴はありません" />
             )}
           </div>
         </div>
