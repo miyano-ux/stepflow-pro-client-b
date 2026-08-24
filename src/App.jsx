@@ -325,7 +325,11 @@ function App() {
 
               {/* 設定 */}
               <Route path="/column-settings" element={<ColumnSettings displaySettings={displaySettings} formSettings={d?.formSettings} onSaveDisplaySettings={saveDisplaySettings} onRefresh={refresh} gasUrl={GAS_URL} />} />
-              <Route path="/form-settings" element={<FormSettings formSettings={d?.formSettings} sheetCustomColumns={d?.sheetCustomColumns || []} onRefresh={refresh} />} />
+              {/* 【G2-014】isLoading / customers 未伝播だと FormSettings 側の安全装置が無効化される。
+                  ・isLoading: 取得完了前に保存すると items=[] のまま saveFormSettings が飛び、
+                    GAS が顧客シートのカスタム列ごと削除する（FormSettings.jsx handleSave のガード）。
+                  ・customers: 削除確認モーダルの「入力済み N 件」が常に 0 件表示になる。 */}
+              <Route path="/form-settings" element={<FormSettings formSettings={d?.formSettings} sheetCustomColumns={d?.sheetCustomColumns || []} customers={d?.customers} isLoading={load} onRefresh={refresh} />} />
               <Route path="/sources" element={<SourceManager sources={d?.sources} onRefresh={refresh} gasUrl={GAS_URL} isLoading={load} />} />
               <Route path="/contract-types" element={<ContractTypeManager contractTypes={d?.contractTypes} onRefresh={refresh} gasUrl={GAS_URL} />} />
               <Route path="/master-settings" element={<MasterSettings isLoading={load} statuses={d?.statuses} sources={d?.sources} contractTypes={d?.contractTypes} scenarios={d?.scenarios} />} />

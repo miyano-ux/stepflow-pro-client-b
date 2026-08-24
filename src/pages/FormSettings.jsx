@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from "react"
 import { useNavigate, useLocation } from "react-router-dom";
 import {
   Lock, Trash2, Plus, ChevronDown, ChevronUp,
-  Type, Calendar, List, ToggleLeft, ToggleRight, GripVertical, X, CheckCircle2
+  Type, Calendar, List, ToggleLeft, ToggleRight, GripVertical, X, CheckCircle2, Loader2
 } from "lucide-react";
 import { THEME, GAS_URL } from "../lib/constants";
 import { styles } from "../lib/styles";
@@ -66,6 +66,20 @@ export default function FormSettings({ formSettings = [], sheetCustomColumns = [
     setItems(buildItems(formSettings));
   }, [formSettings]);
 
+  // ── 【G2-014】画面離脱後の強制遷移を防ぐ生存フラグ ──────────────
+  // 保存後の onRefresh()（App.jsx refresh＝全件GET・最大3リトライ）は数秒〜数十秒
+  // かかることがある。react-router v7 の navigate はアンマウント後も無効化されない
+  // ため、待機中にユーザーが「新規登録」等へ移動していると、完了時に nav(backTo) が
+  // 発火して作業中の画面から管理項目設定へ引き戻してしまう。
+  // 「完了表示」「画面遷移」「state 更新」はすべてこのフラグの確認後に行う。
+  // ※ StrictMode（開発時）は mount→cleanup→mount と二重実行されるため、
+  //   マウント時に必ず true へ戻してから cleanup を登録する。
+  const aliveRef = useRef(true);
+  useEffect(() => {
+    aliveRef.current = true;
+    return () => { aliveRef.current = false; };
+  }, []);
+
   // ── 【G2-012】削除対象の項目とその影響件数 ──────────────────────
   // カスタム項目は「名称」で顧客シートの列と紐づき、定義から消すと GAS が
   // 顧客シートの該当列ごと削除する（gas_updated.js:1001-1015）。
@@ -118,14 +132,30 @@ export default function FormSettings({ formSettings = [], sheetCustomColumns = [
     setSaved(false);
     try {
       await apiCall.post(GAS_URL, { action: "saveFormSettings", settings });
-      setSaved(true);
+
+      // 【G2-014】GAS への保存が終わっても、画面側の formSettings は onRefresh 完了まで
+      // 古いまま。「同期完了！」はここではなく再取得の後に出す（先に出すとユーザーが
+      // 完了と誤認して別ページへ移動し、遅れて発火する nav に引き戻される）。
       if (onRefresh) await onRefresh();
+
+      // 【G2-014】待機中に別ページへ移動済みなら、遷移も state 更新も行わない。
+      // 保存自体は成功しているのでトーストだけで結果を伝える。
+      if (!aliveRef.current) {
+        showToast("登録項目の保存が完了しました", "success");
+        return;
+      }
+
+      setSaved(true);
       nav(backTo);
     } catch (err) {
       console.error("saveFormSettings error:", err);
-      showToast("保存に失敗しました: " + (err?.message || "不明なエラー"), "error");
+      if (aliveRef.current) {
+        showToast("保存に失敗しました: " + (err?.message || "不明なエラー"), "error");
+      } else {
+        showToast("登録項目の保存に失敗しました。設定画面で再度お試しください", "error");
+      }
     } finally {
-      setSaving(false);
+      if (aliveRef.current) setSaving(false);
     }
   };
 
@@ -352,20 +382,29 @@ export default function FormSettings({ formSettings = [], sheetCustomColumns = [
         </div>
 
         {/* 保存ボタン */}
+        {/* 【G2-014】「同期完了！」は onRefresh 後にしか立たない（doSave 参照）。
+            待機中は所要時間と離脱時の挙動を明示して、誤認による離脱を減らす。 */}
         <button
           onClick={handleSave}
           disabled={saving || isLoading}
-          style={{ ...styles.btn, ...styles.btnPrimary, width: "100%", marginTop: 40, height: 52, fontSize: 15, opacity: saving ? 0.7 : 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 10 }}
+          style={{ ...styles.btn, ...styles.btnPrimary, width: "100%", marginTop: 40, height: 52, fontSize: 15, opacity: (saving || isLoading) ? 0.7 : 1, cursor: (saving || isLoading) ? "not-allowed" : "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 10 }}
         >
           {isLoading
             ? "読み込み中..."
             : saved
               ? <><CheckCircle2 size={18} /> 同期完了！</>
               : saving
-                ? "同期中..."
+                ? <><Loader2 size={18} style={{ animation: "spin 1s linear infinite" }} /> 同期中...</>
                 : "データに同期して保存"
           }
         </button>
+
+        {saving && (
+          <p style={{ marginTop: 12, fontSize: 12, color: THEME.textMuted, textAlign: "center", lineHeight: 1.7 }}>
+            保存内容を顧客リストへ反映し、最新データを再取得しています（数秒〜十数秒かかる場合があります）。<br />
+            このまま他の画面へ移動しても保存は継続されます。
+          </p>
+        )}
       </div>
     </Page>
   );
