@@ -10,6 +10,8 @@ import { jwtDecode } from "jwt-decode";
 import { CLIENT_COMPANY_NAME, GAS_URL, MASTER_WHITELIST_API, GOOGLE_CLIENT_ID, THEME } from "./lib/constants";
 import { globalStyle, styles } from "./lib/styles";
 import { apiCall } from "./lib/utils";
+import { fromColumnar } from "./lib/columnar";   // 【高速化 B】列指向 → オブジェクト配列
+import { appCache } from "./lib/appCache";       // 【高速化 E】IndexedDB stale-while-revalidate
 
 // ── components ───────────────────────────────────
 import Sidebar from "./components/Sidebar";
@@ -118,6 +120,9 @@ function App() {
 
   const [load, setLoad] = useState(true);
   const [loadError, setLoadError] = useState(false);
+  // 【高速化 E】最終更新時刻 / 前回データ表示中フラグ
+  const [lastUpdated, setLastUpdated] = useState(null);
+  const [fromCache,   setFromCache]   = useState(false);
   const [user, setUser] = useState(() => {
     const sUser = localStorage.getItem("sf_user");
     return sUser ? JSON.parse(sUser) : null;
@@ -161,11 +166,19 @@ function App() {
         if (!data || typeof data !== "object" || Array.isArray(data)) {
           throw new Error("GASレスポンスが想定形式(JSON)ではありません");
         }
+        // 【高速化 B】列指向 {headers, rows} を受信直後に復元（以降のコンポーネントは無改修）
+        //   getCustomers（lightRefresh）や旧GASの配列形もそのまま通る
+        data.customers  = fromColumnar(data.customers,  { idFrom: "顧客ID" });
+        data.properties = fromColumnar(data.properties);
         if (data.statuses) {
           data.statuses = [...data.statuses].sort((a, b) => (Number(a.order) || 0) - (Number(b.order) || 0));
         }
         setD(data);
         setLoadError(false);
+        // 【高速化 E】復元済みの d を次回起動用に保存（ユーザー単位キー）
+        setLastUpdated(Date.now());
+        setFromCache(false);
+        appCache.set(getUserEmail(), data);
         // 別PC/別ブラウザからの復元：localStorage に無ければ GAS の設定を採用し、
         // 以後は即時反映できるよう localStorage にも書き戻す
         const local = getDisplaySettings();
@@ -222,8 +235,24 @@ function App() {
     }));
   }, []);
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { refresh(); }, []);
+  // 【高速化 E】起動時: IndexedDB の前回データがあれば即描画 → 裏で refresh()
+  //   ログイン直後（user.email が入った時）もこの effect が拾う
+  useEffect(() => {
+    if (!user?.email) return;
+    let cancelled = false;
+    (async () => {
+      const hit = await appCache.get(user.email);
+      if (!cancelled && hit?.d) {
+        setD(hit.d);
+        setLastUpdated(hit.savedAt);
+        setFromCache(true);
+        setLoad(false);
+      }
+      refresh();
+    })();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.email]);
 
   // ── 未ログイン：ログイン画面 ──────────────────
   if (!user) {
@@ -255,7 +284,7 @@ function App() {
                   userRef.current = dec;
                   setUser(dec);
                   localStorage.setItem("sf_user", JSON.stringify(dec));
-                  refresh();
+                  // refresh() は user.email を監視する起動 effect（高速化 E）が実行する
                 }}
                 onError={() => setAuthError("Googleログインに失敗しました。再度お試しください。")}
               />
@@ -272,7 +301,8 @@ function App() {
   }
 
   // ── GAS 接続エラー画面 ────────────────────────
-  if (loadError) {
+  // 【高速化 E】前回データを表示できている場合はエラー画面に落とさない（バッジで「最新化に失敗」を表示）
+  if (loadError && !fromCache) {
     return (
       <div style={{ height: "100vh", display: "flex", alignItems: "center", justifyContent: "center", backgroundColor: THEME.bg, padding: 24 }}>
         <div style={{ maxWidth: 480, width: "100%", backgroundColor: "white", borderRadius: 16, padding: "40px 32px", textAlign: "center", boxShadow: "0 10px 25px -5px rgba(0,0,0,0.1)" }}>
@@ -307,10 +337,21 @@ function App() {
           {/* サイドバー */}
           <Sidebar
             onLogout={() => {
+              appCache.del(user?.email);   // 【高速化 E】前回データ破棄
               setUser(null);
               localStorage.removeItem("sf_user");
             }}
           />
+
+          {/* 【高速化 E】最終更新バッジ */}
+          {lastUpdated && (
+            <div style={{ position: "fixed", right: 12, bottom: 8, zIndex: 50, fontSize: 11, color: THEME.textMuted,
+                          background: "rgba(255,255,255,.9)", padding: "2px 8px", borderRadius: 6, pointerEvents: "none" }}>
+              最終更新 {new Date(lastUpdated).toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" })}
+              {fromCache && !loadError && "（更新中…）"}
+              {loadError && "・最新化に失敗"}
+            </div>
+          )}
 
           {/* メインコンテンツ */}
           <AnimatedMain isMobile={isMobile}>
