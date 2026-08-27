@@ -1,8 +1,9 @@
-import React from "react";
+import React, { useEffect } from "react";
 import { Link } from "react-router-dom";
 import { BarChart3, GitBranch, Trash2, Activity, ChevronRight } from "lucide-react";
 import { THEME } from "../lib/constants";
 import { useWindowWidth } from "../lib/useWindowWidth";
+import { prefetchReports } from "../lib/reportCache";   // 【レポート高速化】
 
 const REPORTS = [
   {
@@ -37,6 +38,8 @@ const REPORTS = [
 
 export default function ReportIndex() {
   const { isMobile } = useWindowWidth();
+  // 【レポート高速化】入口を開いた時点で3レポートぶんの集計を一括プリフェッチ
+  useEffect(() => { prefetchReports(); }, []);
   return (
     <div style={{ minHeight: "100vh", backgroundColor: THEME.bg, padding: isMobile ? "20px 16px" : "48px 64px", boxSizing: "border-box" }}>
       <div style={{ maxWidth: 780, margin: "0 auto" }}>

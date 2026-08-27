@@ -6,6 +6,7 @@ import {
 import { THEME, GAS_URL } from "../lib/constants";
 import { useWindowWidth } from "../lib/useWindowWidth";
 import { formatDate, downloadCSV, smsUnits, apiCall } from "../lib/utils";
+import { useReport } from "../lib/useReport";   // 【レポート高速化】
 
 // ==========================================
 // 📊 SMS配信レポート
@@ -75,8 +76,6 @@ const isManualSms = (log) => {
 
 export default function SmsUsageReport({ isLoading = false, deliveryLogs = [], customers = [] }) {
   // 【サーバサイド集計】全件取得はやめ、GAS で集計済みのサマリーを取得する
-  const [summary, setSummary]               = useState(null);
-  const [summaryLoading, setSummaryLoading] = useState(true);
   const [monthDetail, setMonthDetail]       = useState({ key: null, logs: [], loading: false });
 
 
@@ -85,19 +84,8 @@ export default function SmsUsageReport({ isLoading = false, deliveryLogs = [], c
   const [openMonth, setOpenMonth]   = useState(null); // ドリルダウン対象の月キー
   const [showRanges, setShowRanges] = useState(false);
 
-  // range 変更のたびにサーバ集計サマリーを取得
-  useEffect(() => {
-    let alive = true;
-    setSummaryLoading(true);
-    (async () => {
-      try {
-        const res = await apiCall.post(GAS_URL, { action: "getSmsUsageSummary", range });
-        if (alive && res) setSummary(res);
-      } catch (e) { console.warn("[SmsUsageReport] getSmsUsageSummary 取得失敗", e); }
-      finally { if (alive) setSummaryLoading(false); }
-    })();
-    return () => { alive = false; };
-  }, [range]);
+  // 【レポート高速化】range 変更のたびにサーバ集計サマリーを取得（フロントキャッシュ優先・裏で更新）
+  const { data: summary, loading: summaryLoading } = useReport("getSmsUsageSummary", { range });
 
   // ドリルダウン：月を開いたらその月の配信明細だけを取得
   useEffect(() => {

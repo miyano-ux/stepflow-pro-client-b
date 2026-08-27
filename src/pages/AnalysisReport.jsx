@@ -5,6 +5,7 @@ import { THEME as APP_THEME, GAS_URL } from "../lib/constants";
 import { StaffDropdown } from "../components/StaffDropdown";
 import { useWindowWidth } from "../lib/useWindowWidth";
 import { apiCall } from "../lib/utils";
+import { useReport } from "../lib/useReport";   // 【レポート高速化】
 
 const THEME = { ...APP_THEME, colors: ["#4F46E5","#6366F1","#818CF8","#A5B4FC","#C7D2FE","#E0E7FF"] };
 
@@ -224,26 +225,9 @@ export default function AnalysisReport({ customers = [], statuses = [], tracking
   //   クライアント側で計算していたが、getAppData が履歴を返さなくなったため、
   //   マウント時に getAnalysisSummary を呼び、集計済みの {ステータス名: 平均日数} を受け取る。
   //   集計仕様（0〜365日で隣接イベント差分を平均）は GAS 側と一致。結果は GAS で10分キャッシュ。
-  const [avgDaysMap, setAvgDaysMap] = useState({});
-  const [loadingSummary, setLoadingSummary] = useState(true);
-  const [summaryError, setSummaryError]     = useState(false);
-  useEffect(() => {
-    let alive = true;
-    setLoadingSummary(true);
-    setSummaryError(false);
-    (async () => {
-      try {
-        const res = await apiCall.post(GAS_URL, { action: "getAnalysisSummary" });
-        if (alive) setAvgDaysMap(res?.avgDaysMap || {});
-      } catch (e) {
-        console.warn("[AnalysisReport] getAnalysisSummary 取得失敗", e);
-        if (alive) setSummaryError(true);
-      } finally {
-        if (alive) setLoadingSummary(false);
-      }
-    })();
-    return () => { alive = false; };
-  }, []);
+  //   【レポート高速化】フロントキャッシュ（プリフェッチ済みなら即描画）＋裏で更新
+  const { data: summaryRes, loading: loadingSummary, error: summaryError } = useReport("getAnalysisSummary", {});
+  const avgDaysMap = summaryRes?.avgDaysMap || {};
 
   const phaseTransitions = useMemo(() =>
     chartStatuses

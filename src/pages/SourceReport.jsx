@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { GitBranch, ChevronLeft, Loader2 } from "lucide-react";
 import { THEME as APP_THEME, GAS_URL } from "../lib/constants";
 import { apiCall } from "../lib/utils";
+import { useReport } from "../lib/useReport";   // 【レポート高速化】
 import { useWindowWidth } from "../lib/useWindowWidth";
 
 const THEME = APP_THEME;
@@ -207,28 +208,10 @@ export default function SourceReport({
 }) {
 
   // 【ペイロード分離】statusHistory は props ではなくマウント時に個別取得（全件）
-  const [fetchedWonEntries, setFetchedWonEntries] = useState(null);
-  const [loadingWon, setLoadingWon] = useState(true);
-  const [wonError, setWonError]     = useState(false);
-  useEffect(() => {
-    let alive = true;
-    setLoadingWon(true);
-    setWonError(false);
-    (async () => {
-      try {
-        // 【E3-009】GAS 側は成約履歴を600秒キャッシュする。画面を開いた時点の
-        //   最新値を必ず見せるため、レポートを開いたときだけ force で読み直す。
-        const res = await apiCall.post(GAS_URL, { action: "getSourceWonEntries", force: true });
-        if (alive) setFetchedWonEntries(res?.wonEntries || []);
-      } catch (e) {
-        console.warn("[SourceReport] getSourceWonEntries 取得失敗", e);
-        if (alive) setWonError(true);
-      } finally {
-        if (alive) setLoadingWon(false);
-      }
-    })();
-    return () => { alive = false; };
-  }, []);
+  //   【レポート高速化】force:true を廃止。GAS 側キャッシュは appendStatusHistory /
+  //   削除・バックフィル時にイベント駆動で破棄されるため、毎回の全件再読込は不要。
+  const { data: wonRes, loading: loadingWon, error: wonError } = useReport("getSourceWonEntries", {});
+  const fetchedWonEntries = wonRes ? (wonRes.wonEntries || []) : null;
 
   const navigate = useNavigate();
   const { isMobile } = useWindowWidth();

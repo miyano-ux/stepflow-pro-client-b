@@ -12,6 +12,7 @@ import { globalStyle, styles } from "./lib/styles";
 import { apiCall } from "./lib/utils";
 import { fromColumnar } from "./lib/columnar";   // 【高速化 B】列指向 → オブジェクト配列
 import { appCache } from "./lib/appCache";       // 【高速化 E】IndexedDB stale-while-revalidate
+import { prefetchReports, invalidateReports } from "./lib/reportCache";   // 【レポート高速化】
 
 // ── components ───────────────────────────────────
 import Sidebar from "./components/Sidebar";
@@ -179,6 +180,9 @@ function App() {
         setLastUpdated(Date.now());
         setFromCache(false);
         appCache.set(getUserEmail(), data);
+        // 【レポート高速化】初回データ確定後、アイドル時にレポート集計を温める（失敗は無視）
+        const idle = window.requestIdleCallback || ((fn) => setTimeout(fn, 1500));
+        idle(() => prefetchReports());
         // 別PC/別ブラウザからの復元：localStorage に無ければ GAS の設定を採用し、
         // 以後は即時反映できるよう localStorage にも書き戻す
         const local = getDisplaySettings();
@@ -338,6 +342,7 @@ function App() {
           <Sidebar
             onLogout={() => {
               appCache.del(user?.email);   // 【高速化 E】前回データ破棄
+              invalidateReports();         // 【レポート高速化】メモリキャッシュ破棄
               setUser(null);
               localStorage.removeItem("sf_user");
             }}
