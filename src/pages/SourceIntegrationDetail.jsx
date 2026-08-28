@@ -331,17 +331,29 @@ export default function SourceIntegrationDetail({
   //   🔧 ガードは「媒体キー単位」で持つ。同じ /source-integrations/:sourceKey
   //      ルート内で媒体を切り替えてもコンポーネントは再マウントされないため、
   //      boolean のままだと切替後に前の媒体の値が残ったままになる。
+  //   🔧【D1-012】ガードを「媒体キー単位」から「媒体キー＋サーバー値のシグネチャ」に変更。
+  //      従来は最初に届いたデータ（多くは IndexedDB の保存前スナップショット）で一度
+  //      ハイドレートすると、直後に refresh() が持ち帰る最新データ（保存済みルールを含む）
+  //      が届いても二度と再同期されず、「保存したのに再読込で未設定に戻る」ように見えていた。
+  //      サーバー値が変わった時だけ再同期するので、ユーザー編集中に同一データで
+  //      上書きされることはない（StatusSettings 等の props 追従型と同じ挙動に揃える）。
   const hydratedRef = useRef(null);
   useEffect(() => {
-    if (hydratedRef.current === sourceKey) return;
+    const rule        = (sourceIntegrations || []).find(r => r["sourceKey"] === sourceKey) || {};
+    const mappingRows = (fieldMappings && fieldMappings[sourceKey]) || [];
+    const hydrateKey  = sourceKey + "|" + JSON.stringify([
+      rule["流入元"] ?? null, rule["対応ステータス"] ?? null,
+      rule["担当者メール"] ?? null, rule["シナリオID"] ?? null,
+      rule["通知先ユーザー"] ?? null, rule["通知文言"] ?? null,
+      mappingRows, (sourceLoginIds && sourceLoginIds[sourceKey]) || "",
+    ]);
+    if (hydratedRef.current === hydrateKey) return;
     const arrived =
       (sourceIntegrations && sourceIntegrations.length > 0) ||
       (fieldMappings  && Object.keys(fieldMappings).length  > 0) ||
       (sourceLoginIds && Object.keys(sourceLoginIds).length > 0);
     if (!arrived) return;   // まだ取得前
-    hydratedRef.current = sourceKey;
-
-    const rule = (sourceIntegrations || []).find(r => r["sourceKey"] === sourceKey) || {};
+    hydratedRef.current = hydrateKey;
 
     setRuleForm({
       source:     rule["流入元"]         || src.name,
