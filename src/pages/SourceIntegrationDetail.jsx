@@ -724,12 +724,21 @@ export default function SourceIntegrationDetail({
         <div style={S.row(isMobile)}>
           <div>
             <LabelText>流入元</LabelText>
-            <input
-              style={S.input}
-              type="text"
-              placeholder={src.name}
+            {/* 🔧【D1-xxx】フリーテキスト入力 → 流入元管理（/sources）で定義済みの
+                選択肢からのプルダウン選択に変更（CustomerForm / GmailSettings と同方式）。
+                保存済み・デフォルト値が流入元管理に未登録の場合も表示が消えないよう
+                「（未登録）」付きで選択肢に残す（流入元管理への登録を促す）。 */}
+            <CustomSelect
               value={ruleForm.source}
-              onChange={e => setRuleForm(p => ({ ...p, source: e.target.value }))}
+              onChange={v => setRuleForm(p => ({ ...p, source: v }))}
+              placeholder="未設定"
+              options={[
+                { value: "", label: "未設定" },
+                ...(sources || []).map(s => ({ value: s.name, label: s.name })),
+                ...(ruleForm.source && !(sources || []).some(s => s.name === ruleForm.source)
+                  ? [{ value: ruleForm.source, label: `${ruleForm.source}（未登録）` }]
+                  : []),
+              ]}
             />
           </div>
           <div>
