@@ -28,6 +28,29 @@ const formatDate = (v) => {
   return `${d.getFullYear()}/${p(d.getMonth()+1)}/${p(d.getDate())}`;
 };
 
+// 【B1-046】再アプローチ予定バッジ（休眠リスト専用）
+// scheduleDormantReapproach が顧客リストに書いた「再アプローチ予定日」と
+// 「再アプローチ先ステータス」を表示する。予定日到来時にタイマー
+// （executeSmsDeliveryQueue → applyDueReapproachStatusChanges_）が
+// 対応ステータスを復帰先へ自動変更する。
+function ReapproachBadge({ customer, compact = false }) {
+  const due  = customer["再アプローチ予定日"];
+  const next = String(customer["再アプローチ先ステータス"] || "").trim();
+  if (!due) return compact ? null : <span style={{ color: THEME.textMuted, fontSize: 13 }}>-</span>;
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 3, alignItems: "flex-start" }}>
+      <span style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 12, fontWeight: 700, color: "#92400E" }}>
+        <Calendar size={12} /> {formatDate(due)}
+      </span>
+      {next && (
+        <span style={{ fontSize: 11, backgroundColor: "#FFFBEB", color: "#D97706", border: "1px solid #FDE68A", padding: "2px 8px", borderRadius: 6, fontWeight: 800, whiteSpace: "nowrap" }}>
+          → {next} へ復帰
+        </span>
+      )}
+    </div>
+  );
+}
+
 export default function CustomerStatusList({ customers = [], statuses = [], staffList = [] }) {
   const { type, name } = useParams(); // type: "won"|"dormant"|"lost" | name: encodeURIComponent(ステータス名)
   const navigate = useNavigate();
@@ -54,12 +77,19 @@ export default function CustomerStatusList({ customers = [], statuses = [], staf
     : (PAGE_CONFIG[terminalType] ? terminalType : "default");
   const config = PAGE_CONFIG[configKey];
 
+  // 【B1-046】休眠リストのみ「再アプローチ予定」列を表示する
+  const isDormantList = terminalType === "dormant";
+
   const list = useMemo(() =>
     customers.filter((c) => (c["対応ステータス"] || "").trim() === (targetLabel || "").trim()),
     [customers, targetLabel]
   );
 
   const { isMobile } = useWindowWidth();
+
+  const tableHeaders = isDormantList
+    ? ["顧客名", "対応ステータス", "担当者", "シナリオ", "再アプローチ予定", "登録日", "操作"]
+    : ["顧客名", "対応ステータス", "担当者", "シナリオ", "登録日", "操作"];
 
   return (
     <div style={{ minHeight: "100vh", backgroundColor: THEME.bg }}>
@@ -126,6 +156,18 @@ export default function CustomerStatusList({ customers = [], statuses = [], staf
                       <Calendar size={13} /> {formatDate(c["登録日"])}
                     </span>
                   </div>
+                  {/* 【B1-046】再アプローチ予定（休眠リストのみ・予定がある顧客のみ） */}
+                  {isDormantList && c["再アプローチ予定日"] && (
+                    <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 8, backgroundColor: "#FFFBEB", border: "1px solid #FDE68A", borderRadius: 8, padding: "7px 10px", marginBottom: 10 }}>
+                      <span style={{ fontSize: 11, fontWeight: 800, color: "#92400E" }}>🔁 再アプローチ {formatDate(c["再アプローチ予定日"])}</span>
+                      {c["シナリオID"] && (
+                        <span style={{ fontSize: 11, fontWeight: 700, color: "#D97706" }}>「{c["シナリオID"]}」</span>
+                      )}
+                      {String(c["再アプローチ先ステータス"] || "").trim() && (
+                        <span style={{ fontSize: 11, fontWeight: 800, color: "#D97706" }}>→ {c["再アプローチ先ステータス"]} へ復帰</span>
+                      )}
+                    </div>
+                  )}
                   <div style={{ display: "flex", gap: 8 }}>
                     <Link to={`/detail/${c.id}`} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 4, padding: "7px", backgroundColor: "#EEF2FF", color: THEME.primary, borderRadius: 8, fontWeight: 800, fontSize: 13, textDecoration: "none" }}>
                       <ExternalLink size={13} /> 詳細
@@ -144,7 +186,7 @@ export default function CustomerStatusList({ customers = [], statuses = [], staf
             <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: 0 }}>
               <thead>
                 <tr style={{ backgroundColor: "#F8FAFC" }}>
-                  {["顧客名", "対応ステータス", "担当者", "シナリオ", "登録日", "操作"].map((h) => (
+                  {tableHeaders.map((h) => (
                     <th key={h} style={{ padding: "14px 20px", fontSize: 11, fontWeight: 800, color: THEME.textMuted, textAlign: "left", borderBottom: `1px solid ${THEME.border}`, textTransform: "uppercase", letterSpacing: "0.05em" }}>
                       {h}
                     </th>
@@ -187,6 +229,12 @@ export default function CustomerStatusList({ customers = [], statuses = [], staf
                           {c["シナリオID"] || "-"}
                         </span>
                       </td>
+                      {/* 【B1-046】再アプローチ予定（休眠リストのみ） */}
+                      {isDormantList && (
+                        <td style={{ padding: "16px 20px", borderBottom: `1px solid ${THEME.border}` }}>
+                          <ReapproachBadge customer={c} />
+                        </td>
+                      )}
                       <td style={{ padding: "16px 20px", borderBottom: `1px solid ${THEME.border}` }}>
                         <div style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 13, color: THEME.textMuted }}>
                           <Calendar size={13} /> {formatDate(c["登録日"])}

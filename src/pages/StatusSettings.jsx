@@ -210,7 +210,7 @@ function ContractRow({ s, idx, total, scenarios, onChange, onDelete, onDragStart
 }
 
 // ── 終点ステータス行 ──────────────────────────────────
-function TerminalRow({ row, idx, scenarios, usedScenarios, onChange, onDelete }) {
+function TerminalRow({ row, idx, scenarios, usedScenarios, flowStatusNames = [], onChange, onDelete }) {
   const { isMobile } = useWindowWidth();
   const meta = TERMINAL_META[row.terminalType] || TERMINAL_META.dormant;
   const { icon, color, bg, canDelete, canRename, hasPlacement } = meta;
@@ -376,13 +376,32 @@ function TerminalRow({ row, idx, scenarios, usedScenarios, onChange, onDelete })
                     />
                   </div>
                 )}
+                {/* 【B1-046】復帰先ステータス：再アプローチ（シナリオ配信開始）と同時に
+                    自動で変更する対応ステータスの事前設定。カンバンの休眠モーダルの初期値になる。
+                    選択肢は通常フローのステータスのみ（契約固定 isFixed は受託情報の入力を伴うため対象外）。 */}
+                {(row.reapproachMonths || 0) > 0 && !!row.reapproachScenarioId && (
+                  <div style={isMobile ? { width: "100%", boxSizing: "border-box" } : { minWidth: 220 }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: THEME.textMuted, marginBottom: 6 }}>復帰先ステータス</div>
+                    <CustomSelect
+                      value={row.reapproachNextStatus || ""}
+                      onChange={v => onChange(idx, "reapproachNextStatus", v)}
+                      color={color}
+                      options={[
+                        { value: "", label: "選択してください" },
+                        ...flowStatusNames.map(name => ({ value: name, label: name }))
+                      ]}
+                    />
+                  </div>
+                )}
               </div>
               <div style={{ fontSize: 11, color: THEME.textMuted, marginTop: 8, lineHeight: 1.6 }}>
                 {(row.reapproachMonths || 0) === 0
                   ? "「なし」の場合、カンバンでこのステータスに移しても再アプローチは予約されません。"
                   : !row.reapproachScenarioId
                     ? "適用シナリオを選択すると、カンバンでこのステータスに移したとき再アプローチが予約されます。"
-                    : `カンバンでこのステータスに移すと、${row.reapproachMonths}ヶ月後にシナリオ「${row.reapproachScenarioId}」が自動で予約されます。`}
+                    : !row.reapproachNextStatus
+                      ? `カンバンでこのステータスに移すと、${row.reapproachMonths}ヶ月後にシナリオ「${row.reapproachScenarioId}」が自動で予約されます。復帰先ステータスも選ぶと、配信開始と同時にステータスが自動で変更されます（カンバンの確認モーダルでは復帰先の選択が必須です）。`
+                      : `カンバンでこのステータスに移すと、${row.reapproachMonths}ヶ月後にシナリオ「${row.reapproachScenarioId}」が自動で予約され、配信開始と同時にステータスが「${row.reapproachNextStatus}」へ変更されます。`}
               </div>
             </div>
           )}
@@ -455,7 +474,7 @@ export default function StatusSettings({ statuses: statusesProp = [], scenarios 
       //   ペイロードに残っていても保存内容には影響しない）
       setFlowRows(flows.map(s => ({ ...s, _originalName: s.name })));
 
-      const termArr = terminals.map(s => ({ placement: "bottom", reapproachMonths: 0, reapproachScenarioId: "", ...s, _originalName: s.name }));
+      const termArr = terminals.map(s => ({ placement: "bottom", reapproachMonths: 0, reapproachScenarioId: "", reapproachNextStatus: "", ...s, _originalName: s.name }));
       // 必須ステータスが存在しない場合は補完
       if (!termArr.some(s => s.terminalType === "won"))
         termArr.push({ name: "成約", terminalType: "won", placement: "bottom", scenarioId: "", reportArrival: false, reportCount: true });
@@ -470,7 +489,7 @@ export default function StatusSettings({ statuses: statusesProp = [], scenarios 
         { name: "対応中", terminalType: "", scenarioId: "", reportArrival: false, reportCount: true },
       ]);
       setTerminalRows([
-        { name: "休眠",   terminalType: "dormant",  placement: "bottom", scenarioId: "", reportArrival: false, reportCount: false, reapproachMonths: 0, reapproachScenarioId: "" },
+        { name: "休眠",   terminalType: "dormant",  placement: "bottom", scenarioId: "", reportArrival: false, reportCount: false, reapproachMonths: 0, reapproachScenarioId: "", reapproachNextStatus: "" },
         { name: "成約",   terminalType: "won",      placement: "bottom", scenarioId: "", reportArrival: false, reportCount: true  },
         { name: "失注",   terminalType: "lost",     placement: "bottom", scenarioId: "", reportArrival: false, reportCount: false },
         { name: "除外",   terminalType: "excluded", placement: "right",  scenarioId: "", reportArrival: false, reportCount: false },
@@ -548,16 +567,32 @@ export default function StatusSettings({ statuses: statusesProp = [], scenarios 
     });
   };
   const handleTerminalAdd    = () => {
-    setTerminalRows(prev => [...prev, { name: "終点", terminalType: "dormant", placement: "bottom", scenarioId: "", reportArrival: false, reportCount: false, reapproachMonths: 0, reapproachScenarioId: "" }]);
+    setTerminalRows(prev => [...prev, { name: "終点", terminalType: "dormant", placement: "bottom", scenarioId: "", reportArrival: false, reportCount: false, reapproachMonths: 0, reapproachScenarioId: "", reapproachNextStatus: "" }]);
   };
 
   const usedScenarios = new Set([...flowRows, ...terminalRows].map(r => r.scenarioId).filter(Boolean));
+
+  // 【B1-046】復帰先ステータスの選択肢：通常フローのステータス名のみ
+  //（終点への自動移動は意味がなく、契約固定 isFixed は受託情報の入力を伴うため対象外。
+  //  カンバンの休眠モーダル側の選択肢と同じ条件に揃える）
+  const flowStatusNames = flowRows.filter(r => !r.isFixed).map(r => (r.name || "").trim()).filter(Boolean);
 
   const handleSave = async () => {
     if (flowRows.some(r => !r.name.trim()))     { showToast("ステータス名を入力してください", "warning"); return; }
     if (terminalRows.some(r => !r.name.trim())) { showToast("終点ステータス名を入力してください", "warning"); return; }
     if (!terminalRows.some(r => r.terminalType === "won"))  { showToast("「成約」ステータスは必須です", "warning"); return; }
     if (!terminalRows.some(r => r.terminalType === "lost")) { showToast("「失注」ステータスは必須です", "warning"); return; }
+
+    // 【B1-046】復帰先ステータスがフロー一覧から消えている（削除・改名・契約化）場合は保存前に弾く。
+    // 宙吊りの名前を保存すると、GAS 側の実在チェックで休眠モーダルの確定が失敗するようになるため。
+    const badNext = terminalRows.find(r =>
+      r.terminalType === "dormant" && (r.reapproachNextStatus || "").trim() &&
+      !flowStatusNames.includes((r.reapproachNextStatus || "").trim())
+    );
+    if (badNext) {
+      showToast(`「${badNext.name}」の復帰先ステータス「${badNext.reapproachNextStatus}」が通常フローに存在しません。選び直してください。`, "warning");
+      return;
+    }
 
     const allRows = [...flowRows, ...terminalRows];
 
@@ -715,7 +750,7 @@ export default function StatusSettings({ statuses: statusesProp = [], scenarios 
           addLabel="追加"
         />
         {dormantRows.map(({ r, i }) => (
-          <TerminalRow key={i} row={r} idx={i} scenarios={scenarios} usedScenarios={usedScenarios}
+          <TerminalRow key={i} row={r} idx={i} scenarios={scenarios} usedScenarios={usedScenarios} flowStatusNames={flowStatusNames}
             onChange={handleTerminalChange} onDelete={handleTerminalDelete}
           />
         ))}
@@ -728,7 +763,7 @@ export default function StatusSettings({ statuses: statusesProp = [], scenarios 
       <div style={{ marginBottom: 16 }}>
         <SectionHeader icon={<span>🏆</span>} label="成約ステータス" color="#059669" canAdd={false} />
         {wonRows.map(({ r, i }) => (
-          <TerminalRow key={i} row={r} idx={i} scenarios={scenarios} usedScenarios={usedScenarios}
+          <TerminalRow key={i} row={r} idx={i} scenarios={scenarios} usedScenarios={usedScenarios} flowStatusNames={flowStatusNames}
             onChange={handleTerminalChange} onDelete={handleTerminalDelete}
           />
         ))}
@@ -738,7 +773,7 @@ export default function StatusSettings({ statuses: statusesProp = [], scenarios 
       <div style={{ marginBottom: 16 }}>
         <SectionHeader icon={<Trash size={15} color="#DC2626" />} label="失注ステータス" color="#DC2626" canAdd={false} />
         {lostRows.map(({ r, i }) => (
-          <TerminalRow key={i} row={r} idx={i} scenarios={scenarios} usedScenarios={usedScenarios}
+          <TerminalRow key={i} row={r} idx={i} scenarios={scenarios} usedScenarios={usedScenarios} flowStatusNames={flowStatusNames}
             onChange={handleTerminalChange} onDelete={handleTerminalDelete}
           />
         ))}
@@ -754,7 +789,7 @@ export default function StatusSettings({ statuses: statusesProp = [], scenarios 
           note="カンバン右下コーナーに灰色固定表示されます"
         />
         {excludedRows.map(({ r, i }) => (
-          <TerminalRow key={i} row={r} idx={i} scenarios={scenarios} usedScenarios={usedScenarios}
+          <TerminalRow key={i} row={r} idx={i} scenarios={scenarios} usedScenarios={usedScenarios} flowStatusNames={flowStatusNames}
             onChange={handleTerminalChange} onDelete={handleTerminalDelete}
           />
         ))}
