@@ -316,7 +316,7 @@ function TerminalRow({ row, idx, scenarios, usedScenarios, onChange, onDelete })
                   </span>
                 ))}
                 {(row.lostReasonOptions || []).length === 0 && (
-                  <span style={{ fontSize: 12, color: "#9CA3AF", fontWeight: 600 }}>選択肢が未設定です（設定なしの場合はフリーテキスト入力になります）</span>
+                  <span style={{ fontSize: 12, color: "#9CA3AF", fontWeight: 600 }}>選択肢が未設定です（未設定の場合は既定の選択肢が使われます）</span>
                 )}
               </div>
               <div style={{ display: "flex", gap: 6 }}>

@@ -141,22 +141,35 @@ function DormantModal({ info, scenarios, gasUrl, onDone, onCancel, showToast }) 
   const [scenarioId, setScenarioId] = useState(() => info?.defaultScenarioId || "");
   const [saving, setSaving]       = useState(false);
   if (!info) return null;
+  // 【B1-034】GAS は業務エラー（unknown action・顧客不在 等）を HTTP 200 + { status: "error" } で
+  // 返すため、レスポンス本文の status を必ず判定する（判定しないと、再デプロイ漏れ等で
+  // 予約が1件も作られていなくても成功扱いで進んでしまう）。CustomerDetail.handleSave と同方針。
   const handleConfirm = async () => {
     setSaving(true);
     try {
-      await axios.post(gasUrl, JSON.stringify({ action: "updateStatus", id: info.customerId, status: info.newStatus, applyScenario: "" }), { headers: { "Content-Type": "text/plain;charset=utf-8" } });
+      const upRes  = await axios.post(gasUrl, JSON.stringify({ action: "updateStatus", id: info.customerId, status: info.newStatus, applyScenario: "" }), { headers: { "Content-Type": "text/plain;charset=utf-8" } });
+      const upData = typeof upRes.data === "string" ? JSON.parse(upRes.data) : upRes.data;
+      if (!upData || upData.status !== "success") {
+        throw new Error(upData?.message || "ステータス更新に失敗しました");
+      }
       if (selected?.months > 0 && scenarioId) {
         const res  = await axios.post(gasUrl, JSON.stringify({ action: "scheduleDormantReapproach", id: info.customerId, months: selected.months, scenarioId }), { headers: { "Content-Type": "text/plain;charset=utf-8" } });
         const data = typeof res.data === "string" ? JSON.parse(res.data) : res.data;
+        if (!data || data.status !== "success") {
+          throw new Error(data?.message || "再アプローチ予約の作成に失敗しました");
+        }
         // 【G1-032】シナリオに配信ステップが1件も無い場合、GAS は何も作らずに
         // success を返す（無言の空振り）。予約0件をユーザーに伝える。
-        if (data && Number(data.scheduled) === 0) {
+        if (Number(data.scheduled) === 0) {
           showToast?.(`シナリオ「${scenarioId}」に配信ステップが登録されていないため、再アプローチの予約は作成されませんでした`, "warning");
         }
       }
       onDone();
-    } catch {
-      showToast?.("処理に失敗しました", "error");
+    } catch (e) {
+      // 【B1-034】失敗時はモーダルを開いたままにする。①成功後に②が失敗したケースでも、
+      // 再度「確定する」を押せば updateStatus は同一ステータスの no-op として success を返すため
+      // （gas_updated.js:1951-1953）、予約のみ安全に再試行できる。
+      showToast?.(e?.message || "処理に失敗しました", "error");
     } finally {
       setSaving(false);
     }
@@ -467,7 +480,7 @@ function UketsukeModal({ info, gasUrl, contractTypes, staffList, onDone, onCance
     }
   };
 
-  // ── レンダリング ──────────────────────────────────────
+  // ── レンダリング ──────────────────────────
   return (
     <div style={{ position: "fixed", inset: 0, backgroundColor: "rgba(15,23,42,0.6)", display: "flex", justifyContent: "center", alignItems: "center", zIndex: 2000, backdropFilter: "blur(4px)" }}>
       <div style={{ backgroundColor: "white", borderRadius: 24, padding: "36px 40px", width: 500, boxShadow: "0 24px 48px rgba(0,0,0,0.15)", maxHeight: "90vh", overflowY: "auto" }}>
