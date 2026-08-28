@@ -210,7 +210,7 @@ function ContractRow({ s, idx, total, scenarios, onChange, onDelete, onDragStart
 }
 
 // ── 終点ステータス行 ──────────────────────────────────
-function TerminalRow({ row, idx, scenarios, usedScenarios, flowStatusNames = [], onChange, onDelete }) {
+function TerminalRow({ row, idx, scenarios, usedScenarios, flowStatusNames = [], linkedScenarioByName = {}, onChange, onDelete }) {
   const { isMobile } = useWindowWidth();
   const meta = TERMINAL_META[row.terminalType] || TERMINAL_META.dormant;
   const { icon, color, bg, canDelete, canRename, hasPlacement } = meta;
@@ -362,29 +362,22 @@ function TerminalRow({ row, idx, scenarios, usedScenarios, flowStatusNames = [],
                     })}
                   </div>
                 </div>
-                {(row.reapproachMonths || 0) > 0 && (
-                  <div style={isMobile ? { width: "100%", boxSizing: "border-box" } : { minWidth: 220 }}>
-                    <div style={{ fontSize: 11, fontWeight: 700, color: THEME.textMuted, marginBottom: 6 }}>適用シナリオ</div>
-                    <CustomSelect
-                      value={row.reapproachScenarioId || ""}
-                      onChange={v => onChange(idx, "reapproachScenarioId", v)}
-                      color={color}
-                      options={[
-                        { value: "", label: "シナリオを選択しない" },
-                        ...[...new Set(scenarios.map(sc => sc["シナリオID"]))].filter(Boolean).map(sid => ({ value: sid, label: sid }))
-                      ]}
-                    />
-                  </div>
-                )}
                 {/* 【B1-046】復帰先ステータス：再アプローチ（シナリオ配信開始）と同時に
                     自動で変更する対応ステータスの事前設定。カンバンの休眠モーダルの初期値になる。
-                    選択肢は通常フローのステータスのみ（契約固定 isFixed は受託情報の入力を伴うため対象外）。 */}
-                {(row.reapproachMonths || 0) > 0 && !!row.reapproachScenarioId && (
+                    選択肢は通常フローのステータスのみ（契約固定 isFixed は受託情報の入力を伴うため対象外）。
+                    【B1-047】連動シナリオの決定要因になるため、適用シナリオより先に選ばせる。 */}
+                {(row.reapproachMonths || 0) > 0 && (
                   <div style={isMobile ? { width: "100%", boxSizing: "border-box" } : { minWidth: 220 }}>
                     <div style={{ fontSize: 11, fontWeight: 700, color: THEME.textMuted, marginBottom: 6 }}>復帰先ステータス</div>
                     <CustomSelect
                       value={row.reapproachNextStatus || ""}
-                      onChange={v => onChange(idx, "reapproachNextStatus", v)}
+                      onChange={v => {
+                        onChange(idx, "reapproachNextStatus", v);
+                        // 【B1-047】復帰先に自動シナリオが連動している場合は、適用シナリオも
+                        // 連動シナリオへ同期する（保存値と表示を常に一致させる）
+                        const linked = linkedScenarioByName[v] || "";
+                        if (linked) onChange(idx, "reapproachScenarioId", linked);
+                      }}
                       color={color}
                       options={[
                         { value: "", label: "選択してください" },
@@ -393,15 +386,53 @@ function TerminalRow({ row, idx, scenarios, usedScenarios, flowStatusNames = [],
                     />
                   </div>
                 )}
+                {/* 【B1-047】適用シナリオ：復帰先に連動シナリオがあればロック表示（自動適用）、
+                    なければ「どのステータスにも連動していないシナリオ」から自由選択 */}
+                {(row.reapproachMonths || 0) > 0 && (() => {
+                  const linked = linkedScenarioByName[row.reapproachNextStatus || ""] || "";
+                  if (linked) {
+                    return (
+                      <div style={isMobile ? { width: "100%", boxSizing: "border-box" } : { minWidth: 220 }}>
+                        <div style={{ fontSize: 11, fontWeight: 700, color: THEME.textMuted, marginBottom: 6 }}>適用シナリオ</div>
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "9px 12px", boxSizing: "border-box", border: `1px solid ${THEME.border}`, borderRadius: 10, backgroundColor: "#F8FAFC" }}>
+                          <span style={{ fontSize: 13, fontWeight: 700, color: "#1E293B", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{linked}</span>
+                          <span style={{ fontSize: 10, fontWeight: 700, backgroundColor: "#EEF2FF", color: "#6366F1", padding: "2px 8px", borderRadius: 99, whiteSpace: "nowrap", flexShrink: 0 }}>ステータスに連動</span>
+                        </div>
+                      </div>
+                    );
+                  }
+                  return (
+                    <div style={isMobile ? { width: "100%", boxSizing: "border-box" } : { minWidth: 220 }}>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: THEME.textMuted, marginBottom: 6 }}>適用シナリオ</div>
+                      <CustomSelect
+                        value={row.reapproachScenarioId || ""}
+                        onChange={v => onChange(idx, "reapproachScenarioId", v)}
+                        color={color}
+                        options={[
+                          { value: "", label: "シナリオを選択しない" },
+                          ...[...new Set(scenarios.map(sc => sc["シナリオID"]))].filter(Boolean)
+                            .filter(sid => !usedScenarios.has(sid) || sid === row.reapproachScenarioId)
+                            .map(sid => ({ value: sid, label: sid }))
+                        ]}
+                      />
+                    </div>
+                  );
+                })()}
               </div>
               <div style={{ fontSize: 11, color: THEME.textMuted, marginTop: 8, lineHeight: 1.6 }}>
-                {(row.reapproachMonths || 0) === 0
-                  ? "「なし」の場合、カンバンでこのステータスに移しても再アプローチは予約されません。"
-                  : !row.reapproachScenarioId
-                    ? "適用シナリオを選択すると、カンバンでこのステータスに移したとき再アプローチが予約されます。"
-                    : !row.reapproachNextStatus
-                      ? `カンバンでこのステータスに移すと、${row.reapproachMonths}ヶ月後にシナリオ「${row.reapproachScenarioId}」が自動で予約されます。復帰先ステータスも選ぶと、配信開始と同時にステータスが自動で変更されます（カンバンの確認モーダルでは復帰先の選択が必須です）。`
-                      : `カンバンでこのステータスに移すと、${row.reapproachMonths}ヶ月後にシナリオ「${row.reapproachScenarioId}」が自動で予約され、配信開始と同時にステータスが「${row.reapproachNextStatus}」へ変更されます。`}
+                {(() => {
+                  const linked = linkedScenarioByName[row.reapproachNextStatus || ""] || "";
+                  const effScenario = linked || row.reapproachScenarioId || "";
+                  if ((row.reapproachMonths || 0) === 0)
+                    return "「なし」の場合、カンバンでこのステータスに移しても再アプローチは予約されません。";
+                  if (!row.reapproachNextStatus && !effScenario)
+                    return "復帰先ステータスと適用シナリオを選択すると、カンバンでこのステータスに移したとき再アプローチが予約されます。";
+                  if (!effScenario)
+                    return "適用シナリオを選択すると、カンバンでこのステータスに移したとき再アプローチが予約されます。";
+                  if (!row.reapproachNextStatus)
+                    return `カンバンでこのステータスに移すと、${row.reapproachMonths}ヶ月後にシナリオ「${effScenario}」が自動で予約されます。復帰先ステータスも選ぶと、配信開始と同時にステータスが自動で変更されます（カンバンの確認モーダルでは復帰先の選択が必須です）。`;
+                  return `カンバンでこのステータスに移すと、${row.reapproachMonths}ヶ月後にシナリオ「${effScenario}」が自動で予約され、配信開始と同時にステータスが「${row.reapproachNextStatus}」へ変更されます。${linked ? "（シナリオは復帰先ステータスの連動シナリオが自動で適用されます）" : ""}`;
+                })()}
               </div>
             </div>
           )}
@@ -577,6 +608,13 @@ export default function StatusSettings({ statuses: statusesProp = [], scenarios 
   //  カンバンの休眠モーダル側の選択肢と同じ条件に揃える）
   const flowStatusNames = flowRows.filter(r => !r.isFixed).map(r => (r.name || "").trim()).filter(Boolean);
 
+  // 【B1-047】復帰先ステータス名 → 連動シナリオID の対応表。
+  //   連動があれば適用シナリオはロック（連動シナリオを自動適用）表示になる。
+  const linkedScenarioByName = Object.fromEntries(
+    flowRows.filter(r => !r.isFixed && (r.name || "").trim() && (r.scenarioId || "").trim())
+      .map(r => [(r.name || "").trim(), (r.scenarioId || "").trim()])
+  );
+
   const handleSave = async () => {
     if (flowRows.some(r => !r.name.trim()))     { showToast("ステータス名を入力してください", "warning"); return; }
     if (terminalRows.some(r => !r.name.trim())) { showToast("終点ステータス名を入力してください", "warning"); return; }
@@ -594,7 +632,15 @@ export default function StatusSettings({ statuses: statusesProp = [], scenarios 
       return;
     }
 
-    const allRows = [...flowRows, ...terminalRows];
+    // 【B1-047】保存直前の正規化：復帰先ステータスに連動シナリオがある場合、
+    // 適用シナリオを連動シナリオへ揃える（フロー側の連動を後から変更した場合のずれを解消）
+    const normalizedTerminals = terminalRows.map(r => {
+      if (r.terminalType !== "dormant") return r;
+      const linked = linkedScenarioByName[(r.reapproachNextStatus || "").trim()] || "";
+      return (linked && r.reapproachScenarioId !== linked) ? { ...r, reapproachScenarioId: linked } : r;
+    });
+
+    const allRows = [...flowRows, ...normalizedTerminals];
 
     // ── 【G1-031】ステータス名の一意性チェック ────────────────────────
     // 名称が顧客レコードとの唯一の紐づけキーであるため、重複すると
@@ -750,7 +796,7 @@ export default function StatusSettings({ statuses: statusesProp = [], scenarios 
           addLabel="追加"
         />
         {dormantRows.map(({ r, i }) => (
-          <TerminalRow key={i} row={r} idx={i} scenarios={scenarios} usedScenarios={usedScenarios} flowStatusNames={flowStatusNames}
+          <TerminalRow key={i} row={r} idx={i} scenarios={scenarios} usedScenarios={usedScenarios} flowStatusNames={flowStatusNames} linkedScenarioByName={linkedScenarioByName}
             onChange={handleTerminalChange} onDelete={handleTerminalDelete}
           />
         ))}
@@ -763,7 +809,7 @@ export default function StatusSettings({ statuses: statusesProp = [], scenarios 
       <div style={{ marginBottom: 16 }}>
         <SectionHeader icon={<span>🏆</span>} label="成約ステータス" color="#059669" canAdd={false} />
         {wonRows.map(({ r, i }) => (
-          <TerminalRow key={i} row={r} idx={i} scenarios={scenarios} usedScenarios={usedScenarios} flowStatusNames={flowStatusNames}
+          <TerminalRow key={i} row={r} idx={i} scenarios={scenarios} usedScenarios={usedScenarios} flowStatusNames={flowStatusNames} linkedScenarioByName={linkedScenarioByName}
             onChange={handleTerminalChange} onDelete={handleTerminalDelete}
           />
         ))}
@@ -773,7 +819,7 @@ export default function StatusSettings({ statuses: statusesProp = [], scenarios 
       <div style={{ marginBottom: 16 }}>
         <SectionHeader icon={<Trash size={15} color="#DC2626" />} label="失注ステータス" color="#DC2626" canAdd={false} />
         {lostRows.map(({ r, i }) => (
-          <TerminalRow key={i} row={r} idx={i} scenarios={scenarios} usedScenarios={usedScenarios} flowStatusNames={flowStatusNames}
+          <TerminalRow key={i} row={r} idx={i} scenarios={scenarios} usedScenarios={usedScenarios} flowStatusNames={flowStatusNames} linkedScenarioByName={linkedScenarioByName}
             onChange={handleTerminalChange} onDelete={handleTerminalDelete}
           />
         ))}
@@ -789,7 +835,7 @@ export default function StatusSettings({ statuses: statusesProp = [], scenarios 
           note="カンバン右下コーナーに灰色固定表示されます"
         />
         {excludedRows.map(({ r, i }) => (
-          <TerminalRow key={i} row={r} idx={i} scenarios={scenarios} usedScenarios={usedScenarios} flowStatusNames={flowStatusNames}
+          <TerminalRow key={i} row={r} idx={i} scenarios={scenarios} usedScenarios={usedScenarios} flowStatusNames={flowStatusNames} linkedScenarioByName={linkedScenarioByName}
             onChange={handleTerminalChange} onDelete={handleTerminalDelete}
           />
         ))}

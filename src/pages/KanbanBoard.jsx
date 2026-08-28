@@ -147,8 +147,22 @@ function DormantModal({ info, scenarios, statuses = [], gasUrl, onDone, onCancel
   // 復帰先の選択肢は通常フローのステータスのみ（終点への自動移動は意味がなく、
   // 契約固定ステータス(isFixed)は受託情報の入力を伴うため対象外にする）
   const flowStatusNames = (statuses || []).filter(s => !s.terminalType && !s.isFixed).map(s => s.name).filter(Boolean);
+  // 【B1-047】復帰先ステータスに自動シナリオが連動している場合は、そのシナリオを
+  // 強制適用する（選択UIはロック表示）。「ステータス ⇔ シナリオ」の連動が
+  // 再アプローチ経由で崩れるのを防ぐ。GAS 側でも同じ強制を行う（二重ガード）。
+  const nextStatusDef    = (statuses || []).find(s => s.name === nextStatus);
+  const linkedScenarioId = nextStatusDef?.scenarioId || "";
+  const effectiveScenarioId = linkedScenarioId || scenarioId;
+  // 自由選択できるシナリオは「どのステータスにも連動していないもの」に限定する
+  // （CustomerDetail の availableScenarios と同じ方針）。事前設定などで既に
+  // 選択済みの値は選択肢に残し、表示が空になるのを防ぐ。
+  const statusLinkedScenarios = new Set((statuses || []).map(s => s.scenarioId).filter(Boolean));
+  const freeScenarioIds = [...new Set([
+    ...scenarios.map(s => s["シナリオID"]).filter(sid => sid && !statusLinkedScenarios.has(sid)),
+    ...(scenarioId ? [scenarioId] : []),
+  ])];
   // シナリオ予約を作る場合は復帰先ステータスが必須
-  const needsNextStatus = selected?.months > 0 && !!scenarioId;
+  const needsNextStatus = selected?.months > 0 && !!effectiveScenarioId;
   const canConfirm = selected !== null && !(needsNextStatus && !nextStatus);
   // 【B1-034】GAS は業務エラー（unknown action・顧客不在 等）を HTTP 200 + { status: "error" } で
   // 返すため、レスポンス本文の status を必ず判定する（判定しないと、再デプロイ漏れ等で
@@ -161,18 +175,24 @@ function DormantModal({ info, scenarios, statuses = [], gasUrl, onDone, onCancel
       if (!upData || upData.status !== "success") {
         throw new Error(upData?.message || "ステータス更新に失敗しました");
       }
-      if (selected?.months > 0 && scenarioId) {
+      if (selected?.months > 0 && effectiveScenarioId) {
         // 【B1-046】nextStatus（復帰先ステータス）を追加送信。GAS 側は予約作成時に
         // シナリオID列の紐づけと「再アプローチ予定日／再アプローチ先ステータス」を書き込む。
-        const res  = await axios.post(gasUrl, JSON.stringify({ action: "scheduleDormantReapproach", id: info.customerId, months: selected.months, scenarioId, nextStatus }), { headers: { "Content-Type": "text/plain;charset=utf-8" } });
+        // 【B1-047】復帰先に連動シナリオがある場合は effectiveScenarioId（連動シナリオ）を送る。
+        // GAS 側でも連動シナリオを強制するため、設定が古い画面から送っても連動が崩れない。
+        const res  = await axios.post(gasUrl, JSON.stringify({ action: "scheduleDormantReapproach", id: info.customerId, months: selected.months, scenarioId: effectiveScenarioId, nextStatus }), { headers: { "Content-Type": "text/plain;charset=utf-8" } });
         const data = typeof res.data === "string" ? JSON.parse(res.data) : res.data;
         if (!data || data.status !== "success") {
           throw new Error(data?.message || "再アプローチ予約の作成に失敗しました");
         }
         // 【G1-032】シナリオに配信ステップが1件も無い場合、GAS は何も作らずに
         // success を返す（無言の空振り）。予約0件をユーザーに伝える。
+        const usedScenarioId = data.scenarioId || effectiveScenarioId;
         if (Number(data.scheduled) === 0) {
-          showToast?.(`シナリオ「${scenarioId}」に配信ステップが登録されていないため、再アプローチの予約は作成されませんでした`, "warning");
+          showToast?.(`シナリオ「${usedScenarioId}」に配信ステップが登録されていないため、再アプローチの予約は作成されませんでした`, "warning");
+        } else if (data.scenarioId && data.scenarioId !== effectiveScenarioId) {
+          // 【B1-047】GAS 側の連動強制で別シナリオに置き換わった場合（設定が更新された直後など）
+          showToast?.(`復帰先ステータスの連動シナリオ「${data.scenarioId}」を適用しました`, "info");
         }
       }
       onDone();
@@ -203,30 +223,49 @@ function DormantModal({ info, scenarios, statuses = [], gasUrl, onDone, onCancel
             ))}
           </div>
         </div>
+        {/* 【B1-046/B1-047】復帰先ステータス（シナリオ予約を作る場合は必須）
+            連動シナリオの決定要因になるため、適用シナリオより先に選ばせる */}
         {selected?.months > 0 && (
           <div style={{ marginBottom: 20 }}>
-            <div style={{ fontSize: 13, fontWeight: 800, color: THEME.textMuted, marginBottom: 8 }}>適用シナリオ（任意）</div>
-            <select value={scenarioId} onChange={e => setScenarioId(e.target.value)} style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: `1px solid ${THEME.border}`, fontSize: 14, fontWeight: 700 }}>
-              <option value="">シナリオを選択しない</option>
-              {[...new Set(scenarios.map(s => s["シナリオID"]))].map(sid => <option key={sid} value={sid}>{sid}</option>)}
-            </select>
-          </div>
-        )}
-        {/* 【B1-046】復帰先ステータス（シナリオ予約を作る場合は必須） */}
-        {needsNextStatus && (
-          <div style={{ marginBottom: 20 }}>
             <div style={{ fontSize: 13, fontWeight: 800, color: THEME.textMuted, marginBottom: 8, display: "flex", alignItems: "center", gap: 6 }}>
-              復帰先ステータス <span style={{ color: "#DC2626", fontSize: 11 }}>必須</span>
+              復帰先ステータス {needsNextStatus && !nextStatus && <span style={{ color: "#DC2626", fontSize: 11 }}>必須</span>}
             </div>
-            <select value={nextStatus} onChange={e => setNextStatus(e.target.value)} style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: `1.5px solid ${nextStatus ? THEME.border : "#DC262660"}`, fontSize: 14, fontWeight: 700 }}>
+            <select value={nextStatus} onChange={e => setNextStatus(e.target.value)} style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: `1.5px solid ${(needsNextStatus && !nextStatus) ? "#DC262660" : THEME.border}`, fontSize: 14, fontWeight: 700 }}>
               <option value="">選択してください</option>
               {flowStatusNames.map(name => <option key={name} value={name}>{name}</option>)}
             </select>
-            <div style={{ fontSize: 12, color: nextStatus ? "#92400E" : THEME.textMuted, backgroundColor: nextStatus ? "#FFFBEB" : "transparent", border: nextStatus ? "1px solid #FDE68A" : "none", borderRadius: 8, padding: nextStatus ? "8px 12px" : "4px 0", marginTop: 8, lineHeight: 1.6 }}>
-              {nextStatus
-                ? `${selected.months}ヶ月後にシナリオ「${scenarioId}」の配信開始と同時に、ステータスが「${nextStatus}」へ自動で変更されます。予定は休眠リストで確認できます。`
-                : "再アプローチ開始時に変更するステータスを選択してください。"}
+          </div>
+        )}
+        {/* 適用シナリオ：復帰先に連動シナリオがあればロック表示（自動適用）、
+            なければ「どのステータスにも連動していないシナリオ」から自由選択 */}
+        {selected?.months > 0 && (
+          <div style={{ marginBottom: 20 }}>
+            <div style={{ fontSize: 13, fontWeight: 800, color: THEME.textMuted, marginBottom: 8 }}>
+              適用シナリオ{linkedScenarioId ? "" : "（任意）"}
             </div>
+            {linkedScenarioId ? (
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", padding: "10px 12px", boxSizing: "border-box", border: `1px solid ${THEME.border}`, borderRadius: 10, backgroundColor: "#F8FAFC" }}>
+                <span style={{ fontSize: 14, fontWeight: 700, color: THEME.textMain, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{linkedScenarioId}</span>
+                <span style={{ fontSize: 11, fontWeight: 700, backgroundColor: "#EEF2FF", color: "#6366F1", padding: "2px 8px", borderRadius: 99, whiteSpace: "nowrap", flexShrink: 0 }}>
+                  ステータスに連動
+                </span>
+              </div>
+            ) : (
+              <select value={scenarioId} onChange={e => setScenarioId(e.target.value)} style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: `1px solid ${THEME.border}`, fontSize: 14, fontWeight: 700 }}>
+                <option value="">シナリオを選択しない</option>
+                {freeScenarioIds.map(sid => <option key={sid} value={sid}>{sid}</option>)}
+              </select>
+            )}
+          </div>
+        )}
+        {/* 予約内容のサマリー */}
+        {selected?.months > 0 && (effectiveScenarioId || nextStatus) && (
+          <div style={{ fontSize: 12, color: (effectiveScenarioId && nextStatus) ? "#92400E" : THEME.textMuted, backgroundColor: (effectiveScenarioId && nextStatus) ? "#FFFBEB" : "transparent", border: (effectiveScenarioId && nextStatus) ? "1px solid #FDE68A" : "none", borderRadius: 8, padding: (effectiveScenarioId && nextStatus) ? "8px 12px" : "4px 0", marginBottom: 20, lineHeight: 1.6 }}>
+            {effectiveScenarioId && nextStatus
+              ? `${selected.months}ヶ月後にシナリオ「${effectiveScenarioId}」の配信開始と同時に、ステータスが「${nextStatus}」へ自動で変更されます。${linkedScenarioId ? "（復帰先ステータスに連動するシナリオが自動で適用されます）" : ""}予定は休眠リストで確認できます。`
+              : effectiveScenarioId
+                ? "再アプローチ開始時に変更する復帰先ステータスを選択してください。"
+                : "シナリオが未選択のため、再アプローチの予約（配信・ステータス変更）は作成されません。"}
           </div>
         )}
         <div style={{ display: "flex", gap: 12 }}>
