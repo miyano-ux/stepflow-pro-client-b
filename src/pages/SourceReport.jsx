@@ -44,6 +44,12 @@ function fmtYMLabel(ym) {
 function parseMan(val) {
   return Number(String(val || "").replace(/[^0-9.]/g, "")) || 0;
 }
+// 【A4-016】突合キーの正規化。
+//   顧客ID（数値セル/文字列セル混在）と流入元名（前後空白の混入）は、
+//   必ず String() + trim() してから比較する。ステータス名の突合を
+//   trim に揃えた E3-009 / E2-002（KanbanBoard.jsx:1350-1356 と同条件）と同じ方針。
+function custKey(v) { return String(v ?? "").trim(); }
+function srcKey(v)  { return String(v ?? "").trim(); }
 function fmtMan(n) {
   if (!n) return "−";
   if (n >= 10000) return (n / 10000).toFixed(1) + "億";
@@ -231,7 +237,7 @@ export default function SourceReport({
 
   const bySource = useMemo(() => {
     const map = {};
-    sourceNames.forEach(src => { map[src] = customers.filter(c => (c["流入元"] || "") === src); });
+    sourceNames.forEach(src => { map[src] = customers.filter(c => srcKey(c["流入元"]) === srcKey(src)); });
     return map;
   }, [customers, sourceNames]);
 
@@ -386,14 +392,24 @@ export default function SourceReport({
 
   const custById = useMemo(() => {
     const m = {};
-    customers.forEach(c => { m[String(c["顧客ID"] || "")] = c; });
+    customers.forEach(c => {
+      // 「顧客ID」列の値に加えて、fromColumnar が合成する c.id でも引けるようにする。
+      // ステータス履歴の顧客IDは updateStatus の params.id（= フロントの c.id）で
+      // 書かれるため（gas_updated.js:2002 / KanbanBoard.jsx:1245）、顧客ID列が
+      // 空の行でも履歴と突合できる。キーは custKey で正規化。
+      const k1 = custKey(c["顧客ID"]);
+      const k2 = custKey(c.id);
+      if (k1) m[k1] = c;
+      if (k2 && !m[k2]) m[k2] = c;
+    });
     return m;
   }, [customers]);
 
   const propsByCustomer = useMemo(() => {
     const m = {};
     properties.forEach(p => {
-      const cid = String(p.customerId || "");
+      const cid = custKey(p.customerId);
+      if (!cid) return;   // 顧客IDの無い物件はどの顧客にも紐付けない（"" キー衝突を防止）
       if (!m[cid]) m[cid] = [];
       m[cid].push(p);
     });
@@ -407,11 +423,11 @@ export default function SourceReport({
       const unitCost = srcObj.cost  || 0;
       const inflow   = srcObj.count || 0;  // 全流入件数（成約・非成約含む）
       const wonCusts = filteredWonROI
-        .map(h => custById[String(h["顧客ID"] || "")])
-        .filter(c => c && (c["流入元"] || "") === src);
+        .map(h => custById[custKey(h["顧客ID"])])
+        .filter(c => c && srcKey(c["流入元"]) === srcKey(src));
       const wonCount = wonCusts.length;
       const prices = wonCusts.flatMap(c =>
-        (propsByCustomer[String(c["顧客ID"] || "")] || [])
+        (propsByCustomer[custKey(c["顧客ID"])] || [])
           .filter(p => p.contractPrice)
           .map(p => parseMan(p.contractPrice))
       ).filter(v => v > 0);
@@ -446,8 +462,8 @@ export default function SourceReport({
   const contractPowerData = useMemo(() =>
     sourceNames.map(src => {
       const wonCusts = filteredWon
-        .map(h => custById[String(h["顧客ID"] || "")])
-        .filter(c => c && (c["流入元"] || "") === src);
+        .map(h => custById[custKey(h["顧客ID"])])
+        .filter(c => c && srcKey(c["流入元"]) === srcKey(src));
       const total     = wonCusts.length;
       const seninCusts = wonCusts.filter(c => isSenin(c["契約種別"]));
       const ippanCusts = wonCusts.filter(c => !isSenin(c["契約種別"]) && (c["契約種別"] || "").trim() !== "");
@@ -456,7 +472,7 @@ export default function SourceReport({
       const seninRate  = withContract.length > 0 ? Math.round((seninCount / withContract.length) * 100) : 0;
       const avgPrice = (custs) => {
         const ps = custs.flatMap(c =>
-          (propsByCustomer[String(c["顧客ID"] || "")] || [])
+          (propsByCustomer[custKey(c["顧客ID"])] || [])
             .filter(p => p.contractPrice).map(p => parseMan(p.contractPrice))
         ).filter(v => v > 0);
         return ps.length > 0 ? Math.round(ps.reduce((a, b) => a + b, 0) / ps.length) : 0;
@@ -475,7 +491,7 @@ export default function SourceReport({
     const overallRate = totalWon > 0 ? Math.round((totalSenin / totalWon) * 100) : 0;
     const topSrc = [...contractPowerData].filter(d => d.total > 0).sort((a, b) => b.seninRate - a.seninRate)[0];
     const allWonCusts = filteredWon
-      .map(h => custById[String(h["顧客ID"] || "")])
+      .map(h => custById[custKey(h["顧客ID"])])
       .filter(Boolean);
     const countSensoku = allWonCusts.filter(c => (c["契約種別"] || "").includes("専属")).length;
     const countSenin  = allWonCusts.filter(c => (c["契約種別"] || "").includes("専任") && !(c["契約種別"] || "").includes("専属")).length;
@@ -656,8 +672,8 @@ export default function SourceReport({
                   {contractPowerData.map((d, i) => {
                     // 成約顧客から直接契約種別内訳を計算（contractDataは全顧客ベースのため使わない）
                     const wonCustsForBar = filteredWon
-                      .map(h => custById[String(h["顧客ID"] || "")])
-                      .filter(c => c && (c["流入元"] || "") === d.src);
+                      .map(h => custById[custKey(h["顧客ID"])])
+                      .filter(c => c && srcKey(c["流入元"]) === srcKey(d.src));
                     const specified = wonCustsForBar.filter(c => (c["契約種別"] || "").trim() !== "");
                     const barTotal  = specified.length;
                     const counts = contractTypes.map((ct, ci) => {
