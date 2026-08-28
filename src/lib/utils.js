@@ -63,10 +63,20 @@ export const formatDate = (v) => {
 
 /**
  * 電話番号を正規化する（余分な記号除去・先頭ゼロ補完）
+ *
+ * 【A2-040】表記揺れ対応を拡張（gas_updated.js の smartNormalizePhone と同一ロジック。
+ *   どちらかを直したら両方直すこと）。
+ *   ① 全角数字 → 半角に変換してから非数字を除去（従来は全角数字が全桁除去され空文字になっていた）
+ *   ② 国際表記（+81/81始まり・11〜12桁）→ 国内0始まりに変換
+ *      （国内番号は正規化後必ず0始まりのため、0始まりの番号を誤変換することはない）
+ *   ③ 先頭0欠落の10桁 → 0補完（従来どおり）
  */
 export const smartNormalizePhone = (phone) => {
   if (!phone) return "";
-  let p = String(phone).replace(/[="]/g, "").replace(/[^\d]/g, "");
+  let p = String(phone)
+    .replace(/[０-９]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xFEE0))
+    .replace(/[^\d]/g, "");
+  if (/^81[1-9]\d{8,9}$/.test(p)) p = "0" + p.slice(2);
   if (p.length === 10 && /^[1-9]/.test(p)) p = "0" + p;
   return p;
 };
