@@ -167,6 +167,14 @@ function App() {
         if (!data || typeof data !== "object" || Array.isArray(data)) {
           throw new Error("GASレスポンスが想定形式(JSON)ではありません");
         }
+        // 【E3-014】HTTP 200 で JSON が返っても、必須キーを欠く退行レスポンスは失敗として
+        //   リトライへ回す。これを素通しすると sources/customers が undefined の d で
+        //   各画面が「まだ登録されていません」等の空状態を誤表示するうえ、下の
+        //   appCache.set で壊れたデータが IndexedDB に固定化され、リロード後も
+        //   空表示が続く（実データはスプレッドシート上に健在のまま）。
+        if (!("customers" in data) || !("sources" in data) || !("statuses" in data)) {
+          throw new Error("GASレスポンスに必須キー(customers/sources/statuses)がありません");
+        }
         // 【高速化 B】列指向 {headers, rows} を受信直後に復元（以降のコンポーネントは無改修）
         //   getCustomers（lightRefresh）や旧GASの配列形もそのまま通る
         data.customers  = fromColumnar(data.customers,  { idFrom: "顧客ID" });
@@ -376,7 +384,7 @@ function App() {
                     GAS が顧客シートのカスタム列ごと削除する（FormSettings.jsx handleSave のガード）。
                   ・customers: 削除確認モーダルの「入力済み N 件」が常に 0 件表示になる。 */}
               <Route path="/form-settings" element={<FormSettings formSettings={d?.formSettings} sheetCustomColumns={d?.sheetCustomColumns || []} customers={d?.customers} isLoading={load} onRefresh={refresh} />} />
-              <Route path="/sources" element={<SourceManager sources={d?.sources} onRefresh={refresh} gasUrl={GAS_URL} isLoading={load} />} />
+              <Route path="/sources" element={<SourceManager sources={d?.sources} onRefresh={refresh} gasUrl={GAS_URL} isLoading={load} loadError={loadError} />} />
               <Route path="/contract-types" element={<ContractTypeManager contractTypes={d?.contractTypes} onRefresh={refresh} gasUrl={GAS_URL} />} />
               <Route path="/master-settings" element={<MasterSettings isLoading={load} statuses={d?.statuses} sources={d?.sources} contractTypes={d?.contractTypes} scenarios={d?.scenarios} />} />
               <Route path="/status-settings" element={<StatusSettings statuses={d?.statuses} scenarios={d?.scenarios} customers={d?.customers} onRefresh={refresh} gasUrl={GAS_URL} />} />
@@ -405,7 +413,7 @@ function App() {
               {/* 分析・トラッキング */}
               <Route path="/analysis" element={<ReportIndex />} />
               <Route path="/analysis/sales" element={<AnalysisReport customers={d?.customers} statuses={d?.statuses} trackingLogs={d?.trackingLogs} staffList={staffList} statusHistory={d?.statusHistory} />} />
-              <Route path="/analysis/source" element={<SourceReport isLoading={load} customers={d?.customers} statuses={d?.statuses} sources={d?.sources} contractTypes={d?.contractTypes} statusHistory={d?.statusHistory} properties={d?.properties} />} />
+              <Route path="/analysis/source" element={<SourceReport isLoading={load} loadError={loadError} customers={d?.customers} statuses={d?.statuses} sources={d?.sources} contractTypes={d?.contractTypes} statusHistory={d?.statusHistory} properties={d?.properties} />} />
               <Route path="/analysis/status" element={<StatusAnalysisReport customers={d?.customers} statuses={d?.statuses} sources={d?.sources} staffList={staffList} />} />
               {/* 【E5-012】LostReport.jsx:98-106 のローディング表示は isLoading 前提。
                   未伝播だと取得中に「失注データがありません」＋失注率「–」を誤表示する。

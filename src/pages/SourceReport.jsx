@@ -211,6 +211,7 @@ export default function SourceReport({
   statusHistory = [],
   properties = [],
   isLoading = false,   // 【E3-015】App の全体データ取得中フラグ（App.jsx:347 から受領）
+  loadError = false,   // 【E3-014】App の全体データ取得失敗フラグ（App.jsx の refresh リトライ上限到達）
 }) {
 
   // 【ペイロード分離】statusHistory は props ではなくマウント時に個別取得（全件）
@@ -416,18 +417,38 @@ export default function SourceReport({
     return m;
   }, [properties]);
 
+  // 【E3-020】物件（成約金額）との突合は「顧客ID」列 → 引けなければ c.id の順で行う。
+  //   物件リストの顧客IDはフロントの c.id で書かれる（addProperty 呼び出し:
+  //   CustomerDetail.jsx:697 customerId: id ／ 表示側の突合も c.id:
+  //   CustomerDetail.jsx:437, KanbanBoard.jsx:1242,1264）。顧客ID列が空の顧客は
+  //   fromColumnar が行indexを c.id に合成する（columnar.js:14-17）ため、
+  //   c["顧客ID"]（空文字）だけでは恒久的に引けない。custById を二重キーにした
+  //   A4-016 の対処（上記 custById）と同じ方針を物件側の参照にも適用する。
+  const propsOf = (c) =>
+    propsByCustomer[custKey(c["顧客ID"])] || propsByCustomer[custKey(c.id)] || [];
+
   // ── 新④：成約金額ROI ─────────────────────────────
   const roiData = useMemo(() =>
     sourceNames.map(src => {
       const srcObj   = sources.find(s => s.name === src) || {};
       const unitCost = srcObj.cost  || 0;
-      const inflow   = srcObj.count || 0;  // 全流入件数（成約・非成約含む）
+      // 【E3-002】獲得数（全反響件数）と広告費（＝獲得数×単価）も集計期間に追随させる。
+      //   従来は流入元マスタの累計 count（gas_updated.js:3160-3176 で全期間の顧客件数を
+      //   サーバ集計した値）をそのまま使っていたため、期間を変えても分母が一切変わらず、
+      //   「期間フィルタが数値に反映されない」ように見えていた。
+      //   期間指定時の件数算出は、同ページで正しく期間追随している「費用対効果」の
+      //   filterCusts（本ファイル上方・ステータス変更日||登録日 基準）に揃える。
+      //   フィルタ未指定（全期間）時は従来どおりマスタ累計を使い表示互換を保つ。
+      const allList = bySource[src] || [];
+      const inflow  = (!periodROI.from && !periodROI.to)
+        ? (srcObj.count || allList.length)
+        : filterCusts(allList, periodROI).length;  // 全流入件数（成約・非成約含む）
       const wonCusts = filteredWonROI
         .map(h => custById[custKey(h["顧客ID"])])
         .filter(c => c && srcKey(c["流入元"]) === srcKey(src));
       const wonCount = wonCusts.length;
       const prices = wonCusts.flatMap(c =>
-        (propsByCustomer[custKey(c["顧客ID"])] || [])
+        propsOf(c)
           .filter(p => p.contractPrice)
           .map(p => parseMan(p.contractPrice))
       ).filter(v => v > 0);
@@ -441,7 +462,7 @@ export default function SourceReport({
       const roiStr = roiNum !== null ? roiNum.toFixed(2) : null;
       return { src, unitCost, inflow, wonCount, totalAmt, avgAmt, commission, totalCostYen, totalCostMan, roi, roiStr };
     }),
-    [sourceNames, filteredWonROI, custById, propsByCustomer, sources]
+    [sourceNames, filteredWonROI, custById, propsByCustomer, sources, bySource, periodROI]
   );
 
   const roiKpi = useMemo(() => {
@@ -472,7 +493,7 @@ export default function SourceReport({
       const seninRate  = withContract.length > 0 ? Math.round((seninCount / withContract.length) * 100) : 0;
       const avgPrice = (custs) => {
         const ps = custs.flatMap(c =>
-          (propsByCustomer[custKey(c["顧客ID"])] || [])
+          propsOf(c)
             .filter(p => p.contractPrice).map(p => parseMan(p.contractPrice))
         ).filter(v => v > 0);
         return ps.length > 0 ? Math.round(ps.reduce((a, b) => a + b, 0) / ps.length) : 0;
@@ -554,7 +575,11 @@ export default function SourceReport({
             <div style={{ fontSize: 14, fontWeight: 800 }}>集計しています…</div>
             <div style={{ fontSize: 12 }}>初回はステータス履歴を集計するため時間がかかることがあります</div>
           </div>
-        ) : wonError ? (
+        ) : (wonError || (loadError && customers.length === 0)) ? (
+          /* 【E3-014】自前fetch（getSourceWonEntries）の失敗だけでなく、App 側の
+             getAppData が失敗して props が空のまま確定したケースもエラー表示に倒す。
+             これが無いと sourceNames=[] となり「該当する成約データがありません」
+             （取得成功かつ0件と同じ文言）へ誤フォールバックする。 */
           <div style={{ ...card, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8, padding: "64px 0", color: THEME.textMuted }}>
             <div style={{ fontSize: 14, fontWeight: 800 }}>集計データを取得できませんでした</div>
             <div style={{ fontSize: 12 }}>ページを再読み込みしてお試しください</div>

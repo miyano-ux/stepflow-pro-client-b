@@ -109,7 +109,7 @@ function SuccessModal({ open, message, onClose }) {
   );
 }
 
-export default function SourceManager({ sources = [], onRefresh, gasUrl = GAS_URL, isLoading = false }) {
+export default function SourceManager({ sources = [], onRefresh, gasUrl = GAS_URL, isLoading = false, loadError = false }) {
   const showToast = useToast();
   const { isMobile } = useWindowWidth();
 
@@ -289,6 +289,21 @@ export default function SourceManager({ sources = [], onRefresh, gasUrl = GAS_UR
                 <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
               </div>
             ) : localSources.length === 0 ? (
+              /* 【E3-014／E3-015】「取得成功かつ0件」と「取得失敗」を区別する。
+                 取得失敗（App の refresh がリトライ上限に到達）時に「まだ流入元が
+                 登録されていません」を出すと、実データがあるのに消えたと誤認され、
+                 空の状態のまま保存操作をされるリスクがある。 */
+              loadError ? (
+                <div style={{
+                  padding: "40px 0", textAlign: "center",
+                  color: THEME.textMuted, fontSize: 14,
+                  background: "#FFF7ED", borderRadius: 12,
+                  border: "1.5px dashed #FDBA74",
+                }}>
+                  流入元を取得できませんでした<br />
+                  <span style={{ fontSize: 12 }}>通信が不安定な可能性があります。ページを再読み込みしてお試しください</span>
+                </div>
+              ) : (
               <div style={{
                 padding: "40px 0", textAlign: "center",
                 color: THEME.textMuted, fontSize: 14,
@@ -299,6 +314,7 @@ export default function SourceManager({ sources = [], onRefresh, gasUrl = GAS_UR
                 まだ流入元が登録されていません<br />
                 <span style={{ fontSize: 12 }}>下のフォームから登録してください</span>
               </div>
+              )
             ) : (
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                 {localSources.map((s, i) => (
