@@ -46,7 +46,7 @@ function buildItems(formSettings) {
   }));
 }
 
-export default function FormSettings({ formSettings = [], sheetCustomColumns = [], customers = [], isLoading = false, onRefresh }) {
+export default function FormSettings({ formSettings = [], sheetCustomColumns = [], customers = [], isLoading = false, loadError = false, onRefresh }) {
   const nav = useNavigate();
   const location = useLocation();
   const from = location.state?.from;
@@ -142,7 +142,7 @@ export default function FormSettings({ formSettings = [], sheetCustomColumns = [
   };
 
   // ── 保存（差分計算はGAS側で行う） ─────────────────
-  const doSave = async () => {
+  const doSave = async (confirmWipe = false) => {
     const settings = items.map(item => ({
       name:     item.name.trim(),
       // 【G2-015】GAS 側はこの originalName を見て「列のリネーム」を行い、
@@ -156,7 +156,8 @@ export default function FormSettings({ formSettings = [], sheetCustomColumns = [
     setSaving(true);
     setSaved(false);
     try {
-      await apiCall.post(GAS_URL, { action: "saveFormSettings", settings });
+      // 【G2-012】confirmWipe: 全件削除の明示同意。GAS側ガード（saveFormSettings）と対。
+      await apiCall.post(GAS_URL, { action: "saveFormSettings", settings, confirmWipe });
 
       // 【G2-014】GAS への保存が終わっても、画面側の formSettings は onRefresh 完了まで
       // 古いまま。「同期完了！」はここではなく再取得の後に出す（先に出すとユーザーが
@@ -187,6 +188,24 @@ export default function FormSettings({ formSettings = [], sheetCustomColumns = [
   const handleSave = () => {
     // 【G2-012】読み込み未完了のまま保存すると空定義で全項目を上書きしてしまう
     if (isLoading) return showToast("項目を読み込み中です。完了までお待ちください", "warning");
+    // 【G2-012】取得失敗中は画面の items が実データと乖離している（0件誤表示等）。
+    // このまま保存すると空定義での全件置換になるため、保存自体を止める。
+    if (loadError) return showToast("データの取得に失敗しています。ページを再読み込みしてから保存してください", "error");
+
+    // 【G2-012】0件保存＝サーバー上の全カスタム項目定義と顧客リストの該当列
+    // （入力済みデータ含む）の全削除。誤表示に気づかず押した事故を防ぐため、
+    // 通常の削除確認とは別に、全削除専用の確認を必ず挟み confirmWipe を付けて送る。
+    // （GAS側ガードは confirmWipe が無い0件保存を status:"error" で拒否する）
+    if (items.length === 0) {
+      setConfirmModal({
+        title: "カスタム項目をすべて削除します",
+        message: "カスタム項目が0件の状態で保存しようとしています。\n保存すると、登録済みのカスタム項目定義と、顧客リストの該当列（入力済みデータを含む）がすべて削除され、復元できません。",
+        note: "既存の項目が表示されていないだけの可能性があります。全削除が目的でない場合はキャンセルし、ページを再読み込みしてください。",
+        confirmLabel: "全カスタム項目を削除して保存する",
+        onConfirm: () => { setConfirmModal(null); doSave(true); },
+      });
+      return;
+    }
 
     const seen = new Set();
     for (const item of items) {
@@ -323,7 +342,17 @@ export default function FormSettings({ formSettings = [], sheetCustomColumns = [
             </div>
           )}
 
-          {!isLoading && items.length === 0 && (
+          {/* 【G2-012 / E3-014】「取得失敗」と「取得成功かつ0件」を区別する
+              （SourceManager.jsx:296-315 と同方針）。取得失敗時に作成可能な空状態を
+              出すと、実データがあるのに0件と誤認され、そのまま保存→全削除の事故になる。 */}
+          {!isLoading && loadError && items.length === 0 && (
+            <div style={{ textAlign: "center", padding: "40px 20px", color: "#B45309", fontSize: 14, border: "2px dashed #FCD34D", backgroundColor: "#FFFBEB", borderRadius: 12, marginBottom: 12, lineHeight: 1.7 }}>
+              カスタム項目の取得に失敗しました。<br />
+              実際の登録内容が表示されていない可能性があります。ページを再読み込みしてください。
+            </div>
+          )}
+
+          {!isLoading && !loadError && items.length === 0 && (
             <div style={{ textAlign: "center", padding: "40px 20px", color: THEME.textMuted, fontSize: 14, border: `2px dashed ${THEME.border}`, borderRadius: 12, marginBottom: 12 }}>
               「+ 項目を追加」ボタンでカスタム項目を作成できます
             </div>

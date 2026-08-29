@@ -172,8 +172,9 @@ function App() {
         //   各画面が「まだ登録されていません」等の空状態を誤表示するうえ、下の
         //   appCache.set で壊れたデータが IndexedDB に固定化され、リロード後も
         //   空表示が続く（実データはスプレッドシート上に健在のまま）。
-        if (!("customers" in data) || !("sources" in data) || !("statuses" in data)) {
-          throw new Error("GASレスポンスに必須キー(customers/sources/statuses)がありません");
+        if (!("customers" in data) || !("sources" in data) || !("statuses" in data)
+            || !("formSettings" in data) || !("gmailSettings" in data)) {
+          throw new Error("GASレスポンスに必須キー(customers/sources/statuses/formSettings/gmailSettings)がありません");
         }
         // 【高速化 B】列指向 {headers, rows} を受信直後に復元（以降のコンポーネントは無改修）
         //   getCustomers（lightRefresh）や旧GASの配列形もそのまま通る
@@ -383,7 +384,7 @@ function App() {
                   ・isLoading: 取得完了前に保存すると items=[] のまま saveFormSettings が飛び、
                     GAS が顧客シートのカスタム列ごと削除する（FormSettings.jsx handleSave のガード）。
                   ・customers: 削除確認モーダルの「入力済み N 件」が常に 0 件表示になる。 */}
-              <Route path="/form-settings" element={<FormSettings formSettings={d?.formSettings} sheetCustomColumns={d?.sheetCustomColumns || []} customers={d?.customers} isLoading={load} onRefresh={refresh} />} />
+              <Route path="/form-settings" element={<FormSettings formSettings={d?.formSettings} sheetCustomColumns={d?.sheetCustomColumns || []} customers={d?.customers} isLoading={load} loadError={loadError} onRefresh={refresh} />} />
               <Route path="/sources" element={<SourceManager sources={d?.sources} onRefresh={refresh} gasUrl={GAS_URL} isLoading={load} loadError={loadError} />} />
               <Route path="/contract-types" element={<ContractTypeManager contractTypes={d?.contractTypes} onRefresh={refresh} gasUrl={GAS_URL} />} />
               <Route path="/master-settings" element={<MasterSettings isLoading={load} statuses={d?.statuses} sources={d?.sources} contractTypes={d?.contractTypes} scenarios={d?.scenarios} />} />
