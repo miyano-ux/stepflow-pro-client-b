@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import { useNavigate, useParams, useLocation } from "react-router-dom";
-import { ArrowLeft, Loader2, UserCheck, Zap, Send, Calendar, MessageSquare, X, CheckCircle2, FileText, ChevronDown, ChevronUp } from "lucide-react";
+import { ArrowLeft, Loader2, UserCheck, Zap, Send, Calendar, MessageSquare, X, CheckCircle2, FileText, ChevronDown, ChevronUp, AlertTriangle } from "lucide-react";
 import axios from "axios";
 import { THEME, CLIENT_COMPANY_NAME, GAS_URL } from "../lib/constants";
 import { styles } from "../lib/styles";
@@ -14,6 +14,11 @@ import { useWindowWidth } from "../lib/useWindowWidth";
 // ==========================================
 // 💬 DirectSms - 個別メッセージ送信ページ
 // ==========================================
+
+// 【C4-008】過去日時とみなすまでの猶予（5分）。GAS 側 sendDirectSms の拒否条件と同値。
+//   「現在時刻ちょうど」を選んだ即時送信ユースが、確定操作までのわずかな経過や
+//   通信ラグで誤ってブロックされるのを防ぐためのマージン。
+const PAST_TIME_GRACE_MS = 5 * 60 * 1000;
 
 /** "YYYY-MM-DDTHH:mm" → 読みやすい日本語表記 */
 const formatScheduledTime = (iso) => {
@@ -181,6 +186,11 @@ function DirectSms({ customers = [], templates = [], staffList = [], onRefresh, 
   const urlRegex = /(https?:\/\/[^\s]+)/g;
   const hasUrl = urlRegex.test(msg);
 
+  // 【C4-008】選択中の配信日時が過去（猶予5分超）かどうか。
+  //   time が変わるたびに再描画されるため、選択した瞬間に警告バナーの表示と
+  //   予約ボタンの無効化へ反映される。SmartDateTimePicker（共有部品）には手を入れない。
+  const isPastTime = new Date(time).getTime() <= Date.now() - PAST_TIME_GRACE_MS;
+
   // App.jsx が一元管理する staffList を優先利用。空のときだけ自前取得にフォールバック。
   const effectiveStaffList = staffList.length > 0 ? staffList : fallbackStaff;
 
@@ -301,6 +311,15 @@ function DirectSms({ customers = [], templates = [], staffList = [], onRefresh, 
 
   // 確認モーダルで「送信確定」
   const handleSend = async () => {
+    // 【C4-008】確認モーダルを開いたまま放置し、選択日時が過去（猶予5分超）に
+    //   なってから確定された場合のすり抜け対策。リアルタイム警告（isPastTime)は
+    //   再描画されないと表示されないため、ここで受け止める。
+    //   最終防衛は GAS 側 sendDirectSms の過去日時拒否（二重防御）。
+    if (new Date(time).getTime() <= Date.now() - PAST_TIME_GRACE_MS) {
+      showToast("配信日時が過去になっています。未来の日時を指定してください", "error");
+      setShowConfirm(false);
+      return;
+    }
     setIsSending(true);
     try {
       await apiCall.post(GAS_URL, {
@@ -320,7 +339,9 @@ function DirectSms({ customers = [], templates = [], staffList = [], onRefresh, 
       navigate(`/schedule/${id}`, { state: { justScheduled: true } });
     } catch (e) {
       console.error(e);
-      showToast("配信予約に失敗しました", "error");
+      // GAS 側の拒否理由（過去日時など）をそのまま見せる。CustomerSchedule の
+      // handleSaveEdit（"更新に失敗しました: " + e.message）と同じ方式。
+      showToast("配信予約に失敗しました" + (e?.message ? ": " + e.message : ""), "error");
     } finally {
       setIsSending(false);
     }
@@ -395,6 +416,18 @@ function DirectSms({ customers = [], templates = [], staffList = [], onRefresh, 
             <div style={{ marginBottom: 24 }}>
               <label style={styles.label}>配信日時</label>
               <SmartDateTimePicker value={time} onChange={setTime} />
+              {/* 【C4-008】過去日時のリアルタイム警告（選んだ瞬間に気づけるようにする） */}
+              {isPastTime && (
+                <div style={{
+                  marginTop: 10, padding: "10px 14px", borderRadius: 10,
+                  backgroundColor: "#FEF2F2", border: "1px solid #FECACA",
+                  color: THEME.danger, fontSize: 12, fontWeight: 700,
+                  display: "flex", alignItems: "center", gap: 6,
+                }}>
+                  <AlertTriangle size={14} />
+                  過去の日時が選択されています。未来の日時を指定してください
+                </div>
+              )}
             </div>
 
             {/* 配信内容 */}
@@ -522,7 +555,12 @@ function DirectSms({ customers = [], templates = [], staffList = [], onRefresh, 
             {/* 配信予約ボタン */}
             <button
               onClick={handleConfirmOpen}
-              style={{ ...styles.btn, ...styles.btnPrimary, width: "100%", marginTop: "24px", height: "54px", fontSize: "15px" }}
+              disabled={isPastTime}
+              style={{
+                ...styles.btn, ...styles.btnPrimary, width: "100%", marginTop: "24px", height: "54px", fontSize: "15px",
+                opacity: isPastTime ? 0.5 : 1,
+                cursor: isPastTime ? "not-allowed" : "pointer",
+              }}
             >
               <Send size={18} />
               配信予約を確定する
