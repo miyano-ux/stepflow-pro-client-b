@@ -140,6 +140,14 @@ function CustomerSchedule({ customers = [], deliveryLogs = [], onRefresh, isLoad
   };
 
   const handleSaveEdit = async () => {
+    // 【C4-008】過去日時のすり抜け対策（保存時チェック）
+    //   未来日時を選んだままモーダルを放置し、その時刻を過ぎてから保存された場合、
+    //   リアルタイム警告（isPastEditTime）は再描画されず表示されないため、ここで受け止める。
+    //   最終防衛は GAS 側 updateDeliveryTime の過去日時拒否（二重防御）。
+    if (new Date(edit.t).getTime() <= Date.now()) {
+      showToast("過去の日時は指定できません。未来の日時を指定してください", "error");
+      return;
+    }
     setIsSavingEdit(true);
     try {
       await apiCall.post(GAS_URL, {
@@ -179,6 +187,11 @@ function CustomerSchedule({ customers = [], deliveryLogs = [], onRefresh, isLoad
   // ローディング / 取得失敗 / 取得済み の3状態。
   // 「0件」と表示してよいのは logsState === "ready" のときだけ。
   const logsState = logsError ? "error" : (fetchedLogs === null ? "loading" : "ready");
+
+  // 【C4-008】編集モーダルで選択中の日時が過去かどうか。
+  //   edit.t が変わるたびに再描画されるため、選択した瞬間に警告バナーの表示と
+  //   保存ボタンの無効化へ反映される。SmartDateTimePicker（共有部品）には手を入れない。
+  const isPastEditTime = edit ? new Date(edit.t).getTime() <= Date.now() : false;
 
   const LogsPlaceholder = ({ label }) => {
     if (logsState === "loading") {
@@ -440,6 +453,18 @@ function CustomerSchedule({ customers = [], deliveryLogs = [], onRefresh, isLoad
               新しい配信予定日時
             </label>
             <SmartDateTimePicker value={edit.t} onChange={(t) => setEdit({ ...edit, t })} />
+            {/* 【C4-008】過去日時のリアルタイム警告（選んだ瞬間に気づけるようにする） */}
+            {isPastEditTime && (
+              <div style={{
+                marginTop: 10, padding: "10px 14px", borderRadius: 10,
+                backgroundColor: "#FEF2F2", border: "1px solid #FECACA",
+                color: THEME.danger, fontSize: 12, fontWeight: 700,
+                display: "flex", alignItems: "center", gap: 6,
+              }}>
+                <AlertTriangle size={14} />
+                過去の日時が選択されています。未来の日時を指定してください
+              </div>
+            )}
             <label style={{ fontSize: "12px", fontWeight: "800", color: THEME.textMuted, display: "block", marginTop: "24px", marginBottom: "8px" }}>
               メッセージ本文の編集
             </label>
@@ -449,8 +474,12 @@ function CustomerSchedule({ customers = [], deliveryLogs = [], onRefresh, isLoad
               onChange={(e) => setEdit({ ...edit, m: e.target.value })}
             />
             <div style={{ display: "flex", gap: "12px", marginTop: "32px" }}>
-              <button onClick={handleSaveEdit} disabled={isSavingEdit}
-                style={{ ...styles.btn, ...styles.btnPrimary, flex: 1, height: "48px" }}>
+              <button onClick={handleSaveEdit} disabled={isSavingEdit || isPastEditTime}
+                style={{
+                  ...styles.btn, ...styles.btnPrimary, flex: 1, height: "48px",
+                  opacity: isPastEditTime ? 0.5 : 1,
+                  cursor: isPastEditTime ? "not-allowed" : "pointer",
+                }}>
                 {isSavingEdit ? <Loader2 size={16} className="animate-spin" /> : "変更を保存"}
               </button>
               <button onClick={() => setEdit(null)} disabled={isSavingEdit}
