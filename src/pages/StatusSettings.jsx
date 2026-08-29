@@ -479,6 +479,10 @@ export default function StatusSettings({ statuses: statusesProp = [], scenarios 
   const [saving,       setSaving]       = useState(false);
   const [dragIdx,      setDragIdx]      = useState(null);
   const [confirmModal, setConfirmModal] = useState(null);
+  // 【G1-006】削除確定した「顧客が紐づくステータス」の元名称。保存時に renames へ
+  // 合流させ、GAS の改名マイグレーション（gas_updated.js:1300-1348）を流用して
+  // 顧客シート・ステータス履歴を先頭フローステータスへ一括付け替えする。
+  const [pendingReassigns, setPendingReassigns] = useState([]);
 
   // ── 【G1-006】ステータス名ごとの利用顧客件数 ────────────────────────
   // ステータスは ID を持たず「名称」だけで顧客レコードと紐づいているため
@@ -530,16 +534,22 @@ export default function StatusSettings({ statuses: statusesProp = [], scenarios 
 
   // フロー行操作
   const handleFlowChange   = (idx, key, val) => setFlowRows(prev => prev.map((r, i) => i === idx ? { ...r, [key]: val } : r));
-  // 【G1-006】確認モーダル経由に変更（SourceManager.jsx:213-244 の削除UXに揃える）
+  // 【G1-006】確認モーダル経由に変更（SourceManager.jsx:213-244 の削除UXに揃える）。
+  // 顧客が紐づく場合は削除を予約として控え、保存時に先頭フローステータスへ自動付け替えする。
   const handleFlowDelete   = (idx) => {
     const row = flowRows[idx];
     const n   = usageOf(row?.name);
     setConfirmModal({
       title: `「${row?.name || "（無題）"}」を削除しますか？`,
       note: n > 0
-        ? `このステータスは現在 ${n} 件の顧客に設定されています。削除すると該当顧客の対応ステータスは無効な値となり、カンバンでは先頭ステータス列に表示されます。先に別のステータスへ付け替えてください。`
+        ? `このステータスは現在 ${n} 件の顧客に設定されています。削除して保存すると、該当顧客の対応ステータスは先頭のステータスへ自動で付け替えられます。`
         : "この操作は「保存する」を押すまでシートには反映されません。",
       onConfirm: () => {
+        if (n > 0) {
+          // 顧客シート側が保持しているのは読み込み時点の名称（_originalName）
+          const from = (row?._originalName || row?.name || "").trim();
+          if (from) setPendingReassigns(prev => prev.some(p => p.from === from) ? prev : [...prev, { from }]);
+        }
         setFlowRows(prev => prev.filter((_, i) => i !== idx));
         setConfirmModal(null);
       },
@@ -582,16 +592,20 @@ export default function StatusSettings({ statuses: statusesProp = [], scenarios 
 
   // 終点行操作
   const handleTerminalChange = (idx, key, val) => setTerminalRows(prev => prev.map((r, i) => i === idx ? { ...r, [key]: val } : r));
-  // 【G1-006】終点ステータスも同様に確認モーダル経由にする
+  // 【G1-006】終点ステータスも同様に確認モーダル経由＋保存時の自動付け替えにする
   const handleTerminalDelete = (idx) => {
     const row = terminalRows[idx];
     const n   = usageOf(row?.name);
     setConfirmModal({
       title: `「${row?.name || "（無題）"}」を削除しますか？`,
       note: n > 0
-        ? `このステータスは現在 ${n} 件の顧客に設定されています。削除すると該当顧客の対応ステータスは無効な値になります。先に別のステータスへ付け替えてください。`
+        ? `このステータスは現在 ${n} 件の顧客に設定されています。削除して保存すると、該当顧客の対応ステータスは先頭のステータスへ自動で付け替えられます。`
         : "この操作は「保存する」を押すまでシートには反映されません。",
       onConfirm: () => {
+        if (n > 0) {
+          const from = (row?._originalName || row?.name || "").trim();
+          if (from) setPendingReassigns(prev => prev.some(p => p.from === from) ? prev : [...prev, { from }]);
+        }
         setTerminalRows(prev => prev.filter((_, i) => i !== idx));
         setConfirmModal(null);
       },
@@ -670,21 +684,42 @@ export default function StatusSettings({ statuses: statusesProp = [], scenarios 
       .filter(r => r._originalName && r._originalName.trim() !== r.name.trim())
       .map(r => ({ from: r._originalName.trim(), to: r.name.trim() }));
 
-    // 改名がある場合は、影響件数を提示して確認を取る（無言のデータ書き換えを避ける）
-    if (renames.length > 0) {
-      const detail = renames
-        .map(r => `・「${r.from}」→「${r.to}」（${usageOf(r.from)} 件）`)
-        .join("\n");
-      const total = renames.reduce((sum, r) => sum + usageOf(r.from), 0);
+    // ── 【G1-006】削除されたステータスの顧客付け替え ──────────────
+    // GAS 側は G1-020 の renames マイグレーション（多対一許容・from の実在チェックなし・
+    // ステータス履歴の追従込み / gas_updated.js:1295-1348）をそのまま流用するため、
+    // サーバー変更は不要。付け替え先は「先頭フローステータス」に固定し、
+    // 表示フォールバック（KanbanBoard.jsx:1432-1437 / CustomerList.jsx:116）および
+    // GAS の既定解決（getStatusMaster_ / gas_updated.js:4311-4326）と同一規則にする。
+    const currentNames = new Set(allRows.map(r => (r.name || "").trim()));
+    const fallbackTo   = (allRows.find(r => !r.terminalType)?.name || "").trim();
+    const deleteMoves  = pendingReassigns
+      .filter(p => !currentNames.has(p.from))   // 同名で作り直された場合は付け替え不要
+      .filter(p => p.from !== fallbackTo)
+      .map(p => ({ from: p.from, to: fallbackTo }));
+
+    if (deleteMoves.length > 0 && !fallbackTo) {
+      showToast("顧客の付け替え先となる通常フローのステータスがありません。先にステータスを追加してください。", "warning");
+      return;
+    }
+
+    const migrations = [...renames, ...deleteMoves];
+
+    // 改名・削除付け替えがある場合は、影響件数を提示して確認を取る（無言のデータ書き換えを避ける）
+    if (migrations.length > 0) {
+      const detail = [
+        ...renames.map(r => `・改名「${r.from}」→「${r.to}」（${usageOf(r.from)} 件）`),
+        ...deleteMoves.map(r => `・削除「${r.from}」→「${r.to}」へ付け替え（${usageOf(r.from)} 件）`),
+      ].join("\n");
+      const total = migrations.reduce((sum, r) => sum + usageOf(r.from), 0);
       setConfirmModal({
-        title: "ステータス名の変更を反映しますか？",
+        title: "ステータス変更を顧客データに反映しますか？",
         message: detail,
         note: total > 0
-          ? `該当する ${total} 件の顧客の対応ステータスを、新しい名称に一括で書き換えます。`
+          ? `該当する ${total} 件の顧客の対応ステータスを一括で書き換えます。`
           : "該当する顧客はいないため、顧客データは変更されません。",
         confirmLabel: "保存する",
         confirmColor: THEME.primary,
-        onConfirm: () => { setConfirmModal(null); doSave(allRows, renames); },
+        onConfirm: () => { setConfirmModal(null); doSave(allRows, migrations); },
       });
       return;
     }
@@ -696,6 +731,7 @@ export default function StatusSettings({ statuses: statusesProp = [], scenarios 
     setSaving(true);
     try {
       await apiCall.post(gasUrl || GAS_URL, { action: "saveStatuses", statuses: allRows, renames });
+      setPendingReassigns([]);   // 【G1-006】反映済みの付け替え予約をクリア
       await onRefresh();
       showToast("保存しました", "success");
     } catch {

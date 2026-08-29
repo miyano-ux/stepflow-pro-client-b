@@ -15,6 +15,12 @@ function daysElapsed(dateStr) {
   if (isNaN(d)) return null;
   return Math.floor((Date.now() - d.getTime()) / 86400000);
 }
+// 【E4-011】流入元・ステータス名の突合キーは trim 正規化に統一する。
+//   SourceReport.jsx:52（srcKey / A4-016）・KanbanBoard.jsx:1350-1356（E2-002）・
+//   E3-009 で確立した「突合キーは必ず String()+trim()」の方針に本ページも揃える。
+//   （旧実装は流入元だけ無 trim の完全一致だったため、前後空白入りの流入元値が
+//     E-3 では集計され E-4 では「未設定扱い」になるレポート間不一致の温床だった）
+function srcKey(v) { return String(v ?? "").trim(); }
 
 function SectionTitle({ children, color }) {
   return (
@@ -63,6 +69,32 @@ export default function StatusAnalysisReport({
     [statuses]
   );
 
+  // ── 【E4-004/E4-005 仕様確定 2026-08-29】ファネル判定用のマスタ索引 ──────
+  // 到達件数は「現在ステータス基準のファネル方式」（ステータス履歴シート非依存。
+  // Z-002 未解消でも過去データに即適用できることを優先した設計決定）。
+  //   到達(S) = 現在の対応ステータスが
+  //     (a) S 自身
+  //     (b) S よりカンバン右側のフローステータス（契約固定 isFixed 含む）
+  //     (c) 成約（terminalType === "won"）… 全段階を通過したとみなす
+  //   のいずれか。失注・休眠は現在値からは到達段階を判定できないため分子に含めない
+  //   （率は保守的＝低めに出ることを許容）。除外(excluded)は分子・分母とも対象外。
+  // 「右側」の判定: statuses は App.jsx:182-183 で並び順(order)ソート済みのため、
+  // 通常フロー（terminalType が空）だけを抜き出した配列の index 大小がそのまま
+  // カンバンの左右（KanbanBoard の上部フロー列順）に一致する。
+  const flowIndexByName = useMemo(() => {
+    const m = new Map();
+    statuses.filter(s => !s.terminalType).forEach((s, i) => m.set((s.name || "").trim(), i));
+    return m;
+  }, [statuses]);
+  const wonNames = useMemo(
+    () => new Set(statuses.filter(s => s.terminalType === "won").map(s => (s.name || "").trim())),
+    [statuses]
+  );
+  const excludedNames = useMemo(
+    () => new Set(statuses.filter(s => s.terminalType === "excluded").map(s => (s.name || "").trim())),
+    [statuses]
+  );
+
   const sourceNames = useMemo(() =>
     sources.length > 0
       ? sources.map(s => s.name)
@@ -78,44 +110,74 @@ export default function StatusAnalysisReport({
   const bySource = useMemo(() => {
     const map = {};
     sourceNames.forEach(src => {
-      map[src] = filteredCustomers.filter(c => (c["流入元"] || "") === src);
+      map[src] = filteredCustomers.filter(c => srcKey(c["流入元"]) === srcKey(src));
     });
     return map;
   }, [filteredCustomers, sourceNames]);
 
   // 【E4-008】流入元がマスタに無い顧客（空欄・削除済み流入元）は記事の仕様どおり集計対象外。
   //   ただし「何件が対象外なのか」を画面から把握できるよう件数だけ算出して表示する。
-  //   判定は bySource（上）の裏返しにするため、比較条件を完全一致のまま揃える。
-  const sourceNameSet = useMemo(() => new Set(sourceNames), [sourceNames]);
+  //   判定は bySource（上）の裏返しにするため、比較条件（trim 済みキー）を完全に揃える。
+  const sourceNameSet = useMemo(() => new Set(sourceNames.map(srcKey)), [sourceNames]);
   const unassigned = useMemo(
-    () => filteredCustomers.filter(c => !sourceNameSet.has(c["流入元"] || "")),
+    () => filteredCustomers.filter(c => !sourceNameSet.has(srcKey(c["流入元"]))),
     [filteredCustomers, sourceNameSet]
   );
 
   const statusData = useMemo(() =>
     reportStatuses.map((st, si) => {
+      const stName = (st.name || "").trim();
+      const stIdx  = flowIndexByName.has(stName) ? flowIndexByName.get(stName) : null;
+
+      // 到達判定（ファネル方式・仕様確定メモ 2026-08-29）
+      //   フローステータス: S自身 or Sより右のフロー or 成約(won) なら到達。
+      //   終点ステータス（won/dormant/lost）のカード: 「右側」が定義できないため
+      //   従来どおり現在在籍（名称完全一致・trim 済み）のみを到達とする。
+      const isReached = (c) => {
+        const cur = (c["対応ステータス"] || "").trim();
+        if (cur === stName) return true;
+        if (stIdx === null) return false;              // 終点カードは在籍一致のみ
+        if (wonNames.has(cur)) return true;            // 成約は全段階を通過したとみなす
+        const ci = flowIndexByName.get(cur);
+        return ci !== undefined && ci > stIdx;         // Sより右のフローに在籍＝通過済み
+      };
+
       const rows = sourceNames.map(src => {
         const list = bySource[src] || [];
-        // 【E2-002】比較条件をカンバン（KanbanBoard.jsx:1352）に揃える。
-        //   旧実装は st.name を trim していなかったため、ステータス設定の名称に
-        //   前後空白が混じると顧客一覧・カンバンより過少にカウントされていた。
-        const reached = list.filter(c => (c["対応ステータス"] || "").trim() === (st.name || "").trim());
-        const count = reached.length;
-        const daysList = reached
+        // 【E4-005】到達率の分母 ＝ その流入元の全顧客数（累計・期間フィルタなし）。
+        //   除外(excluded)ステータス在籍の顧客のみ、分母からも除く（設計決定事項どおり
+        //   excluded は常にレポート対象外）。失注・休眠は分母に含める（分子除外・分母算入）。
+        const denomList = list.filter(c => !excludedNames.has((c["対応ステータス"] || "").trim()));
+        const total = denomList.length;
+
+        // 【E4-004】到達件数（ファネル方式）と到達率 ＝ 到達件数 ÷ 分母 × 100。
+        //   丸めは従来どおり描画側で Math.round（四捨五入・整数%）。
+        const count = denomList.filter(isReached).length;
+        const rate  = total > 0 ? (count / total) * 100 : 0;
+
+        // 【E4-006 仕様確定】平均滞在日数 ＝「現在このステータスに在籍している顧客」の
+        //   ステータス変更日（無ければ登録日）→ 今日 の平均経過日数（現行計算を維持し
+        //   名称のみ変更）。到達件数のファネル拡大（右側・成約の加算）は本指標には
+        //   波及させない：通過済み顧客を混ぜると「このステータスでの滞在」の意味が
+        //   壊れるため、母集団を在籍中のみに固定する。
+        const current = list.filter(c => (c["対応ステータス"] || "").trim() === stName);
+        const daysList = current
           .map(c => daysElapsed(c["ステータス変更日"] || c["登録日"]))
           .filter(d => d !== null);
         const avgDays = daysList.length ? avg(daysList) : null;
-        return { src, count, total: list.length, avgDays };
+
+        return { src, count, total, rate, avgDays };
       });
       const maxCount = Math.max(...rows.map(d => d.count), 1);
       const grandTotal = rows.reduce((s, d) => s + d.count, 0);
-      // 【E4-008】流入元マスタに無い顧客のうち、このステータスに到達している件数（集計対象外）
-      const excludedCount = unassigned.filter(
-        c => (c["対応ステータス"] || "").trim() === (st.name || "").trim()
-      ).length;
+      // 【E4-008】流入元マスタに無い顧客のうち、このステータスに到達している件数（集計対象外）。
+      //   到達の定義は本体と同じファネル方式に揃える（除外ステータス在籍も同様に対象外）。
+      const excludedCount = unassigned
+        .filter(c => !excludedNames.has((c["対応ステータス"] || "").trim()))
+        .filter(isReached).length;
       return { status: st.name, rows, maxCount, grandTotal, excludedCount, color: COLORS[si % COLORS.length] };
     }),
-    [reportStatuses, sourceNames, bySource, unassigned]
+    [reportStatuses, sourceNames, bySource, unassigned, flowIndexByName, wonNames, excludedNames]
   );
 
   // 担当者リスト（staffList 未指定時は顧客データのメールから補完してフィルターを必ず表示）
@@ -155,7 +217,7 @@ export default function StatusAnalysisReport({
             <div>
               <h1 style={{ fontSize: isMobile ? 20 : 26, fontWeight: 900, color: THEME.textMain, margin: 0 }}>営業ステータス分析</h1>
               <p style={{ color: THEME.textMuted, fontSize: 13, margin: "4px 0 0" }}>
-                流入元ごとのステータス到達数・到達割合・平均到達日数
+                流入元ごとの到達件数・到達率・平均滞在日数
               </p>
             </div>
           </div>
@@ -202,17 +264,20 @@ export default function StatusAnalysisReport({
               {/* データテーブル（モバイルは横スクロール） */}
               <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
                 <div style={{ minWidth: 600 }}>
-                  {/* カラムヘッダー */}
+                  {/* カラムヘッダー
+                      【仕様確定 2026-08-29】
+                      ・到達件数: ファネル方式（在籍＋右側フロー＋成約）
+                      ・到達率: 到達件数 ÷ 流入元の全顧客数（旧「到達割合（流入総数比）」を置換）
+                      ・平均滞在日数: 旧「平均到達日数」を改名（計算は現行維持） */}
                   <div style={{ display: "grid", gridTemplateColumns: "140px 1fr 1fr 96px", columnGap: 16, marginBottom: 4 }}>
                     <div />
                     <div style={colHd()}>到達件数</div>
-                    <div style={colHd()}>到達割合（流入総数比）</div>
-                    <div style={{ ...colHd("right") }}>平均到達日数</div>
+                    <div style={colHd()}>到達率（流入元の全顧客比）</div>
+                    <div style={{ ...colHd("right") }}>平均滞在日数</div>
                   </div>
 
                   {/* データ行 */}
                   {sg.rows.map((d, ri) => {
-                    const pctOfTotal = sg.grandTotal > 0 ? (d.count / sg.grandTotal) * 100 : 0;
                     const isEven = ri % 2 === 0;
                     const rowBg = isEven ? THEME.bg : "white";
                     const cs = { backgroundColor: rowBg, padding: "12px 12px", display: "flex", alignItems: "center" };
@@ -229,10 +294,10 @@ export default function StatusAnalysisReport({
                           </span>
                         </div>
                         <div style={{ ...cs, paddingLeft: 16 }}>
-                          <HBar value={d.count} maxVal={sg.maxCount} color={sg.color} suffix="件" />
+                          <HBar value={d.count} maxVal={sg.maxCount} color={sg.color} suffix={`件 / ${d.total}件中`} />
                         </div>
                         <div style={{ ...cs, paddingLeft: 8 }}>
-                          <HBar value={Math.round(pctOfTotal)} maxVal={100} color={sg.color} suffix="%" />
+                          <HBar value={Math.round(d.rate)} maxVal={100} color={sg.color} suffix="%" />
                         </div>
                         <div style={{ ...cs, justifyContent: "flex-end", borderRadius: "0 8px 8px 0", paddingRight: 16 }}>
                           {d.avgDays != null ? (
