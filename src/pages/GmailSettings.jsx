@@ -51,10 +51,26 @@ function makeFingerprint(rule) {
 //      2) `(.+)` が行末まで取るため、キーワードの後ろに文章が続く実メールで
 //         「山田太郎 様よりお問い合わせです。今後の…」のように後続文章を丸ごと吸収する
 //    という問題があった。
+//    【D3-010】追加対応：
+//      3) キーはユーザー自由設定のため正規表現メタ文字をエスケープする
+//         （「氏名(カナ)：」等の括弧入りキーが無言で抽出失敗していた）
+//      4) 氏名は「他の設定済み抽出キー（電話キー・カスタムキー）」の出現位置でも終端する
+//         （一行内で句読点なしに次キーが続く本文で後続を巻き込まないため）
+const escRe = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const matchAfterKey = (body, key) => {
   if (!key) return null;
-  const m = String(body || "").match(new RegExp(key + "[ \t　]*(.+)"));
+  const m = String(body || "").match(new RegExp(escRe(key) + "[ \t　]*(.+)"));
   return m ? m[1] : null;
+};
+// 氏名専用：他の抽出キーが値の中に現れたらそこで打ち切る（スペースでは切らない＝姓名間スペース保護）
+const cutAtOtherKeys = (raw, otherKeys) => {
+  let s = String(raw);
+  (otherKeys || []).forEach((k) => {
+    if (!k) return;
+    const i = s.indexOf(k);
+    if (i >= 0) s = s.slice(0, i);
+  });
+  return s;
 };
 const cleanNameValue = (v) => {
   let s = String(v == null ? "" : v).trim();
@@ -65,13 +81,13 @@ const cleanNameValue = (v) => {
   if (h.replace(/[\s　]/g, "")) s = h;
   return s.replace(/[\s　]+/g, " ").trim();
 };
-const extractNameValue = (body, key) => {
+const extractNameValue = (body, key, otherKeys) => {
   const raw = matchAfterKey(body, key);
-  return raw == null ? "" : cleanNameValue(raw);
+  return raw == null ? "" : cleanNameValue(cutAtOtherKeys(raw, otherKeys));
 };
 const extractPhoneValue = (body, key) => {
   if (!key) return "";
-  const m = String(body || "").match(new RegExp(key + "[ \t　]*([\\d\\-－ー０-９]+)"));
+  const m = String(body || "").match(new RegExp(escRe(key) + "[ \t　]*([\\d\\-－ー０-９]+)"));
   if (!m) return "";
   return m[1]
     .replace(/[０-９]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xFEE0))
@@ -318,8 +334,10 @@ export default function GmailSettings({
       (modal.data.customKeys || []).forEach(({ fieldName, keyword }) => {
         if (fieldName && keyword) customs[fieldName] = orDash(keyword, extractCustomValue(testBody, keyword));
       });
+      // 氏名の終端に使う「他の抽出キー」＝電話キー＋カスタムキー（GAS側と同一仕様）
+      const nameOtherKeys = [modal.data.phoneKey, ...(modal.data.customKeys || []).map(c => c.keyword)].filter(Boolean);
       setParsePreview({
-        name:  orDash(modal.data.nameKey,  extractNameValue(testBody,  modal.data.nameKey)),
+        name:  orDash(modal.data.nameKey,  extractNameValue(testBody,  modal.data.nameKey, nameOtherKeys)),
         phone: orDash(modal.data.phoneKey, extractPhoneValue(testBody, modal.data.phoneKey)),
         customs,
       });
@@ -359,13 +377,18 @@ export default function GmailSettings({
       "カスタム項目キー": JSON.stringify(customKeysToObject(formData.customKeys)),
       "通知先ユーザー":   JSON.stringify(formData.notifyUsers || []),
       "通知文言":         formData.notifyMessage || "",
+      // 「送信元」はこの画面にUIが無く編集対象外。楽観的更新のローカル行が
+      // サーバー行と食い違わないよう、編集時は既存値をそのまま持ち回る。
+      "送信元":           serverItem?.["送信元"] || "",
     };
 
     if (isEdit) {
-      const newLocalId = makeFingerprint(newRule);
+      // _localId は Reactキー用の識別子。カウンター採番（nextId）で一意性を保つ設計
+      // （本ファイル29-33行）のため、編集後もフィンガープリントで振り直さず
+      // 元のIDを維持する。内容が同一のルールが複数あってもキーが衝突しない。
       setLocalSettings(prev => prev.map(s =>
         s._localId === modal.editLocalId
-          ? { ...newRule, _localId: newLocalId, _serverIdx: serverIdx }
+          ? { ...newRule, _localId: modal.editLocalId, _serverIdx: serverIdx }
           : s
       ));
     } else {
@@ -395,10 +418,14 @@ export default function GmailSettings({
       });
       onRefresh();
     } catch {
+      // ロールバックもIDはカウンター採番に統一する。削除済み判定は
+      // useEffect（196-199行）と同じくフィンガープリントで行う
+      //（deletedIdsRef はカウンターIDのSetなので、ここで作り直した行とは
+      //  そもそも一致せずフィルターとして機能しない）。
       setLocalSettings(
         gmailSettings
-          .map((s, i) => ({ ...s, _localId: makeFingerprint(s), _serverIdx: i }))
-          .filter(s => !deletedIdsRef.current.has(s._localId))
+          .map((s, i) => ({ ...s, _localId: nextId(), _serverIdx: i }))
+          .filter(s => !deletedFingerprintsRef.current.has(makeFingerprint(s)))
       );
       showToast("保存に失敗しました。再度お試しください。", "error");
     } finally {
