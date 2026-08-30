@@ -24,6 +24,9 @@ const FIELD_TYPES = [
 
 const FIXED_FIELDS = ["姓", "名", "電話番号", "メールアドレス"];
 
+// 【G2-014】確認モーダルの文言用：型値 → 日本語ラベル
+const typeLabelOf = (v) => FIELD_TYPES.find(t => t.value === v)?.label || v || "テキスト";
+
 // 【G2-015】顧客リストのシステム管理列（gas_updated.js CUSTOMER_SYSTEM_COLS と対応）。
 // カスタム項目にこれらの名前を付けると既存列と衝突するため、保存前に弾く。
 const RESERVED_FIELDS = [
@@ -96,7 +99,7 @@ export default function FormSettings({ formSettings = [], sheetCustomColumns = [
   // 差分を取っていたため、名前を変更しただけの項目が『旧名の削除』に見えていた。
   // originalName を突き合わせることで、削除（項目そのものが無くなった）と
   // 名称変更（同じ項目の名前だけ変わった）を切り分ける。
-  const { removedFields, renamedFields } = useMemo(() => {
+  const { removedFields, renamedFields, typeChangedFields } = useMemo(() => {
     const countOf = (n) => (customers || []).filter(c => String(c?.[n] ?? "").trim() !== "").length;
     const oldNames = (formSettings || []).map(f => String(f?.name || "").trim()).filter(Boolean);
 
@@ -114,7 +117,25 @@ export default function FormSettings({ formSettings = [], sheetCustomColumns = [
       .filter(n => !survivingOld.has(n) && !currentNames.has(n))
       .map(n => ({ name: n, count: countOf(n) }));
 
-    return { removedFields: removed, renamedFields: renamed };
+    // 【G2-014】入力形式（型）の変更検知。型変更は既存値を変換・クリアせず
+    // そのまま保持する（gas_updated.js saveFormSettings は定義シートを書き換えるだけで
+    // 顧客列には触れない）ため、選択肢に無い既存値は編集画面で未選択に見える
+    // などの不整合が起こりうる。保存前に確認モーダルで明示する。
+    // 照合は originalName（読み込み時の名前）基準＝名称変更と同時でも検知できる。
+    const oldByName = new Map((formSettings || []).map(f => [String(f?.name || "").trim(), f]));
+    const typeChanged = items
+      .map(i => {
+        const from = String(i.originalName || "").trim();
+        if (!from) return null;                          // 新規追加は対象外
+        const old = oldByName.get(from);
+        if (!old) return null;
+        const oldType = old.type || "text";
+        if (oldType === i.type) return null;
+        return { name: String(i.name || "").trim() || from, fromType: oldType, toType: i.type, count: countOf(from) };
+      })
+      .filter(Boolean);
+
+    return { removedFields: removed, renamedFields: renamed, typeChangedFields: typeChanged };
   }, [items, formSettings, customers]);
 
   // ── 項目操作 ──────────────────────────────────────
@@ -157,7 +178,11 @@ export default function FormSettings({ formSettings = [], sheetCustomColumns = [
     setSaved(false);
     try {
       // 【G2-012】confirmWipe: 全件削除の明示同意。GAS側ガード（saveFormSettings）と対。
-      await apiCall.post(GAS_URL, { action: "saveFormSettings", settings, confirmWipe });
+      // 【G2-012追加ガード】knownNames: この画面が読み込み時に認識していた既存項目名。
+      // GAS側は「クライアントが見ていない既存項目の削除」を拒否する（部分減少ガード）。
+      // 古い表示のまま保存した場合に、画面に無かった項目が黙って消える事故を防ぐ。
+      const knownNames = (formSettings || []).map(f => String(f?.name || "").trim()).filter(Boolean);
+      await apiCall.post(GAS_URL, { action: "saveFormSettings", settings, confirmWipe, knownNames });
 
       // 【G2-014】GAS への保存が終わっても、画面側の formSettings は onRefresh 完了まで
       // 古いまま。「同期完了！」はここではなく再取得の後に出す（先に出すとユーザーが
@@ -237,17 +262,27 @@ export default function FormSettings({ formSettings = [], sheetCustomColumns = [
       );
     }
 
-    const hasRemoval = removedFields.length > 0;
-    const hasRename  = renamedFields.length > 0;
+    const hasRemoval    = removedFields.length > 0;
+    const hasRename     = renamedFields.length > 0;
+    const hasTypeChange = typeChangedFields.length > 0;
 
-    // 【G2-012 / G2-015】既存項目が消える／名前が変わる保存は確認モーダルを挟む。
-    // 名称変更はデータが保持される非破壊操作なので、削除とは文言・配色・アイコンを分ける。
-    if (hasRemoval || hasRename) {
+    // 【G2-012 / G2-014 / G2-015】既存項目が消える／名前が変わる／入力形式が変わる保存は
+    // 確認モーダルを挟む。名称・形式の変更はデータが保持される非破壊操作なので、
+    // 削除とは文言・配色・アイコンを分ける。
+    if (hasRemoval || hasRename || hasTypeChange) {
       const lines = [];
       if (hasRename) {
         lines.push("【項目名の変更】");
         renamedFields.forEach(f => lines.push(
           `・${f.from} → ${f.to}${f.count > 0 ? `（入力済み ${f.count} 件はそのまま引き継がれます）` : ""}`
+        ));
+      }
+      // 【G2-014】型変更の確認。値は変換されないことを明示する
+      if (hasTypeChange) {
+        if (lines.length) lines.push("");
+        lines.push("【入力形式の変更】");
+        typeChangedFields.forEach(f => lines.push(
+          `・${f.name}：${typeLabelOf(f.fromType)} → ${typeLabelOf(f.toType)}${f.count > 0 ? `（入力済み ${f.count} 件は変換されずそのまま保持）` : ""}`
         ));
       }
       if (hasRemoval) {
@@ -258,23 +293,25 @@ export default function FormSettings({ formSettings = [], sheetCustomColumns = [
         ));
       }
 
-      const title = hasRemoval
-        ? (hasRename
-            ? `${renamedFields.length}件の名称変更と${removedFields.length}件の削除を保存します`
-            : `${removedFields.length}件のカスタム項目を削除します`)
-        : `${renamedFields.length}件の項目名を変更します`;
+      const titleParts = [];
+      if (hasRename)     titleParts.push(`${renamedFields.length}件の名称変更`);
+      if (hasTypeChange) titleParts.push(`${typeChangedFields.length}件の形式変更`);
+      if (hasRemoval)    titleParts.push(`${removedFields.length}件の削除`);
+      const title = `${titleParts.join("と")}を保存します`;
 
       const note = hasRemoval
         ? (removedFields.some(f => f.count > 0)
             ? "削除した項目は顧客リストの該当列ごと削除され、入力済みのデータは復元できません。意図した削除かご確認ください。"
             : "削除した項目は顧客リストから列ごと削除されます。")
-        : "顧客リストの列名を変更するだけで、入力済みのデータはそのまま保持されます。表示設定・媒体連携のマッピングも自動で追従します。";
+        : hasTypeChange
+            ? "形式を変更しても、入力済みの値は自動変換・削除されずそのまま保持されます。選択肢型へ変更した場合、選択肢に無い既存値は編集画面で未選択に見えますが、選択し直して保存するまで値は保持されます。"
+            : "顧客リストの列名を変更するだけで、入力済みのデータはそのまま保持されます。表示設定・媒体連携のマッピングも自動で追従します。";
 
       setConfirmModal({
         title,
         message: lines.join("\n"),
         note,
-        confirmLabel: hasRemoval ? "この内容で保存する" : "名称を変更して保存する",
+        confirmLabel: hasRemoval ? "この内容で保存する" : "この内容で変更して保存する",
         // 削除を含まない場合は破壊的操作ではないため、赤いゴミ箱を出さない
         confirmColor: hasRemoval ? undefined : THEME.primary,
         icon:   hasRemoval ? undefined : <Pencil size={26} color={THEME.primary} />,

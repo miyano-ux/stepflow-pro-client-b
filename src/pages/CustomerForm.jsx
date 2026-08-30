@@ -27,7 +27,7 @@ import { useWindowWidth } from "../lib/useWindowWidth";
  * @param {string} masterUrl - マスタAPIのURL
  * @param {function} onRefresh - データ再取得コールバック
  */
-function CustomerForm({ formSettings = [], scenarios = [], statuses = [], staffList = [], sources = [], groups = [], contractTypes = [], onRefresh }) {
+function CustomerForm({ formSettings = [], scenarios = [], statuses = [], staffList = [], sources = [], groups = [], contractTypes = [], onRefresh, isLoading = false }) {
   const showToast = useToast();
   const navigate = useNavigate();
   const { isMobile } = useWindowWidth();
@@ -378,6 +378,20 @@ function CustomerForm({ formSettings = [], scenarios = [], statuses = [], staffL
       showToast("電話番号が正しくありません（数字を含めて入力してください）", "warning");
       setSubmitting(false);
       return;
+    }
+
+    // 【G2-008】カスタム項目の必須チェック。
+    //   テキスト型は DynamicField の HTML required でブロックされるが、
+    //   日付型（DatePicker）・選択肢型（CustomSelect）はボタンベースのUIのため
+    //   ネイティブ検証が効かず、空のまま登録できていた。全型を JS で検証する。
+    //   必須判定は FormSettings.jsx buildItems と同一基準（未定義は必須扱い）。
+    for (const f of formSettings || []) {
+      const req = f.required !== false && f.required !== "false";
+      if (req && !String(fd[f.name] ?? "").trim()) {
+        showToast(`「${f.name}」は必須項目です`, "warning");
+        setSubmitting(false);
+        return;
+      }
     }
 
     try {
@@ -763,9 +777,21 @@ function CustomerForm({ formSettings = [], scenarios = [], statuses = [], staffL
           </div>
 
           {/* カスタム項目 */}
+          {/* 【G2-004付随】初回読み込み中はセクションが無言で不在になり、
+              「カスタム項目が存在しない」ように見えていた（App.jsx は isLoading を
+              渡していたが本コンポーネントが未受領だった）。読み込み中は
+              プレースホルダを出して区別する（FormSettings.jsx:339-343 と同方針）。 */}
+          {isLoading && formSettings.length === 0 && (
+            <div style={{ padding: "14px 16px", marginBottom: 20, border: `1px dashed ${THEME.border}`, borderRadius: 10, color: THEME.textMuted, fontSize: 13, textAlign: "center" }}>
+              カスタム項目を読み込み中...
+            </div>
+          )}
           {formSettings.map((f) => (
             <div key={f.name} style={{ marginBottom: "20px" }}>
-              <label style={{ fontWeight: "700" }}>{f.name}</label>
+              <label style={{ fontWeight: "700" }}>
+                {f.name}
+                {(f.required !== false && f.required !== "false") && <span style={{ color: "#DC2626", marginLeft: 4 }}>*</span>}
+              </label>
               <DynamicField
                 f={f}
                 value={fd[f.name]}

@@ -364,14 +364,27 @@ const CustomField = ({ field, isEditing, value, onChange }) => {
     const val = field.type === "date" ? formatDateJP(value) : value;
     return <ViewField label={field.name} value={val} />;
   }
+
+  // 【G2-009】既存顧客に後付けされた必須項目が未入力の場合、編集モードで
+  //   警告を表示する（非ブロッキング）。保存自体は止めないことで、
+  //   必須項目の後付けにより既存顧客の編集が一律不能になる運用事故を避ける。
+  //   必須判定は FormSettings.jsx buildItems / CustomerForm.jsx と同一基準。
+  const isRequired = field.required !== false && field.required !== "false";
+  const showRequiredWarn = isRequired && !String(value ?? "").trim();
+  const requiredWarn = showRequiredWarn ? (
+    <div style={{ marginTop: 4, fontSize: 11, fontWeight: 700, color: "#DC2626" }}>
+      必須項目が未入力です（保存は可能です）
+    </div>
+  ) : null;
+
   if (field.type === "date") {
-    return <EditDate label={field.name} fieldName={field.name} value={value} onChange={onChange} />;
+    return <div><EditDate label={field.name} fieldName={field.name} value={value} onChange={onChange} />{requiredWarn}</div>;
   }
   if (field.type === "dropdown") {
     const opts = (field.options || "").split(",").map((o) => o.trim()).filter(Boolean);
-    return <EditSelect label={field.name} fieldName={field.name} options={opts} value={value} onChange={onChange} />;
+    return <div><EditSelect label={field.name} fieldName={field.name} options={opts} value={value} onChange={onChange} />{requiredWarn}</div>;
   }
-  return <EditText label={field.name} fieldName={field.name} value={value} onChange={onChange} />;
+  return <div><EditText label={field.name} fieldName={field.name} value={value} onChange={onChange} />{requiredWarn}</div>;
 };
 
 // ─────────────────────────────────────────────────────────
