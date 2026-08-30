@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { FileSpreadsheet, SlidersHorizontal, Upload, Loader2 } from "lucide-react";
+import { FileSpreadsheet, SlidersHorizontal, Upload } from "lucide-react";
 import axios from "axios";
 import { THEME, GAS_URL } from "../lib/constants";
 import { styles } from "../lib/styles";
@@ -27,7 +27,7 @@ import { useWindowWidth } from "../lib/useWindowWidth";
  * @param {string} masterUrl - マスタAPIのURL
  * @param {function} onRefresh - データ再取得コールバック
  */
-function CustomerForm({ formSettings = [], scenarios = [], statuses = [], staffList = [], sources = [], groups = [], contractTypes = [], onRefresh, isLoading = false }) {
+function CustomerForm({ formSettings = [], scenarios = [], statuses = [], staffList = [], sources = [], groups = [], contractTypes = [], onRefresh }) {
   const showToast = useToast();
   const navigate = useNavigate();
   const { isMobile } = useWindowWidth();
@@ -43,9 +43,20 @@ function CustomerForm({ formSettings = [], scenarios = [], statuses = [], staffL
   const [importing, setImporting] = useState(false); // CSVインポート処理中フラグ
   const [importResultModal, setImportResultModal] = useState(null); // CSVインポート完了モーダル
 
+  // 【A2-044補足/D2】CSVエクスポート（CustomerList.handleExportCSV）はヘッダーを
+  //   表示名（担当者メール→「担当者」、シナリオID→「適用シナリオ」）にリネームして
+  //   出力するため、そのまま再インポートすると列参照が外れて担当者・シナリオが
+  //   黙って欠落していた。エクスポート列名をインポート期待列名へここで読み替える。
+  const HEADER_ALIASES = { "担当者": "担当者名", "適用シナリオ": "シナリオID" };
+
   // 行データ（ヘッダー名→値マップの配列）をAPIに送信する共通処理
   const bulkSubmit = async (rowMaps) => {
-    const items = rowMaps.map((row) => {
+    const items = rowMaps.map((rawRow) => {
+      // エイリアス列があり、正規列が無い場合のみ読み替える（正規列優先）
+      const row = { ...rawRow };
+      Object.entries(HEADER_ALIASES).forEach(([alias, canonical]) => {
+        if (alias in row && !(canonical in row)) row[canonical] = row[alias];
+      });
       const get = (name) => row[name] ?? "";
 
       // 担当者名→メール変換：「担当者名」列があればメールに解決、なければ「担当者メール」列をそのまま使用
@@ -56,6 +67,10 @@ function CustomerForm({ formSettings = [], scenarios = [], statuses = [], staffL
           (s) => `${s.lastName} ${s.firstName}` === staffName || `${s.lastName}${s.firstName}` === staffName
         );
         if (matched) staffEmail = matched.email;
+        // エクスポート側で氏名解決できなかった場合はメールアドレスがそのまま
+        // 「担当者」列に出力される（CustomerList.handleExportCSV のフォールバック）。
+        // その値を再取り込みできるよう、@ を含む未一致値はメールとして扱う。
+        else if (staffName.includes("@")) staffEmail = staffName;
       }
 
       // シナリオID・契約種別の「未選択」を空文字に正規化
@@ -109,6 +124,8 @@ function CustomerForm({ formSettings = [], scenarios = [], statuses = [], staffL
       try {
         let rowMaps = [];
 
+        let parsedHeaders = [];
+
         if (isXlsx) {
           // ── xlsx ──────────────────────────────────────────
           const wb = new ExcelJS.Workbook();
@@ -117,8 +134,12 @@ function CustomerForm({ formSettings = [], scenarios = [], statuses = [], staffL
           const ws = wb.getWorksheet("顧客登録") || wb.worksheets[0];
           const allRows = [];
           ws.eachRow((row) => { allRows.push(row.values.slice(1)); }); // index 0 は空
-          if (allRows.length < 2) return;
+          if (allRows.length < 2) {
+            showToast("取り込めるデータ行がありません（ヘッダー行＋1行以上が必要です）", "warning");
+            return;
+          }
           const headers = allRows[0].map((v) => String(v ?? "").trim());
+          parsedHeaders = headers;
           rowMaps = allRows.slice(1)
             .filter((r) => r.some(Boolean))
             .map((r) => Object.fromEntries(headers.map((h, i) => [h, String(r[i] ?? "").trim()])));
@@ -133,11 +154,28 @@ function CustomerForm({ formSettings = [], scenarios = [], statuses = [], staffL
               if (eqMatch) val = eqMatch[1];
               return val;
             }));
-          if (rows.length < 2) return;
+          if (rows.length < 2) {
+            showToast("取り込めるデータ行がありません（ヘッダー行＋1行以上が必要です）", "warning");
+            return;
+          }
           const headers = rows[0];
+          parsedHeaders = headers;
           rowMaps = rows.slice(1)
             .filter((r) => r.length > 2)
             .map((r) => Object.fromEntries(headers.map((h, i) => [h, r[i] ?? ""])));
+        }
+
+        // 【A2-042】ヘッダー検証：必須列が1つでも欠けていたらインポート自体を中止する。
+        //   旧実装は列名の完全一致で参照するだけだったため、ヘッダーを書き換えた
+        //   ファイルでも全項目空の顧客レコードが黙って「成功」登録されていた。
+        const REQUIRED_HEADERS = ["姓", "名", "電話番号"];
+        const missingHeaders = REQUIRED_HEADERS.filter((h) => !parsedHeaders.includes(h));
+        if (missingHeaders.length > 0) {
+          showToast(
+            `ファイルのヘッダーがテンプレートと一致しません（不足列: ${missingHeaders.join("、")}）。取り込みを中止しました。テンプレートDLから最新の形式をご利用ください。`,
+            "error"
+          );
+          return;
         }
 
         await bulkSubmit(rowMaps);
@@ -330,6 +368,18 @@ function CustomerForm({ formSettings = [], scenarios = [], statuses = [], staffL
     e.preventDefault();
     if (submitting) return; // 二重送信防止
     setSubmitting(true);
+
+    // 【A2-010/A2-006】電話番号は正規化「後」の値で必須チェックする。
+    //   HTML required は生入力の非空しか見ないため、「あいうえお」等の
+    //   数字を含まない入力が正規化で空文字化し、空のまま保存されていた。
+    //   GAS 側（add アクション）にも同一ガードがあり、ここは即時フィードバック用。
+    const cleanPh = smartNormalizePhone(ph);
+    if (!cleanPh) {
+      showToast("電話番号が正しくありません（数字を含めて入力してください）", "warning");
+      setSubmitting(false);
+      return;
+    }
+
     try {
       let resolvedData = { ...fd };
       let assignedGroupName = null;
@@ -347,7 +397,7 @@ function CustomerForm({ formSettings = [], scenarios = [], statuses = [], staffL
           assignedStaffName = staff ? `${staff.lastName} ${staff.firstName}` : res.email;
           resolvedData = { ...resolvedData, "担当者メール": res.email };
         } else {
-          showToast("グループ割り当てに失敗しました: " + (res?.message || "", "error"));
+          showToast("グループ割り当てに失敗しました: " + (res?.message || ""), "error");
           return;
         }
       } else if (resolvedData["担当者メール"]) {
@@ -359,7 +409,7 @@ function CustomerForm({ formSettings = [], scenarios = [], statuses = [], staffL
         action: "add",
         lastName: ln,
         firstName: fn,
-        phone: ph,
+        phone: cleanPh,
         email: em,
         data: resolvedData,
         scenarioID: sc,
@@ -376,7 +426,7 @@ function CustomerForm({ formSettings = [], scenarios = [], statuses = [], staffL
         scenarioID: sc || null,
         optimisticCustomer: {
           id: `optimistic_${Date.now()}`,
-          姓: ln, 名: fn, 電話番号: ph, メールアドレス: em,
+          姓: ln, 名: fn, 電話番号: cleanPh, メールアドレス: em,
           シナリオID: sc,
           登録日: new Date().toISOString(),
           対応ステータス: resolvedData["対応ステータス"] || "未対応",
@@ -399,18 +449,6 @@ function CustomerForm({ formSettings = [], scenarios = [], statuses = [], staffL
     setSuccessModal(null);
     navigate("/", { state: { newCustomer: optimisticCustomer } });
   };
-
-  // 初回ロード中は formSettings/statuses/sources 等が未取得で入力項目が欠けるため、
-  // 不完全なフォームを見せずローディング表示にする。
-  if (isLoading) {
-    return (
-      <div style={{ minHeight: "60vh", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 16, color: THEME.textMuted }}>
-        <Loader2 size={44} color={THEME.primary} style={{ animation: "spin 0.9s linear infinite" }} />
-        <div style={{ fontSize: 14, fontWeight: 800 }}>読み込み中…</div>
-        <div style={{ fontSize: 12 }}>フォームの項目を準備しています</div>
-      </div>
-    );
-  }
 
   return (
     <>

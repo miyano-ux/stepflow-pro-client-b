@@ -172,9 +172,14 @@ function App() {
         //   各画面が「まだ登録されていません」等の空状態を誤表示するうえ、下の
         //   appCache.set で壊れたデータが IndexedDB に固定化され、リロード後も
         //   空表示が続く（実データはスプレッドシート上に健在のまま）。
+        // 【A2-026/E3-014残穴】scenarios / groups もチェック対象に追加。
+        //   これらのキーを欠く退行レスポンスが素通りすると、/scenarios が
+        //   「シナリオがありません」、/add の担当者プルダウンからグループが
+        //   消える等の空誤表示になり、appCache 経由で固定化される。
         if (!("customers" in data) || !("sources" in data) || !("statuses" in data)
-            || !("formSettings" in data) || !("gmailSettings" in data)) {
-          throw new Error("GASレスポンスに必須キー(customers/sources/statuses/formSettings/gmailSettings)がありません");
+            || !("formSettings" in data) || !("gmailSettings" in data)
+            || !("scenarios" in data) || !("groups" in data)) {
+          throw new Error("GASレスポンスに必須キー(customers/sources/statuses/formSettings/gmailSettings/scenarios/groups)がありません");
         }
         // 【高速化 B】列指向 {headers, rows} を受信直後に復元（以降のコンポーネントは無改修）
         //   getCustomers（lightRefresh）や旧GASの配列形もそのまま通る

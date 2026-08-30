@@ -155,7 +155,7 @@ function ImportErrorList({ errors = [], onRefresh }) {
 
       <Page
         title="取り込みエラーログ"
-        subtitle="抽出に失敗したメールがここに表示されます。キーワード設定の修正に役立ててください。"
+        subtitle="メール自動連携・媒体連携・CSV/Excelインポートで取り込みに失敗（スキップ）したデータがここに表示されます。"
       >
         {/* 戻るボタン */}
         <button

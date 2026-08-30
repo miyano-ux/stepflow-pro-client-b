@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import axios from "axios";
+import { apiCall } from "../lib/utils";
 import { Plus, Trash2, Calendar, Clock, Save, Loader2, ArrowLeft, CheckCircle2 } from "lucide-react";
 import { useToast } from "../ToastContext";
 import { useWindowWidth } from "../lib/useWindowWidth";
@@ -324,21 +324,27 @@ export default function ScenarioForm({ scenarios = [], customers = [], staffList
 
   const handleSave = async () => {
     if (!name) return showToast("シナリオ名を入力してください", "warning");
+    // 【A2-026】ステップ0件は保存不可（GAS saveScenario にも同一ガードあり。
+    //   旧実装は0件でも「保存しました」と表示されるがシートには何も残らない
+    //   虚偽成功になっていた）。本文が空のステップも配信時に空SMSとなるため弾く。
+    if (st.length === 0) return showToast("ステップを1件以上追加してください", "warning");
+    if (st.some(s => !String(s.message || "").trim())) {
+      return showToast("本文が空のステップがあります。入力するか、そのステップを削除してください", "warning");
+    }
     setSaving(true);
     try {
-      await axios.post(
-        gasUrl,
-        JSON.stringify({ action: "saveScenario", scenarioID: name, steps: st }),
-        { headers: { "Content-Type": "text/plain;charset=utf-8" } }
-      );
+      // 【A2-026】生 axios を廃止し apiCall.post へ統一。
+      //   apiCall はレスポンス本文の status !== "success" を例外化するため（utils.js）、
+      //   GAS がエラーを返したのに成功モーダルが出る経路を塞ぐ。
+      await apiCall.post(gasUrl, { action: "saveScenario", scenarioID: name, steps: st });
       // 楽観的UI更新：GAS再取得を待たずに一覧を即時反映
       onOptimisticAdd?.(name, st);
       onRefresh();
       setSaving(false);
       setSuccessModal(true);
-    } catch {
+    } catch (e) {
       setSaving(false);
-      showToast("保存失敗", "error");
+      showToast("保存失敗: " + (e?.message || ""), "error");
     }
   };
 
