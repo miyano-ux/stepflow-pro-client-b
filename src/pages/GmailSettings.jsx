@@ -361,6 +361,15 @@ export default function GmailSettings({
       return showToast(label, "warning");
     }
 
+    // 🔧【D1-019 横展開】電話番号未登録の通知先がいる場合は警告する（保存はブロックしない）。
+    const missingPhones = (formData.notifyUsers || []).filter(u => !(u.phone || "").trim());
+    if (missingPhones.length > 0) {
+      showToast(
+        `電話番号未登録の通知先が${missingPhones.length}名います（該当ユーザーへの通知は送信されません）`,
+        "warning"
+      );
+    }
+
     setSaving(true);
 
     const serverItem = isEdit ? localSettings.find(s => s._localId === modal.editLocalId) : null;
@@ -835,18 +844,30 @@ export default function GmailSettings({
                     <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "9px 14px", borderRadius: 8, backgroundColor: "#EEF2FF", border: "1px solid #C7D2FE", fontSize: 13, fontWeight: 600, color: THEME.primary, ...(isMobile ? { gridArea: "name" } : {}) }}>
                       <UserCircle size={14} /> {u.name}
                     </div>
-                    <div style={{ display: "flex", alignItems: "center", gap: 6, ...(isMobile ? { gridArea: "phone" } : {}) }}>
-                      <Phone size={13} color={THEME.textMuted} style={{ flexShrink: 0 }} />
-                      <input
-                        style={{ ...styles.input, flex: 1, fontSize: 13 }}
-                        type="tel"
-                        placeholder="09012345678"
-                        value={u.phone || ""}
-                        onChange={e => {
-                          const updated = (modal.data.notifyUsers || []).map((x, i) => i === idx ? { ...x, phone: e.target.value } : x);
-                          setData({ notifyUsers: updated });
-                        }}
-                      />
+                    {/* 🔧【D1-018/D1-019 横展開】媒体連携（SourceIntegrationDetail.jsx）と同一修正。
+                        実在フォーマットの placeholder による誤認を防ぎ、未登録時は赤枠＋警告を表示する。 */}
+                    <div style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0, ...(isMobile ? { gridArea: "phone" } : {}) }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        <Phone size={13} color={THEME.textMuted} style={{ flexShrink: 0 }} />
+                        <input
+                          style={{
+                            ...styles.input, flex: 1, fontSize: 13,
+                            ...(!(u.phone || "").trim() ? { borderColor: "#FCA5A5" } : {}),
+                          }}
+                          type="tel"
+                          placeholder="例) 090-XXXX-XXXX"
+                          value={u.phone || ""}
+                          onChange={e => {
+                            const updated = (modal.data.notifyUsers || []).map((x, i) => i === idx ? { ...x, phone: e.target.value } : x);
+                            setData({ notifyUsers: updated });
+                          }}
+                        />
+                      </div>
+                      {!(u.phone || "").trim() && (
+                        <span style={{ fontSize: 11, color: "#DC2626", paddingLeft: 19 }}>
+                          電話番号が未登録のため、このユーザーへのSMS通知は送信されません
+                        </span>
+                      )}
                     </div>
                     <button
                       onClick={() => setData({ notifyUsers: (modal.data.notifyUsers || []).filter((_, i) => i !== idx) })}

@@ -69,7 +69,9 @@ function LabelText({ children }) {
 }
 
 // 転送先アドレス表示＋コピーボタン
-function ForwardingAddressBox({ address }) {
+// 🔧【D1-004付随】注記文言が「おうちクラベル」固定だったため、表示中の媒体名
+//   （sourceName）を受け取って差し込むよう修正。
+function ForwardingAddressBox({ address, sourceName }) {
   const [copied, setCopied] = useState(false);
 
   const handleCopy = () => {
@@ -112,7 +114,7 @@ function ForwardingAddressBox({ address }) {
         </button>
       </div>
       <div style={{ fontSize: 11, color: "#3B82F6", marginTop: 8 }}>
-        おうちクラベルの転送設定でこのアドレスを追加してください。
+        {sourceName || "媒体"}の転送設定でこのアドレスを追加してください。
       </div>
     </div>
   );
@@ -473,6 +475,16 @@ export default function SourceIntegrationDetail({
 
   // ── 通知設定の保存 ───────────────────────────────────────────
   const handleSaveNotify = async () => {
+    // 🔧【D1-019】電話番号未登録の通知先がいる場合は警告する（保存自体はブロックしない）。
+    //   GAS 側（_sendSourceNotificationSms）は空番号を無言スキップするため、
+    //   警告なしだと「設定済みに見えるのに通知が届かない」事故になる。
+    const missingPhones = notifyUsers.filter(u => !(u.phone || "").trim());
+    if (missingPhones.length > 0) {
+      showToast(
+        `電話番号未登録の通知先が${missingPhones.length}名います（該当ユーザーへの通知は送信されません）`,
+        "warning"
+      );
+    }
     setNotifySaving(true);
     try {
       await apiOk({
@@ -595,11 +607,38 @@ export default function SourceIntegrationDetail({
         <p style={{ fontSize: 13, color: THEME.textMuted, margin: "0 0 16px" }}>
           {src.name}から届いたメールを、以下のアドレスに転送するよう設定してください。
         </p>
+        {/* 🔧【D1-004/D1-006】「取得失敗（clientInfo 未着）」と「設定未登録（値が空）」を区別する。
+            _getClientInfo()（gas_updated.js）は取得成功時、値が空でも必ず forwardingAddress
+            キーを含むオブジェクトを返すため、キーの有無で機械的に判別できる。
+            未着時（E3-014系のGAS一時不調）は再読み込みボタンでリトライ導線を出す。 */}
         {clientInfo?.forwardingAddress ? (
-          <ForwardingAddressBox address={clientInfo.forwardingAddress} />
+          <ForwardingAddressBox address={clientInfo.forwardingAddress} sourceName={src.name} />
+        ) : ("forwardingAddress" in (clientInfo || {})) ? (
+          /* clientInfo は届いているが値が空 ＝ CLIENT_CODE / 取込メールが未設定 */
+          <div style={{
+            display: "flex", alignItems: "flex-start", gap: 8,
+            fontSize: 13, color: "#B45309", padding: "12px 14px",
+            backgroundColor: "#FFFBEB", border: "1px solid #FDE68A", borderRadius: 10,
+          }}>
+            <AlertCircle size={15} style={{ flexShrink: 0, marginTop: 1 }} />
+            <span>
+              転送先アドレスが未設定です（CLIENT_CODE または取込メールアドレスが未登録）。
+              管理者にライセンス管理側の設定を依頼してください。
+            </span>
+          </div>
         ) : (
-          <div style={{ fontSize: 13, color: THEME.textMuted, padding: "12px 0" }}>
-            転送先アドレスを取得できません。管理者に確認してください。
+          /* clientInfo 自体が未着 ＝ 一時的な取得失敗（GAS webapp の不安定応答） */
+          <div style={{
+            display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap",
+            fontSize: 13, color: THEME.textMuted, padding: "12px 0",
+          }}>
+            <span>転送先アドレスを取得できませんでした（一時的な通信不調の可能性があります）。</span>
+            <button
+              style={{ ...S.btn("default"), padding: "6px 14px", fontSize: 12 }}
+              onClick={() => onRefresh?.()}
+            >
+              再読み込み
+            </button>
           </div>
         )}
       </div>
@@ -724,7 +763,7 @@ export default function SourceIntegrationDetail({
         <div style={S.row(isMobile)}>
           <div>
             <LabelText>流入元</LabelText>
-            {/* 🔧【D1-xxx】フリーテキスト入力 → 流入元管理（/sources）で定義済みの
+            {/* 🔧【D1-012 追加対応】フリーテキスト入力 → 流入元管理（/sources）で定義済みの
                 選択肢からのプルダウン選択に変更（CustomerForm / GmailSettings と同方式）。
                 保存済み・デフォルト値が流入元管理に未登録の場合も表示が消えないよう
                 「（未登録）」付きで選択肢に残す（流入元管理への登録を促す）。 */}
@@ -870,20 +909,35 @@ export default function SourceIntegrationDetail({
             </div>
 
             {/* 電話番号入力 */}
-            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-              <Phone size={13} color={THEME.textMuted} style={{ flexShrink: 0 }} />
-              <input
-                style={{ ...S.input, flex: 1, fontSize: 13 }}
-                type="tel"
-                placeholder="09012345678"
-                value={u.phone || ""}
-                onChange={e => {
-                  const updated = notifyUsers.map((x, i) =>
-                    i === idx ? { ...x, phone: e.target.value } : x
-                  );
-                  setNotifyUsers(updated);
-                }}
-              />
+            {/* 🔧【D1-018/D1-019】placeholder が実在フォーマットの具体番号（09012345678）
+                だったため「スタッフ情報から自動取得された値」と誤認されていた。
+                入力例と分かる表記に変更し、未登録時は赤枠＋警告文を表示する
+                （GAS 側は電話番号が空の通知先を無言でスキップするため、
+                  このままでは通知が一切届かないことを利用者に可視化する）。 */}
+            <div style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <Phone size={13} color={THEME.textMuted} style={{ flexShrink: 0 }} />
+                <input
+                  style={{
+                    ...S.input, flex: 1, fontSize: 13,
+                    ...(!(u.phone || "").trim() ? { borderColor: "#FCA5A5" } : {}),
+                  }}
+                  type="tel"
+                  placeholder="例) 090-XXXX-XXXX"
+                  value={u.phone || ""}
+                  onChange={e => {
+                    const updated = notifyUsers.map((x, i) =>
+                      i === idx ? { ...x, phone: e.target.value } : x
+                    );
+                    setNotifyUsers(updated);
+                  }}
+                />
+              </div>
+              {!(u.phone || "").trim() && (
+                <span style={{ fontSize: 11, color: "#DC2626", paddingLeft: 19 }}>
+                  電話番号が未登録のため、このユーザーへのSMS通知は送信されません
+                </span>
+              )}
             </div>
 
             {/* 削除ボタン */}

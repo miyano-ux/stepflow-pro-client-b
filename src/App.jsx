@@ -176,10 +176,20 @@ function App() {
         //   これらのキーを欠く退行レスポンスが素通りすると、/scenarios が
         //   「シナリオがありません」、/add の担当者プルダウンからグループが
         //   消える等の空誤表示になり、appCache 経由で固定化される。
+        // 【D1-004/D1-006】clientInfo / sourceCredsStatus / sourceIntegrations /
+        //   fieldMappings もチェック対象に追加。これらを欠く退行レスポンスが
+        //   素通りすると、媒体連携の転送先アドレスが「取得できません」表示のまま
+        //   appCache（IndexedDB）に固定化され、以後のリロードでも成功した
+        //   refresh が上書きするまでエラー表示が再現し続けていた。
+        //   ※ 前提: GAS（gas_updated.js getAppData）がこれらのキーを返す版で
+        //     あること。旧版GASに対しては常時リトライ失敗になるため、
+        //     本変更はGASと同時にデプロイすること。
         if (!("customers" in data) || !("sources" in data) || !("statuses" in data)
             || !("formSettings" in data) || !("gmailSettings" in data)
-            || !("scenarios" in data) || !("groups" in data)) {
-          throw new Error("GASレスポンスに必須キー(customers/sources/statuses/formSettings/gmailSettings/scenarios/groups)がありません");
+            || !("scenarios" in data) || !("groups" in data)
+            || !("clientInfo" in data) || !("sourceCredsStatus" in data)
+            || !("sourceIntegrations" in data) || !("fieldMappings" in data)) {
+          throw new Error("GASレスポンスに必須キー(customers/sources/statuses/formSettings/gmailSettings/scenarios/groups/clientInfo/sourceCredsStatus/sourceIntegrations/fieldMappings)がありません");
         }
         // 【高速化 B】列指向 {headers, rows} を受信直後に復元（以降のコンポーネントは無改修）
         //   getCustomers（lightRefresh）や旧GASの配列形もそのまま通る
