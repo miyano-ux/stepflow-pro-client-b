@@ -38,7 +38,10 @@ function CustomerSchedule({ customers = [], deliveryLogs = [], onRefresh, isLoad
     if (!id) return;
     setIsLogsLoading(true);
     try {
-      const res = await apiCall.post(GAS_URL, { action: "getCustomerBundle", customerId: id });
+      // 【高速化】本画面は deliveryLogs しか使わないため、only 指定で
+      //   GAS 側のステータス履歴/トラッキング/物件シートの読み取りをスキップさせる。
+      //   （only 未対応の旧GASに対してはパラメータが無視され全量が返るだけで後方互換）
+      const res = await apiCall.post(GAS_URL, { action: "getCustomerBundle", customerId: id, only: "deliveryLogs" });
       setFetchedLogs(res?.deliveryLogs || []);
       setLogsError(null);
     } catch (e) {
@@ -57,8 +60,8 @@ function CustomerSchedule({ customers = [], deliveryLogs = [], onRefresh, isLoad
     window.history.replaceState({}, "");
     const timer = setTimeout(async () => {
       setIsRefreshing(true);
-      await onRefresh();
-      await reloadLogs();
+      // 【高速化】handleManualRefresh と同様に並列化
+      await Promise.all([onRefresh(), reloadLogs()]);
       setIsRefreshing(false);
       setShowSuccess(false);
     }, 2500);
@@ -67,8 +70,8 @@ function CustomerSchedule({ customers = [], deliveryLogs = [], onRefresh, isLoad
 
   const handleManualRefresh = useCallback(async () => {
     setIsRefreshing(true);
-    await onRefresh();
-    await reloadLogs();
+    // 【高速化】互いに独立した取得のため並列化（直列 await で合計時間が倍になっていた）
+    await Promise.all([onRefresh(), reloadLogs()]);
     setIsRefreshing(false);
     setShowSuccess(false);
   }, [onRefresh, reloadLogs]);
@@ -110,9 +113,16 @@ function CustomerSchedule({ customers = [], deliveryLogs = [], onRefresh, isLoad
   // サーバーと同一キーで突合する。
   // ※ cP が空のときに電話番号突合を行わないのは、電話番号未登録の顧客で
   //   "" === "" が成立し他顧客の空電話ログを拾ってしまうのを防ぐため。
+  // 【C4-001】顧客IDの突合を GAS 側（gas_updated.js getCustomerBundle の
+  //   String(o["顧客ID"]||"").trim() === cid）と同一化する。
+  //   GAS は C4-002 対応で末尾スペース等の表記揺れを trim で吸収して行を返すが、
+  //   フロントのこの再フィルタが「trim なしの厳密一致」のままだと、
+  //   GAS が返した行をここで全件振り落とし、シナリオ配信タイムラインと
+  //   個別メッセージ履歴の両方が 0 件（＝タイムライン常時空欄）になる。
+  const cidNorm = String(id).trim();
   const allLogs = ((fetchedLogs ?? deliveryLogs) || []).filter(
     (l) =>
-      (l["顧客ID"] && String(l["顧客ID"]) === String(id)) ||
+      String(l["顧客ID"] ?? "").trim() === cidNorm ||
       (cP && smartNormalizePhone(l["電話番号"]) === cP)
   );
 
@@ -156,7 +166,10 @@ function CustomerSchedule({ customers = [], deliveryLogs = [], onRefresh, isLoad
         newTime: edit.t,
         newMessage: edit.m,
       });
-      await onRefresh();
+      // 【高速化】updateDeliveryTime は配信管理シートのみ更新し顧客データに影響しない。
+      //   さらにペイロード分離後の getAppData は deliveryLogs を返さないため、
+      //   onRefresh（全件 ~数百KB の再取得）をここで待つ意味がなく、体感を著しく悪化させていた。
+      //   本画面の一覧は reloadLogs（getCustomerBundle）だけで最新化できる。
       await reloadLogs();
       setEdit(null);
     } catch (e) {
@@ -174,7 +187,7 @@ function CustomerSchedule({ customers = [], deliveryLogs = [], onRefresh, isLoad
         action: "deleteDelivery",
         logId: deleteTarget["ログID"],
       });
-      await onRefresh();
+      // 【高速化】handleSaveEdit と同理由。deleteDelivery は配信管理シートのみ更新。
       await reloadLogs();
       setDeleteTarget(null);
     } catch (e) {
@@ -219,6 +232,10 @@ function CustomerSchedule({ customers = [], deliveryLogs = [], onRefresh, isLoad
   const getBadgeStyle = (status) => {
     if (status === "配信済み") return { backgroundColor: "#D1FAE5", color: THEME.success };
     if (status === "エラー")   return { backgroundColor: "#FEE2E2", color: THEME.danger };
+    // 【C4-003】「中止」は期待3色（緑/紫/赤）に含まれない第4のステータス。
+    //   定義が無いと else に落ちて「配信待ち」と同じ紫になり見分けがつかないため、
+    //   グレーで明示的に区別する（左端の縦線も同色 → LogCard 側と対で変更）。
+    if (status === "中止")     return { backgroundColor: "#F1F5F9", color: "#64748B" };
     return { backgroundColor: "#EEF2FF", color: THEME.primary };
   };
 
@@ -231,6 +248,7 @@ function CustomerSchedule({ customers = [], deliveryLogs = [], onRefresh, isLoad
       borderLeft: `6px solid ${
         l["ステータス"] === "配信済み" ? THEME.success
         : l["ステータス"] === "エラー"  ? THEME.danger
+        : l["ステータス"] === "中止"    ? "#94A3B8"   // 【C4-003】バッジと同系色（グレー）
         : THEME.primary
       }`,
       backgroundColor: isNested ? "#F8FAFC" : "white",
@@ -425,7 +443,17 @@ function CustomerSchedule({ customers = [], deliveryLogs = [], onRefresh, isLoad
             個別メッセージ履歴
           </h3>
           <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
-            {pureIndividualLogs.map((il) => <LogCard key={il["ログID"]} l={il} />)}
+            {/* 【C4-014】個別SMS(エラー)を再送した場合の子ログ(親ログID=個別SMSのログID)は
+                従来どちらのセクションにも描画されず行方不明になっていた。
+                シナリオ配信タイムライン側(上)と同じ親子ネスト描画をこちらにも設ける。 */}
+            {pureIndividualLogs.map((il) => (
+              <div key={il["ログID"]}>
+                <LogCard l={il} />
+                {allLogs
+                  .filter((cl) => String(cl["親ログID"]) === String(il["ログID"]))
+                  .map((cl) => <LogCard key={cl["ログID"]} l={cl} isNested={true} />)}
+              </div>
+            ))}
             {pureIndividualLogs.length === 0 && (
               <LogsPlaceholder label="個別メッセージの履歴はありません" />
             )}

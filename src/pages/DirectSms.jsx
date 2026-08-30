@@ -552,7 +552,7 @@ function DirectSms({ customers = [], templates = [], staffList = [], onRefresh, 
               )}
             </div>
 
-            {/* 配信予約ボタン */}
+            {/* 確認画面へ進むボタン（予約確定はモーダル内） */}
             <button
               onClick={handleConfirmOpen}
               disabled={isPastTime}
@@ -562,8 +562,11 @@ function DirectSms({ customers = [], templates = [], staffList = [], onRefresh, 
                 cursor: isPastTime ? "not-allowed" : "pointer",
               }}
             >
+              {/* 【文言修正】このボタンは確認モーダルを開くだけで予約は確定しない。
+                  旧文言「配信予約を確定する」は実挙動と乖離しテスト・運用双方で
+                  誤解を招いたため、実挙動どおりの文言に変更（確定はモーダル内のみ）。 */}
               <Send size={18} />
-              配信予約を確定する
+              確認画面へ進む
             </button>
           </div>
 
