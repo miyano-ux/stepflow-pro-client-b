@@ -294,11 +294,20 @@ function TerminalRow({ row, idx, scenarios, usedScenarios, flowStatusNames = [],
             </div>
 
             {/* 集計 */}
+            {/* 【G1-013】除外（excluded）は集計側が常に対象外として扱うため
+                （StatusAnalysisReport.jsx / SourceReport.jsx の
+                  `statuses.filter(s => s.reportCount && s.terminalType !== "excluded")`、
+                  LostReport.jsx の excludedNames 除外）、切替UIを出さず固定表示にする。
+                誤ってONで保存しても集計に影響しない無意味なフラグの永続化を防ぐ。 */}
             <div>
               <div style={{ fontSize: 11, fontWeight: 700, color, marginBottom: 6 }}>レポート集計</div>
-              <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", fontSize: 12, fontWeight: 700 }}>
-                <input type="checkbox" checked={!!row.reportCount} onChange={e => { onChange(idx, "reportCount", e.target.checked); onChange(idx, "reportArrival", e.target.checked); }} style={{ width: 14, height: 14, accentColor: color, flexShrink: 0 }} /> 集計する
-              </label>
+              {row.terminalType === "excluded" ? (
+                <div style={{ fontSize: 12, fontWeight: 700, color: "#9CA3AF", padding: "8px 0" }}>常に集計対象外</div>
+              ) : (
+                <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", fontSize: 12, fontWeight: 700 }}>
+                  <input type="checkbox" checked={!!row.reportCount} onChange={e => { onChange(idx, "reportCount", e.target.checked); onChange(idx, "reportArrival", e.target.checked); }} style={{ width: 14, height: 14, accentColor: color, flexShrink: 0 }} /> 集計する
+                </label>
+              )}
             </div>
           </div>
 
@@ -479,6 +488,11 @@ export default function StatusSettings({ statuses: statusesProp = [], scenarios 
   const [saving,       setSaving]       = useState(false);
   const [dragIdx,      setDragIdx]      = useState(null);
   const [confirmModal, setConfirmModal] = useState(null);
+  // 【G1-013】保存時の楽観ロック用に「読み込んだ時点の statuses」をそのまま控える。
+  // 保存リクエストに baseline として同梱し、GAS 側（saveStatuses）が現在のシート内容と
+  // 突き合わせて、乖離していれば保存を拒否する（古いキャッシュ・別端末・API直叩き後の
+  // 未リロード保存による全件置換上書きで、失注理由選択肢などの実データが失われる事故を防ぐ）。
+  const baselineRef = useRef([]);
   // 【G1-006】削除確定した「顧客が紐づくステータス」の元名称。保存時に renames へ
   // 合流させ、GAS の改名マイグレーション（gas_updated.js:1300-1348）を流用して
   // 顧客シート・ステータス履歴を先頭フローステータスへ一括付け替えする。
@@ -500,6 +514,8 @@ export default function StatusSettings({ statuses: statusesProp = [], scenarios 
   const usageOf = (name) => usageByName[String(name || "").trim()] || 0;
 
   useEffect(() => {
+    // 【G1-013】照合用スナップショット（編集 state とは別に、受信値を無加工で保持）
+    baselineRef.current = statusesProp;
     if (statusesProp.length > 0) {
       const flows     = statusesProp.filter(s => !s.terminalType);
       const terminals = statusesProp.filter(s => s.terminalType);
@@ -730,12 +746,23 @@ export default function StatusSettings({ statuses: statusesProp = [], scenarios 
   const doSave = async (allRows, renames) => {
     setSaving(true);
     try {
-      await apiCall.post(gasUrl || GAS_URL, { action: "saveStatuses", statuses: allRows, renames });
+      await apiCall.post(gasUrl || GAS_URL, {
+        action: "saveStatuses",
+        statuses: allRows,
+        renames,
+        // 【G1-013】読み込み時点のスナップショット。GAS 側が現在のシートと照合し、
+        // 乖離（＝この画面が知らない更新が既に入っている）なら保存を拒否する。
+        baseline: baselineRef.current,
+      });
       setPendingReassigns([]);   // 【G1-006】反映済みの付け替え予約をクリア
       await onRefresh();
       showToast("保存しました", "success");
-    } catch {
-      showToast("保存に失敗しました", "error");
+    } catch (e) {
+      // 【G1-013】stale_baseline 拒否時は GAS のメッセージ（再読み込み案内）をそのまま表示し、
+      // 最新データへ同期する（編集内容は破棄されるが、他所の更新を黙って潰すよりも安全側に倒す）。
+      const msg = e?.message || "保存に失敗しました";
+      showToast(msg, "error");
+      if (msg.includes("再読み込み")) { try { await onRefresh(); } catch { /* noop */ } }
     } finally {
       setSaving(false);
     }
