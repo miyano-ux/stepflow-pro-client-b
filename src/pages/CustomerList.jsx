@@ -7,7 +7,7 @@ import {
   UserRound, Check, ExternalLink, Filter, ArrowDownUp,
 } from "lucide-react";
 import { THEME } from "../lib/constants";
-import { parseLocalDate, downloadCSV, customerStore } from "../lib/utils";
+import { parseLocalDate, downloadCSV, customerStore, apiCall } from "../lib/utils";
 import DateRangePicker from "../components/DateRangePicker";
 import { useToast } from "../ToastContext";
 import { useWindowWidth } from "../lib/useWindowWidth";
@@ -96,6 +96,11 @@ const formatDateJP = (v) => {
 
 // 既知の日付フィールド
 const KNOWN_DATE_FIELDS = ["登録日", "更新日", "完了日時", "配信予定日時"];
+
+// 【A1-009】絞り込みパネルの担当者「未割当」用センチネル値。
+//   空文字 "" は「すべて（フィルタ解除）」で使用済みのため、別の値で表現する。
+//   実データのメールアドレスと衝突しない文字列であること。
+const UNASSIGNED_FILTER = "__unassigned__";
 
 // フィールドの種別を判定
 const getFieldType = (colName, formSettings = []) => {
@@ -213,6 +218,8 @@ export default function CustomerList({
 
   const [confirmModal, setConfirmModal] = useState({ open: false, customer: null, field: "", newValue: "", oldValue: "" });
   const [deleteModal, setDeleteModal] = useState({ open: false, customer: null });
+  // 【A1-042】CSV出力モーダル。mode: "visible"（表示列のみ）| "all"（全項目）
+  const [csvModal, setCsvModal] = useState({ open: false, mode: "visible" });
   const [deletingIds, setDeletingIds] = useState(new Set());
   const [localCustomers, setLocalCustomers] = useState(customers);
   const [syncing, setSyncing] = useState(false);
@@ -312,10 +319,20 @@ export default function CustomerList({
   }, [displaySettings, formSettings]);
 
   const filtered = useMemo(() => {
+    // 【A1-009】未割当判定用：staffList のメール集合（孤立参照の検出に使用）
+    const staffEmails = new Set((staffList || []).map((s) => s.email));
     let res = [...(localCustomers || [])].filter((c) => {
       const textMatch = Object.keys(search).every((k) => {
         const q = search[k];
         if (!q) return true;
+        // 【A1-009】担当者「未割当」：空 または 削除済みユーザーへの孤立参照（F1-013）を対象とする。
+        //   インライン編集側の表示（InlineDropdown は options に一致がないと options[0]=「未割当」に
+        //   フォールバック表示する）と判定を揃え、「未割当と表示されるのに絞り込みで出ない」不整合を防ぐ。
+        //   F1-013 で孤立参照がクリーニングされれば、この判定は自然に「空のみ」と一致する。
+        if (k === "担当者メール" && q === UNASSIGNED_FILTER) {
+          const v = c[k] || "";
+          return !v || !staffEmails.has(v);
+        }
         // 「氏名」は姓・名の両方に対してマッチ
         if (k === "氏名") {
           const fullName = `${c["姓"] || ""} ${c["名"] || ""}`.toLowerCase();
@@ -346,7 +363,7 @@ export default function CustomerList({
       });
     }
     return res;
-  }, [localCustomers, search, dateRange, sort]);
+  }, [localCustomers, search, dateRange, sort, staffList]);
 
   // ── ページネーション ─────────────────────────────────────
   // 1万件規模でも全件を一度にDOM描画しないよう、filtered を現在ページ分だけ切り出す。
@@ -365,16 +382,33 @@ export default function CustomerList({
   const pageStart = filtered.length === 0 ? 0 : (page - 1) * pageSize + 1;
   const pageEnd   = Math.min(page * pageSize, filtered.length);
 
-  const handleExportCSV = () => {
-    // CSV は表示設定に関わらず全カラムを出力する
+  // 【A1-042】mode: "all"=全カラム / "visible"=表示列設定（visible）を反映した列のみ。
+  //   出力範囲は CSV出力モーダル（csvModal）でユーザーが選択する。
+  const handleExportCSV = (mode = "all") => {
     const SALES_KEYS   = ["対応ステータス", "流入元", "担当者メール", "シナリオID"];
     const DEFAULT_KEYS = ["姓", "名", "電話番号", "登録日", "メールアドレス"];
     const allFixed     = new Set([...SALES_KEYS, ...DEFAULT_KEYS]);
     const customKeys   = (formSettings || []).map(f => f.name).filter(k => !allFixed.has(k));
     // 固定列（姓・名・電話番号・登録日・メールアドレス・営業管理列）＋カスタム列 の全カラム
     const allColKeys = [...DEFAULT_KEYS, ...SALES_KEYS, ...customKeys];
+
+    // 「表示列のみ」の場合は vCols と同じ vis 判定で列を絞る。
+    // 姓・名は仮想列「氏名」ではなく個別に判定する。
+    // displaySettings は localStorage 起点で供給される（App.jsx / G5-009 是正済み）。
+    let csvCols = allColKeys;
+    if (mode === "visible") {
+      const settingsMap = new Map((displaySettings || []).map(d => [d.name, d]));
+      const isVisible = (key) => {
+        const entry = settingsMap.get(key);
+        if (!entry) return true;             // 未登録キーはデフォルト表示
+        return entry.visible !== false;
+      };
+      const hasSaved = (displaySettings || []).length > 0;
+      const fallback = new Set(["姓", "名", "電話番号", "登録日", "対応ステータス", "担当者メール", "シナリオID"]);
+      const vis = (key) => hasSaved ? isVisible(key) : fallback.has(key);
+      csvCols = allColKeys.filter(vis);
+    }
     // ヘッダー行：仮想列「氏名」は使わず「姓」「名」をそのまま出力
-    const csvCols = allColKeys;
     const header = csvCols.map((col) => {
       if (col === "担当者メール") return "担当者";
       if (col === "シナリオID") return "適用シナリオ";
@@ -469,16 +503,23 @@ export default function CustomerList({
 
     const dataToSend = { ...customer, [field]: newValue, ...extraPatch };
     try {
-      await axios.post(gasUrl, JSON.stringify({ action: "update", id: customer.id, data: dataToSend }), { headers: { "Content-Type": "text/plain;charset=utf-8" } });
+      // 【A1-048】生 axios → apiCall.post（utils.js）に統一。
+      //   GAS は常に HTTP 200 で返し、エラーは本文 {status:"error"}（例: 顧客が見つかりません /
+      //   DUPLICATE_PHONE）でのみ表現されるため、本文の status 検証がないと
+      //   「200 だが未保存」（D1-012 / D3-001 / G5-009 系）を検知できず変更が黙って消える。
+      //   apiCall.post は status !== "success" を例外化する（G5-009 是正時の App.jsx と同方針）。
+      //   更新系 action は自動リトライ対象外のため二重実行の懸念はない。
+      await apiCall.post(gasUrl, { action: "update", id: customer.id, data: dataToSend });
       // サーバー確定後にパッチをクリア（以降はサーバーデータを使用）
       customerStore.clear(cid);
       if (onLightRefresh) onLightRefresh(); else onRefresh();
-    } catch {
+    } catch (e) {
       // ロールバック
       customerStore.patch(cid, { [field]: customer[field], ...Object.fromEntries(Object.keys(extraPatch).map(k => [k, customer[k] ?? ""])) });
       pendingMap.current.delete(cid);
       setLocalCustomers((prev) => prev.map((c) => String(c.id) === cid ? { ...c, [field]: customer[field], ...Object.fromEntries(Object.keys(extraPatch).map(k => [k, customer[k] ?? ""])) } : c));
-      showToast("更新に失敗しました", "error");
+      // GAS 由来のメッセージ（電話番号重複等）があればそのまま表示する
+      showToast(e?.message || "更新に失敗しました", "error");
     } finally {
       pendingMap.current.delete(cid);
       setSyncing(false);
@@ -520,7 +561,13 @@ export default function CustomerList({
 
     // 担当者メール → users の担当者名一覧
     if (col === "担当者メール") {
-      const opts = [{ value: "", label: "すべて" }, ...staffList.map(s => ({ value: s.email, label: `${s.lastName} ${s.firstName}` }))];
+      // 【A1-009】インライン編集側（renderCell の「担当者メール」分岐）と同様に「未割当」を提供する。
+      //   value はメールと衝突しないセンチネル（UNASSIGNED_FILTER）を使い、filtered 側で特別扱いする。
+      const opts = [
+        { value: "", label: "すべて" },
+        { value: UNASSIGNED_FILTER, label: "未割当" },
+        ...staffList.map(s => ({ value: s.email, label: `${s.lastName} ${s.firstName}` })),
+      ];
       return (
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
           <label style={{ fontSize: "11px", fontWeight: "800", color: THEME.textMuted }}>担当者</label>
@@ -706,7 +753,7 @@ export default function CustomerList({
                   <SlidersHorizontal size={16} color={THEME.textMain} />
                 </button>
                 <button
-                  onClick={handleExportCSV}
+                  onClick={() => setCsvModal({ open: true, mode: "visible" })}
                   title="CSV出力"
                   style={{ width: 36, height: 36, padding: 0, display: "flex", alignItems: "center", justifyContent: "center", border: "none", borderRadius: 10, backgroundColor: THEME.primary, cursor: "pointer" }}
                 >
@@ -718,7 +765,7 @@ export default function CustomerList({
                 <button onClick={() => navigate("/column-settings")} style={{ ...localStyles.input, display: "flex", alignItems: "center", gap: 8, fontWeight: "800", cursor: "pointer" }}>
                   <SlidersHorizontal size={16} /> 表示設定
                 </button>
-                <button onClick={handleExportCSV} style={{ ...localStyles.input, backgroundColor: THEME.primary, color: "white", border: "none", fontWeight: "800", cursor: "pointer", display: "flex", alignItems: "center", gap: 8 }}>
+                <button onClick={() => setCsvModal({ open: true, mode: "visible" })} style={{ ...localStyles.input, backgroundColor: THEME.primary, color: "white", border: "none", fontWeight: "800", cursor: "pointer", display: "flex", alignItems: "center", gap: 8 }}>
                   <Download size={16} /> CSV出力
                 </button>
               </>
@@ -1237,6 +1284,66 @@ export default function CustomerList({
       })()}
 
       {/* 確認モーダル */}
+      {/* 【A1-042】CSV出力モーダル：出力範囲（表示列のみ / 全項目）を選択して出力 */}
+      {csvModal.open && (
+        <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, backgroundColor: "rgba(15,23,42,0.6)", display: "flex", justifyContent: "center", alignItems: "center", zIndex: 1000, backdropFilter: "blur(4px)", padding: isMobile ? 16 : 0, boxSizing: "border-box" }}>
+          <div style={{ ...localStyles.card, width: isMobile ? "100%" : 460, maxWidth: 460, marginBottom: 0, padding: isMobile ? "32px 24px 24px" : "40px 36px 32px", boxSizing: "border-box" }}>
+
+            {/* アイコン */}
+            <div style={{ backgroundColor: "#EEF2FF", width: 64, height: 64, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 20px" }}>
+              <Download size={32} color={THEME.primary} />
+            </div>
+
+            <h3 style={{ fontSize: 20, fontWeight: 900, marginBottom: 6, color: THEME.textMain, textAlign: "center" }}>CSV出力</h3>
+            <p style={{ fontSize: 13, color: THEME.textMuted, marginBottom: 24, textAlign: "center" }}>
+              絞り込み中の {filtered.length} 件を出力します
+            </p>
+
+            {/* 出力範囲の選択 */}
+            <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 24 }}>
+              {[
+                { value: "visible", label: "表示列のみ出力", desc: "表示設定で非表示にした列は含めません" },
+                { value: "all",     label: "全項目を出力",   desc: "非表示列・カスタム項目を含む全カラムを出力します" },
+              ].map((opt) => {
+                const active = csvModal.mode === opt.value;
+                return (
+                  <label key={opt.value} style={{ display: "flex", alignItems: "flex-start", gap: 12, padding: "14px 16px", borderRadius: 12, border: `2px solid ${active ? THEME.primary : THEME.border}`, backgroundColor: active ? "#EEF2FF" : "white", cursor: "pointer", textAlign: "left" }}>
+                    <input
+                      type="radio"
+                      name="csv-export-mode"
+                      checked={active}
+                      onChange={() => setCsvModal((m) => ({ ...m, mode: opt.value }))}
+                      style={{ marginTop: 3, accentColor: THEME.primary, cursor: "pointer" }}
+                    />
+                    <div>
+                      <div style={{ fontSize: 14, fontWeight: 900, color: active ? THEME.primary : THEME.textMain }}>{opt.label}</div>
+                      <div style={{ fontSize: 12, color: THEME.textMuted, marginTop: 2 }}>{opt.desc}</div>
+                    </div>
+                  </label>
+                );
+              })}
+            </div>
+
+            {/* ボタン */}
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              <button
+                onClick={() => { handleExportCSV(csvModal.mode); setCsvModal({ open: false, mode: "visible" }); }}
+                style={{ backgroundColor: THEME.primary, color: "white", border: "none", borderRadius: 12, fontWeight: 900, height: 48, cursor: "pointer", fontSize: 15 }}
+              >
+                出力する
+              </button>
+              <button
+                onClick={() => setCsvModal({ open: false, mode: "visible" })}
+                style={{ background: "none", border: "none", color: THEME.textMuted, fontWeight: 800, cursor: "pointer", padding: "10px", fontSize: 14 }}
+              >
+                キャンセル
+              </button>
+            </div>
+
+          </div>
+        </div>
+      )}
+
       {confirmModal.open && (() => {
         const { customer, field, newValue, oldValue } = confirmModal;
         // 成約・休眠ステータスと適用シナリオを取得
