@@ -401,7 +401,7 @@ function App() {
                   ・customers: 削除確認モーダルの「入力済み N 件」が常に 0 件表示になる。 */}
               <Route path="/form-settings" element={<FormSettings formSettings={d?.formSettings} sheetCustomColumns={d?.sheetCustomColumns || []} customers={d?.customers} isLoading={load} loadError={loadError} onRefresh={refresh} />} />
               <Route path="/sources" element={<SourceManager sources={d?.sources} onRefresh={refresh} gasUrl={GAS_URL} isLoading={load} loadError={loadError} />} />
-              <Route path="/contract-types" element={<ContractTypeManager contractTypes={d?.contractTypes} onRefresh={refresh} gasUrl={GAS_URL} />} />
+              <Route path="/contract-types" element={<ContractTypeManager contractTypes={d?.contractTypes} exclusiveContractTypes={d?.exclusiveContractTypes} onRefresh={refresh} gasUrl={GAS_URL} />} />
               <Route path="/master-settings" element={<MasterSettings isLoading={load} statuses={d?.statuses} sources={d?.sources} contractTypes={d?.contractTypes} scenarios={d?.scenarios} />} />
               <Route path="/status-settings" element={<StatusSettings statuses={d?.statuses} scenarios={d?.scenarios} customers={d?.customers} onRefresh={refresh} gasUrl={GAS_URL} />} />
 
@@ -429,7 +429,7 @@ function App() {
               {/* 分析・トラッキング */}
               <Route path="/analysis" element={<ReportIndex />} />
               <Route path="/analysis/sales" element={<AnalysisReport customers={d?.customers} statuses={d?.statuses} trackingLogs={d?.trackingLogs} staffList={staffList} statusHistory={d?.statusHistory} />} />
-              <Route path="/analysis/source" element={<SourceReport isLoading={load} loadError={loadError} customers={d?.customers} statuses={d?.statuses} sources={d?.sources} contractTypes={d?.contractTypes} statusHistory={d?.statusHistory} properties={d?.properties} />} />
+              <Route path="/analysis/source" element={<SourceReport isLoading={load} loadError={loadError} customers={d?.customers} statuses={d?.statuses} sources={d?.sources} contractTypes={d?.contractTypes} exclusiveContractTypes={d?.exclusiveContractTypes} statusHistory={d?.statusHistory} properties={d?.properties} />} />
               <Route path="/analysis/status" element={<StatusAnalysisReport customers={d?.customers} statuses={d?.statuses} sources={d?.sources} staffList={staffList} />} />
               {/* 【E5-012】LostReport.jsx:98-106 のローディング表示は isLoading 前提。
                   未伝播だと取得中に「失注データがありません」＋失注率「–」を誤表示する。

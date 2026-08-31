@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect, useRef } from "react";
+import React, { useMemo, useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { GitBranch, ChevronLeft, Loader2 } from "lucide-react";
 import { THEME as APP_THEME, GAS_URL } from "../lib/constants";
@@ -55,9 +55,11 @@ function fmtMan(n) {
   if (n >= 10000) return (n / 10000).toFixed(1) + "億";
   return n.toLocaleString() + "万";
 }
-function isSenin(contractType) {
-  return (contractType || "").includes("専任");
-}
+// 【E3-010】専任判定（旧 isSenin）はコンポーネント内へ移動した。
+//   旧実装 `(contractType || "").includes("専任")` は名称文字列への依存であり、
+//   契約種別名を「独占媒介」等へ改名した瞬間に専任系カウントから外れる
+//   運用上の落とし穴だった（ステータスの名称依存 G1-019 と同種の問題）。
+//   現在は契約種別マスタの「専任系」フラグ（exclusiveContractTypes）を参照する。
 
 // ── ROIステータス判定 ──────────────────────────────
 function roiStatus(roi) {
@@ -208,6 +210,7 @@ export default function SourceReport({
   statuses = [],
   sources = [],
   contractTypes = [],
+  exclusiveContractTypes = null,  // 【E3-010】専任系の契約種別名リスト（getAppData）。null＝旧GAS
   statusHistory = [],
   properties = [],
   isLoading = false,   // 【E3-015】App の全体データ取得中フラグ（App.jsx:347 から受領）
@@ -480,6 +483,24 @@ export default function SourceReport({
   const maxRoiCost = Math.max(...roiData.map(d => d.totalCostMan), 1);
 
   // ── 新⑤：契約獲得力 ──────────────────────────────
+  // 【E3-010】専任判定は契約種別マスタの「専任系」フラグを参照する。
+  //   exclusiveContractTypes が配列で届いていればその名称集合（trim 突合）で判定し、
+  //   旧GAS（キー未返却＝null/undefined）の間だけ従来の名称判定
+  //   （「専任」を含む）へフォールバックして挙動互換を保つ。
+  //   これにより契約種別の改名（例:「専任媒介契約」→「独占媒介」）では
+  //   専任系カウントが変わらず、変えたいときは設定画面のチェックで明示する。
+  const exclusiveSet = useMemo(
+    () => Array.isArray(exclusiveContractTypes)
+      ? new Set(exclusiveContractTypes.map(n => String(n).trim()))
+      : null,
+    [exclusiveContractTypes]
+  );
+  const isSenin = useCallback((contractType) => {
+    const v = String(contractType || "").trim();
+    if (!v) return false;
+    return exclusiveSet ? exclusiveSet.has(v) : v.includes("専任");
+  }, [exclusiveSet]);
+
   const contractPowerData = useMemo(() =>
     sourceNames.map(src => {
       const wonCusts = filteredWon
@@ -503,7 +524,7 @@ export default function SourceReport({
         seninRate, seninAvgPrice: avgPrice(seninCusts), ippanAvgPrice: avgPrice(ippanCusts),
       };
     }),
-    [sourceNames, filteredWon, custById, propsByCustomer]
+    [sourceNames, filteredWon, custById, propsByCustomer, isSenin]
   );
 
   const cpKpi = useMemo(() => {
@@ -514,6 +535,11 @@ export default function SourceReport({
     const allWonCusts = filteredWon
       .map(h => custById[custKey(h["顧客ID"])])
       .filter(Boolean);
+    // 【E3-010 注記】この3分類バーは「一般/専任/専属専任」という固定ラベルの
+    //   表示用内訳のため、意図的に名称文字列で分類したまま残している
+    //   （改名した種別はどの枠にも入らない＝ラベルと値の対応を優先）。
+    //   レポートの専任率・件数（contractPowerData / totalSenin / ランキング）は
+    //   すべて上のフラグ判定 isSenin に統一済み。
     const countSensoku = allWonCusts.filter(c => (c["契約種別"] || "").includes("専属")).length;
     const countSenin  = allWonCusts.filter(c => (c["契約種別"] || "").includes("専任") && !(c["契約種別"] || "").includes("専属")).length;
     const countIppan  = allWonCusts.filter(c => (c["契約種別"] || "").includes("一般")).length;

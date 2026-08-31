@@ -10,22 +10,40 @@ import { useWindowWidth } from "../lib/useWindowWidth";
 // ==========================================
 // 📋 ContractTypeManager - 契約種別設定
 // ==========================================
+// 【E3-010】各種別に「専任系」チェックを追加。
+//   流入経路評価レポート（SourceReport）の専任率は、従来の
+//   「名称に『専任』を含むか」（改名で数値が変わる落とし穴）ではなく、
+//   このチェック（マスタのフラグ）で判定する。
+//   props.exclusiveContractTypes は getAppData が返す専任系名称のリスト。
+//   旧GAS（未返却＝null）の間は従来判定と同じ初期値
+//   （名称に「専任」を含む＝ON）で表示し、保存時に列として確定させる。
 
-export default function ContractTypeManager({ contractTypes: propTypes = [], onRefresh, gasUrl }) {
+export default function ContractTypeManager({ contractTypes: propTypes = [], exclusiveContractTypes: propExclusive = null, onRefresh, gasUrl }) {
   const showToast = useToast();
   const navigate = useNavigate();
   const { isMobile } = useWindowWidth();
-  const [types, setTypes]     = useState([]);
+  const [types, setTypes]     = useState([]);   // [{ name, isExclusive }]
   const [saving, setSaving]   = useState(false);
   const [dragIdx, setDragIdx] = useState(null);
 
   useEffect(() => {
-    setTypes(propTypes.length > 0 ? [...propTypes] : ["一般媒介契約", "専任媒介契約"]);
-  }, [propTypes]);
+    const base = propTypes.length > 0 ? [...propTypes] : ["一般媒介契約", "専任媒介契約"];
+    // 【E3-010】フラグの復元。propExclusive が配列で届いていればその集合、
+    // 旧GASなら従来判定（名称に「専任」を含む）を初期値にする。
+    const exSet = Array.isArray(propExclusive)
+      ? new Set(propExclusive.map(n => String(n).trim()))
+      : null;
+    setTypes(base.map(n => ({
+      name: n,
+      isExclusive: exSet ? exSet.has(String(n).trim()) : String(n).includes("専任"),
+    })));
+  }, [propTypes, propExclusive]);
 
-  const handleAdd    = () => setTypes(p => [...p, ""]);
+  const handleAdd    = () => setTypes(p => [...p, { name: "", isExclusive: false }]);
   const handleDelete = (i) => setTypes(p => p.filter((_, idx) => idx !== i));
-  const handleChange = (i, v) => setTypes(p => p.map((t, idx) => idx === i ? v : t));
+  const handleChange = (i, v) => setTypes(p => p.map((t, idx) => idx === i ? { ...t, name: v } : t));
+  const handleToggleExclusive = (i) =>
+    setTypes(p => p.map((t, idx) => idx === i ? { ...t, isExclusive: !t.isExclusive } : t));
 
   // D&D（PC用）
   const handleDragStart = (e, i) => { e.dataTransfer.effectAllowed = "move"; setDragIdx(i); };
@@ -58,11 +76,25 @@ export default function ContractTypeManager({ contractTypes: propTypes = [], onR
   };
 
   const handleSave = async () => {
-    const clean = types.map(t => t.trim()).filter(Boolean);
+    const clean = types
+      .map(t => ({ ...t, name: t.name.trim() }))
+      .filter(t => t.name);
     if (clean.length === 0) { showToast("1件以上入力してください", "warning"); return; }
+    // 名称は顧客データとの紐づけキーのため一意にする（ステータス側 G1-031 と同方針）
+    const names = clean.map(t => t.name);
+    const dups  = names.filter((n, i) => names.indexOf(n) !== i);
+    if (dups.length > 0) {
+      showToast(`契約種別「${[...new Set(dups)].join("、")}」が重複しています。名称は一意にしてください。`, "warning");
+      return;
+    }
     setSaving(true);
     try {
-      await apiCall.post(gasUrl || GAS_URL, { action: "saveContractTypes", types: clean });
+      await apiCall.post(gasUrl || GAS_URL, {
+        action: "saveContractTypes",
+        types: names,
+        // 【E3-010】専任系フラグ。GAS は「専任系」列（true/false）として保存する
+        exclusive: clean.filter(t => t.isExclusive).map(t => t.name),
+      });
       await onRefresh();
       showToast("保存しました", "success");
     } catch {
@@ -97,6 +129,11 @@ export default function ContractTypeManager({ contractTypes: propTypes = [], onR
             : "💡 ドラッグで順番を変更できます。ここで管理した種別が顧客登録画面のプルダウンに反映されます。"}
         </div>
 
+        {/* 【E3-010】専任系チェックの説明 */}
+        <div style={{ backgroundColor: "#FFFBEB", border: "1px solid #FDE68A", borderRadius: 12, padding: "12px 18px", marginBottom: 24, fontSize: 12, color: "#92400E", fontWeight: 700, lineHeight: 1.7 }}>
+          「専任系」にチェックした種別が、流入経路評価レポートの「契約獲得力（専任率）」で専任側として集計されます。名称を変更しても集計は変わりません（このチェックだけが判定に使われます）。
+        </div>
+
         {/* 種別一覧 */}
         {types.map((t, i) => (
           <div
@@ -111,6 +148,7 @@ export default function ContractTypeManager({ contractTypes: propTypes = [], onR
               borderRadius: 12, padding: "12px 14px", marginBottom: 8,
               opacity: dragIdx === i ? 0.5 : 1,
               cursor: isMobile ? "default" : "grab",
+              flexWrap: isMobile ? "wrap" : "nowrap",
             }}
           >
             {/* モバイル：↑↓ボタン / PC：グリップアイコン */}
@@ -127,11 +165,31 @@ export default function ContractTypeManager({ contractTypes: propTypes = [], onR
               <GripVertical size={16} color={THEME.textMuted} style={{ flexShrink: 0 }} />
             )}
             <input
-              style={{ ...styles.input, margin: 0, flex: 1, minWidth: 0 }}
-              value={t}
+              style={{ ...styles.input, margin: 0, flex: 1, minWidth: isMobile ? 140 : 0 }}
+              value={t.name}
               onChange={e => handleChange(i, e.target.value)}
               placeholder="例：一般媒介契約"
             />
+            {/* 【E3-010】専任系フラグ */}
+            <label
+              title="流入経路評価レポートの専任率で専任側として集計します"
+              style={{
+                display: "flex", alignItems: "center", gap: 6, flexShrink: 0,
+                fontSize: 12, fontWeight: 800, cursor: "pointer", userSelect: "none",
+                color: t.isExclusive ? "#4F46E5" : THEME.textMuted,
+                backgroundColor: t.isExclusive ? "#EEF2FF" : "transparent",
+                border: `1px solid ${t.isExclusive ? "#C7D2FE" : THEME.border}`,
+                borderRadius: 8, padding: "7px 10px",
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={t.isExclusive}
+                onChange={() => handleToggleExclusive(i)}
+                style={{ accentColor: "#4F46E5", width: 14, height: 14, margin: 0, cursor: "pointer" }}
+              />
+              専任系
+            </label>
             <button onClick={() => handleDelete(i)} style={{ background: "none", border: "none", cursor: "pointer", color: THEME.textMuted, padding: 6, flexShrink: 0 }}>
               <Trash2 size={15} />
             </button>

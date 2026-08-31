@@ -113,7 +113,13 @@ function DrillModal({ statusName, customers, staffList, avgDays, isTerminal, onC
                 >
                   <td style={{ width: 4, padding: 0, backgroundColor: col.border }} />
                   <td style={{ padding: "12px 14px", fontWeight: 700 }}>
-                    <Link to={`/detail/${c.id}`} style={{ color: THEME.primary, textDecoration: "none", fontWeight: 800 }}
+                    {/* 【E2-008 仕様確定 2026-08-31】顧客名は別タブで開く。
+                        レポートのコンテキスト（担当者フィルタ・スクロール位置・
+                        開いているドリルダウンモーダル）はローカル state のため、
+                        同一タブ遷移では戻るたびに失われる。連続確認の利用シーンを
+                        優先し、この画面のみ意図的に別タブとする（他画面の顧客詳細
+                        遷移は従来どおり同一タブ）。 */}
+                    <Link to={`/detail/${c.id}`} target="_blank" rel="noreferrer" style={{ color: THEME.primary, textDecoration: "none", fontWeight: 800 }}
                       onMouseEnter={e => e.currentTarget.style.textDecoration = "underline"}
                       onMouseLeave={e => e.currentTarget.style.textDecoration = "none"}
                     >
