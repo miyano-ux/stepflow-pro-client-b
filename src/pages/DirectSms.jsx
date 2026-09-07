@@ -7,6 +7,7 @@ import { styles } from "../lib/styles";
 import { apiCall, replaceVariables } from "../lib/utils";
 import Page from "../components/Page";
 import CustomSelect from "../components/CustomSelect";
+import SmsCountHint from "../components/SmsCountHint";
 import SmartDateTimePicker from "../components/SmartDateTimePicker";
 import { useToast } from "../ToastContext";
 import { useWindowWidth } from "../lib/useWindowWidth";
@@ -62,23 +63,42 @@ function renderPreview(text, varMap = {}) {
   return parts.map((part, i) => {
     if (/^{{.+}}$/.test(part)) {
       const key = part.slice(2, -2);
-      const val = varMap[key];
-      if (val) {
-        // 実データあり → 緑ハイライトで実値を表示
+      // 【C3-008/C1-007】「置換対象だが値が空」と「置換対象外（未知タグ）」を区別する。
+      //   旧実装は varMap[key] が空文字（例: 担当者電話が未登録）のとき未知タグと
+      //   同じ紫表示になり、「未置換のまま送信される」と誤認させていた。
+      //   実配信（replaceVariables / GAS _resolveTemplateVarsStrict_）は空文字置換の
+      //   ためリテラルは届かない。プレビューもその実挙動どおりに表示する。
+      if (key in varMap) {
+        const val = varMap[key];
+        if (val) {
+          // 実データあり → 緑ハイライトで実値を表示
+          return (
+            <mark key={i} title={`変数: ${part}`} style={{
+              backgroundColor: "#ECFDF5", color: "#059669",
+              borderRadius: 4, padding: "1px 5px",
+              fontWeight: 800, fontStyle: "normal",
+              border: "1px solid #A7F3D0",
+            }}>
+              {val}
+            </mark>
+          );
+        }
+        // データ未登録 → 空欄で送信される旨を明示（未置換タグと区別）
         return (
-          <mark key={i} title={`変数: ${part}`} style={{
-            backgroundColor: "#ECFDF5", color: "#059669",
+          <mark key={i} title={`変数: ${part} — データ未登録のため空欄で送信されます`} style={{
+            backgroundColor: "#F1F5F9", color: THEME.textMuted,
             borderRadius: 4, padding: "1px 5px",
             fontWeight: 800, fontStyle: "normal",
-            border: "1px solid #A7F3D0",
+            border: "1px dashed #CBD5E1",
           }}>
-            {val}
+            （{key}: 空欄）
           </mark>
         );
       }
-      // データなし → パープルハイライトで変数名そのまま
+      // 置換対象外（未知タグ） → パープルハイライトで変数名そのまま
+      //   ※ このまま予約しようとすると handleConfirmOpen の未解決タグガードで停止する
       return (
-        <mark key={i} style={{
+        <mark key={i} title={`変数: ${part} — 置換対象外のため送信できません`} style={{
           backgroundColor: "#EEF2FF", color: THEME.primary,
           borderRadius: 4, padding: "1px 5px",
           fontWeight: 800, fontStyle: "normal",
@@ -305,7 +325,18 @@ function DirectSms({ customers = [], templates = [], staffList = [], onRefresh, 
 
   // 確認ボタン押下 → モーダル表示
   const handleConfirmOpen = () => {
-    if (!msg) return showToast("本文を入力してください", "warning");
+    // 空白のみの本文も弾く（GAS sendDirectSms の trim 判定「本文が空です」と同基準）
+    if (!msg.trim()) return showToast("本文を入力してください", "warning");
+    // 【系統A】置換後も {{...}} が残る本文は予約させない（前段ガード）。
+    //   最終防衛は GAS 配信キューの E ガード（未解決タグ→送信中止・エラー化）だが、
+    //   予約時点で気づけた方が親切なためここでも止める。
+    const leftover = resolvedMsg.match(/{{[^}]+}}/g);
+    if (leftover) {
+      return showToast(
+        "解決できない変数が残っています: " + [...new Set(leftover)].join(" "),
+        "error"
+      );
+    }
     setShowConfirm(true);
   };
 
@@ -528,7 +559,10 @@ function DirectSms({ customers = [], templates = [], staffList = [], onRefresh, 
                     <p style={{ fontSize: 11, fontWeight: 800, color: THEME.textMuted, margin: 0, letterSpacing: "0.05em" }}>
                       プレビュー（実際の送信内容）
                     </p>
-                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                      {/* 【C1-015／案B】置換後本文（resolvedMsg）＝実際に送信される文字数で
+                          正確な課金通数を表示。テンプレ画面の「目安」と異なりこちらは確定値 */}
+                      <SmsCountHint text={resolvedMsg} exact />
                       <span style={{ fontSize: 11, color: "#059669", backgroundColor: "#ECFDF5", border: "1px solid #A7F3D0", padding: "2px 8px", borderRadius: 99, fontWeight: 700 }}>
                         顧客: {c["姓"]} {c["名"]}
                       </span>
@@ -667,7 +701,11 @@ function DirectSms({ customers = [], templates = [], staffList = [], onRefresh, 
             }}>
               <MessageSquare size={18} color={THEME.textMuted} style={{ marginTop: 1, flexShrink: 0 }} />
               <div style={{ flex: 1, minWidth: 0 }}>
-                <p style={{ margin: "0 0 6px 0", fontSize: 11, fontWeight: 800, color: THEME.textMuted }}>メッセージ</p>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, margin: "0 0 6px 0", flexWrap: "wrap" }}>
+                  <p style={{ margin: 0, fontSize: 11, fontWeight: 800, color: THEME.textMuted }}>メッセージ</p>
+                  {/* 【C1-015／案B】予約確定の直前に課金通数を再掲（ここが最終確認点） */}
+                  <SmsCountHint text={resolvedMsg} exact />
+                </div>
                 {/* スクロール領域を div で独立させてバーを右端に固定 */}
                 <div style={{
                   maxHeight: 160, overflowY: "auto",

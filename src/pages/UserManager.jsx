@@ -18,7 +18,10 @@ import { useWindowWidth } from "../lib/useWindowWidth";
 // 公開メンバーページのURL組み立て・コピー
 const memberUrl = (slug) =>
   slug ? `${window.location.origin}/m/${slug}` : "";
-const copyText = (t) => { try { navigator.clipboard.writeText(t); } catch {} };
+// 【F3-016】writeText は Promise を返すため、同期 try/catch では拒否
+// （クリップボード権限なし・非セキュアコンテキスト等）が unhandled rejection になる。
+// UserForm.jsx の copyUrl（async/await + catch）と同じく非同期側で握る。
+const copyText = (t) => { navigator.clipboard.writeText(t).catch(() => {}); };
 
 const lS = {
   main:    { minHeight: "100vh", backgroundColor: THEME.bg },

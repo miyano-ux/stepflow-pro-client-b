@@ -203,7 +203,7 @@ const localStyles = {
 export default function CustomerList({
   customers = [], displaySettings = [], formSettings = [],
   scenarios = [], statuses = [], staffList = [], scenarioSettings = {}, sources = [],
-  properties = [], gasUrl, onRefresh, onLightRefresh, isLoading = false,
+  properties = [], contractTypes = [], gasUrl, onRefresh, onLightRefresh, isLoading = false,
 }) {
   const showToast = useToast();
   const navigate = useNavigate();
@@ -265,7 +265,9 @@ export default function CustomerList({
       return entry.visible !== false;
     };
 
-    const SALES_KEYS   = ["対応ステータス", "流入元", "担当者メール", "シナリオID"];
+    // 【G5-002】「契約種別」を列候補に追加（表示列設定のトグルと対応。
+    //   従来は設定画面にトグルがあるのに一覧側に列定義がなく、ONにしても列が出なかった）
+    const SALES_KEYS   = ["対応ステータス", "流入元", "担当者メール", "シナリオID", "契約種別"];
     const DEFAULT_KEYS = ["姓", "名", "電話番号", "登録日", "メールアドレス"];
     const allFixed     = new Set([...SALES_KEYS, ...DEFAULT_KEYS]);
     const customKeys   = (formSettings || []).map(f => f.name).filter(k => !allFixed.has(k));
@@ -275,21 +277,27 @@ export default function CustomerList({
     const fallback  = new Set(["姓", "名", "電話番号", "登録日", "対応ステータス", "担当者メール", "シナリオID"]);
     const vis = (key) => hasSaved ? isVisible(key) : fallback.has(key);
 
-    // ① デフォルト列（姓・名 → 「氏名」仮想列に統合）
-    const defaultCols = [];
-    if (vis("姓") || vis("名")) defaultCols.push("氏名");
-    ["電話番号", "登録日", "メールアドレス"].forEach(k => { if (vis(k)) defaultCols.push(k); });
+    // 【G5-006】表示列設定の保存順（displaySettings の行順）を列順として採用する。
+    //   ColumnSettings.jsx handleSave は画面の並び順どおりに配列を保存し、
+    //   GAS（表示設定シート）・localStorage とも行順を維持するため、
+    //   ここで行順をそのまま使えば「設定どおりの左→右」になる。
+    //   未保存キー（一度も保存していない項目・後から追加された項目）は
+    //   従来の固定順（デフォルト → 営業管理 → カスタム）で末尾に補完する。
+    const allKeys    = [...DEFAULT_KEYS, ...SALES_KEYS, ...customKeys];
+    const savedOrder = (displaySettings || []).map(d => d.name).filter(k => allKeys.includes(k));
+    const ordered    = [...savedOrder, ...allKeys.filter(k => !savedOrder.includes(k))];
 
-    // ② 営業管理列
-    const salesCols = [];
-    ["対応ステータス", "担当者メール", "シナリオID", "流入元"].forEach(k => {
-      if (vis(k)) salesCols.push(k);
+    // 姓・名 → 仮想列「氏名」に統合しつつ、順序を保って可視列を確定する
+    const cols = [];
+    const seen = new Set();
+    ordered.forEach(k => {
+      const col = (k === "姓" || k === "名") ? "氏名" : k;
+      if (seen.has(col)) return;
+      seen.add(col);
+      const show = col === "氏名" ? (vis("姓") || vis("名")) : vis(k);
+      if (show) cols.push(col);
     });
-
-    // ③ カスタム列
-    const customCols = customKeys.filter(k => vis(k));
-
-    return [...defaultCols, ...salesCols, ...customCols];
+    return cols;
   }, [displaySettings, formSettings]);
 
   const sCols = useMemo(() => {
@@ -300,7 +308,8 @@ export default function CustomerList({
       return entry.searchable !== false;
     };
 
-    const SALES_KEYS   = ["対応ステータス", "流入元", "担当者メール", "シナリオID"];
+    // 【G5-002】契約種別を検索対象候補にも追加（vCols と同じ列集合を維持する）
+    const SALES_KEYS   = ["対応ステータス", "流入元", "担当者メール", "シナリオID", "契約種別"];
     const DEFAULT_KEYS = ["姓", "名", "電話番号", "登録日", "メールアドレス"];
     const allFixed     = new Set([...SALES_KEYS, ...DEFAULT_KEYS]);
     const customKeys   = (formSettings || []).map(f => f.name).filter(k => !allFixed.has(k));
@@ -309,12 +318,21 @@ export default function CustomerList({
     const fallback   = new Set(["姓", "名", "対応ステータス", "担当者メール", "シナリオID", "登録日"]);
     const srch = (key) => hasSaved ? isSearchable(key) : fallback.has(key);
 
-    const cols = [];
-    if (srch("姓") || srch("名")) cols.push("氏名");
-    ["電話番号", "登録日", "メールアドレス"].forEach(k => { if (srch(k)) cols.push(k); });
-    ["対応ステータス", "担当者メール", "シナリオID", "流入元"].forEach(k => { if (srch(k)) cols.push(k); });
-    customKeys.forEach(k => { if (srch(k)) cols.push(k); });
+    // 【G5-006】検索欄の並び順も表示列設定の保存順に揃える（vCols と同方式）。
+    //   列と検索欄の並びが一致し、ユーザーが設定した順序が両方に反映される。
+    const allKeys    = [...DEFAULT_KEYS, ...SALES_KEYS, ...customKeys];
+    const savedOrder = (displaySettings || []).map(d => d.name).filter(k => allKeys.includes(k));
+    const ordered    = [...savedOrder, ...allKeys.filter(k => !savedOrder.includes(k))];
 
+    const cols = [];
+    const seen = new Set();
+    ordered.forEach(k => {
+      const col = (k === "姓" || k === "名") ? "氏名" : k;
+      if (seen.has(col)) return;
+      seen.add(col);
+      const ok = col === "氏名" ? (srch("姓") || srch("名")) : srch(k);
+      if (ok) cols.push(col);
+    });
     return cols;
   }, [displaySettings, formSettings]);
 
@@ -385,7 +403,9 @@ export default function CustomerList({
   // 【A1-042】mode: "all"=全カラム / "visible"=表示列設定（visible）を反映した列のみ。
   //   出力範囲は CSV出力モーダル（csvModal）でユーザーが選択する。
   const handleExportCSV = (mode = "all") => {
-    const SALES_KEYS   = ["対応ステータス", "流入元", "担当者メール", "シナリオID"];
+    // 【G5-002】契約種別をCSV出力対象にも追加（vCols と列集合を一致させる。
+    //   出力ヘッダー「契約種別」はインポート側 CustomerForm.jsx が同名で読むため再取込可能）
+    const SALES_KEYS   = ["対応ステータス", "流入元", "担当者メール", "シナリオID", "契約種別"];
     const DEFAULT_KEYS = ["姓", "名", "電話番号", "登録日", "メールアドレス"];
     const allFixed     = new Set([...SALES_KEYS, ...DEFAULT_KEYS]);
     const customKeys   = (formSettings || []).map(f => f.name).filter(k => !allFixed.has(k));
@@ -587,6 +607,17 @@ export default function CustomerList({
       );
     }
 
+    // 【G5-002】契約種別 → contract-types の選択肢（流入元と同型・contractTypes は文字列配列）
+    if (col === "契約種別") {
+      const opts = [{ value: "", label: "すべて" }, ...(contractTypes || []).map(t => ({ value: t, label: t }))];
+      return (
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          <label style={{ fontSize: "11px", fontWeight: "800", color: THEME.textMuted }}>契約種別</label>
+          <InlineDropdown value={search[col] || ""} options={opts} onChange={(v) => setSearch({ ...search, [col]: v })} />
+        </div>
+      );
+    }
+
     // シナリオID → プルダウン選択（「適用シナリオ」表示）
     if (col === "シナリオID") {
       const scenarioIds = [...new Set((scenarios || []).map(s => s["シナリオID"]).filter(Boolean))];
@@ -713,6 +744,12 @@ export default function CustomerList({
         </span>
       );
     }
+    // 【G5-002】契約種別 → テキスト表示（未設定は「－」。顧客詳細の表示に揃える）
+    if (col === "契約種別") {
+      const val = c[col];
+      if (!val) return <span style={{ color: THEME.textMuted, fontSize: 13 }}>－</span>;
+      return <span style={{ fontSize: 13, color: THEME.textMain, whiteSpace: "nowrap" }}>{val}</span>;
+    }
     // 日付フィールドは人が読める形式に変換
     const type = getFieldType(col, formSettings);
     if (type === "date" || KNOWN_DATE_FIELDS.includes(col)) {
@@ -737,7 +774,7 @@ export default function CustomerList({
               <p style={{ color: THEME.textMuted, fontSize: isMobile ? "12px" : "14px", margin: 0 }}>全 {filtered.length} 名中 {pageStart}–{pageEnd} 名を表示</p>
               {syncing && (
                 <span style={{ color: THEME.primary, fontSize: "12px", fontWeight: "800", display: "flex", alignItems: "center", gap: 4 }}>
-                  <Loader2 size={12} style={{ animation: "spin 0.8s linear infinite" }} /> 同期中...
+                  <Loader2 size={12} style={{ animation: "spin 0.8s linear infinite" }} /> 同期中…
                 </span>
               )}
             </div>

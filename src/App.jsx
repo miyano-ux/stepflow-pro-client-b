@@ -269,6 +269,28 @@ function App() {
     if (!user?.email) return;
     let cancelled = false;
     (async () => {
+      // 【F1-012 / H-005】起動時に許可リストを再照合し、削除済みユーザーの
+      //   既存セッション（localStorage の sf_user）を失効させる。
+      //   ・allowed === false の明示的な拒否のみ失効させる
+      //   ・照合サーバー不達・応答不正時は可用性を優先して従来どおり継続する
+      //   ・タブを開いたまま（再読込なし）のセッションまでは失効できない点は
+      //     既知の限界（完全な失効はGAS側のリクエスト毎認証が必要）
+      try {
+        const url = `${MASTER_WHITELIST_API}?action=checkAllowUser&email=${encodeURIComponent(user.email)}&company=${encodeURIComponent(CLIENT_COMPANY_NAME)}&_t=${Date.now()}`;
+        const check = await axios.get(url);
+        if (check?.data?.allowed === false) {
+          if (!cancelled) {
+            localStorage.removeItem("sf_user");
+            userRef.current = null;
+            setUser(null);
+            setAuthError(`${user.email} はこの環境へのアクセス権がありません。管理者に連絡してください。`);
+          }
+          return;
+        }
+      } catch (e) {
+        console.warn("[boot] 許可リスト再照合に失敗（継続します）", e);
+      }
+      if (cancelled) return;
       const hit = await appCache.get(user.email);
       if (!cancelled && hit?.d) {
         setD(hit.d);
@@ -364,11 +386,17 @@ function App() {
 
           {/* サイドバー */}
           <Sidebar
+            userEmail={user?.email || ""}   // 【H-008】ログイン中アカウントの表示用
             onLogout={() => {
               appCache.del(user?.email);   // 【高速化 E】前回データ破棄
               invalidateReports();         // 【レポート高速化】メモリキャッシュ破棄
               setUser(null);
               localStorage.removeItem("sf_user");
+              // 【H-006】共用端末対策：ユーザー共通キーのスタッフ一覧キャッシュ
+              //   （氏名・メール・電話を含む）を残さない。次ログイン時は
+              //   起動時の refreshStaff が再取得する。
+              //   ※ sf_display_{email} はユーザー別キーで混在しない設計（G5-008）のため残置。
+              localStorage.removeItem("sf_staff_cache");
             }}
           />
 
@@ -386,8 +414,9 @@ function App() {
           <AnimatedMain isMobile={isMobile}>
             <Routes>
               {/* 顧客管理 */}
-              <Route path="/" element={<CustomerList isLoading={load} customers={d?.customers} displaySettings={displaySettings} formSettings={d?.formSettings} scenarios={d?.scenarios} statuses={d?.statuses} staffList={staffList} scenarioSettings={d?.scenarioSettings} sources={d?.sources} properties={d?.properties} gasUrl={GAS_URL} onRefresh={refresh} onLightRefresh={lightRefresh} />} />
-              <Route path="/customers" element={<CustomerList isLoading={load} customers={d?.customers} displaySettings={displaySettings} formSettings={d?.formSettings} scenarios={d?.scenarios} statuses={d?.statuses} staffList={staffList} scenarioSettings={d?.scenarioSettings} sources={d?.sources} properties={d?.properties} gasUrl={GAS_URL} onRefresh={refresh} onLightRefresh={lightRefresh} />} />
+              {/* 【G5-002】contractTypes を伝播（契約種別列の検索プルダウン用） */}
+              <Route path="/" element={<CustomerList isLoading={load} customers={d?.customers} displaySettings={displaySettings} formSettings={d?.formSettings} scenarios={d?.scenarios} statuses={d?.statuses} staffList={staffList} scenarioSettings={d?.scenarioSettings} sources={d?.sources} properties={d?.properties} contractTypes={d?.contractTypes} gasUrl={GAS_URL} onRefresh={refresh} onLightRefresh={lightRefresh} />} />
+              <Route path="/customers" element={<CustomerList isLoading={load} customers={d?.customers} displaySettings={displaySettings} formSettings={d?.formSettings} scenarios={d?.scenarios} statuses={d?.statuses} staffList={staffList} scenarioSettings={d?.scenarioSettings} sources={d?.sources} properties={d?.properties} contractTypes={d?.contractTypes} gasUrl={GAS_URL} onRefresh={refresh} onLightRefresh={lightRefresh} />} />
               <Route path="/add" element={<CustomerForm scenarios={d?.scenarios} formSettings={d?.formSettings} statuses={d?.statuses} staffList={staffList} sources={d?.sources} groups={d?.groups} contractTypes={d?.contractTypes} onRefresh={refresh} isLoading={load} />} />
               <Route path="/schedule/:id" element={<CustomerSchedule isLoading={load} customers={d?.customers} deliveryLogs={d?.deliveryLogs} onRefresh={refresh} />} />
               <Route path="/detail/:id" element={<CustomerDetail isLoading={load} customers={d?.customers} formSettings={d?.formSettings} statuses={d?.statuses} sources={d?.sources} contractTypes={d?.contractTypes} trackingLogs={d?.trackingLogs} staffList={staffList} groups={d?.groups} statusHistory={d?.statusHistory} properties={d?.properties} scenarios={d?.scenarios} gasUrl={GAS_URL} onRefresh={refresh} onLightRefresh={lightRefresh} />} />
@@ -401,7 +430,8 @@ function App() {
                   ・customers: 削除確認モーダルの「入力済み N 件」が常に 0 件表示になる。 */}
               <Route path="/form-settings" element={<FormSettings formSettings={d?.formSettings} sheetCustomColumns={d?.sheetCustomColumns || []} customers={d?.customers} isLoading={load} loadError={loadError} onRefresh={refresh} />} />
               <Route path="/sources" element={<SourceManager sources={d?.sources} onRefresh={refresh} gasUrl={GAS_URL} isLoading={load} loadError={loadError} />} />
-              <Route path="/contract-types" element={<ContractTypeManager contractTypes={d?.contractTypes} exclusiveContractTypes={d?.exclusiveContractTypes} onRefresh={refresh} gasUrl={GAS_URL} />} />
+              {/* 【G4-012】customers を伝播（改名マイグレーションの影響件数提示用。G2-014 と同方針） */}
+              <Route path="/contract-types" element={<ContractTypeManager contractTypes={d?.contractTypes} exclusiveContractTypes={d?.exclusiveContractTypes} customers={d?.customers} onRefresh={refresh} gasUrl={GAS_URL} />} />
               <Route path="/master-settings" element={<MasterSettings isLoading={load} statuses={d?.statuses} sources={d?.sources} contractTypes={d?.contractTypes} scenarios={d?.scenarios} />} />
               <Route path="/status-settings" element={<StatusSettings statuses={d?.statuses} scenarios={d?.scenarios} customers={d?.customers} onRefresh={refresh} gasUrl={GAS_URL} />} />
 

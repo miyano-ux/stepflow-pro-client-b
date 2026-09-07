@@ -23,6 +23,30 @@ function DynamicField({ f, value, onChange, fieldId }) {
     return <CustomSelect value={value || ""} onChange={onChange} options={opts} />;
   }
 
+  // 【A2-031】数値型 → 数字・小数点以外を入力時点で除去する。
+  //   全角数字は半角へ変換して受け付ける（utils.js smartNormalizePhone と同方針）。
+  //   "1.2.3" 等の不正形は入力段では防げないため、保存時検証
+  //   （CustomerForm.jsx handleSubmit / CustomerDetail.jsx handleSave）と二段構えにする。
+  if (f.type === "number") {
+    return (
+      <input
+        id={fieldId}
+        style={styles.input}
+        type="text"
+        inputMode="decimal"
+        required={f.required}
+        value={value || ""}
+        onChange={(e) => {
+          const v = e.target.value
+            .replace(/[０-９]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xFEE0))
+            .replace(/[^0-9.]/g, "");
+          onChange(v);
+        }}
+        placeholder={`${f.name}を入力（半角数字）`}
+      />
+    );
+  }
+
   // 日付型 → カスタムDatePickerを使用
   if (f.type === "date") {
     return (

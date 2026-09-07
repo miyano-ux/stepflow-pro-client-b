@@ -100,6 +100,33 @@ const extractCustomValue = (body, key) => {
   return raw == null ? "" : raw.trim();
 };
 
+// ── 【D3-011】HTML本文の前処理 ────────────────────────────────
+// テストパネルに貼り付けられた本文がHTMLらしい場合のみ、タグ除去・
+// <br>の改行変換・基本エンティティのデコードを行ってから抽出する。
+// タグを含まないプレーン本文は looksLikeHtml が false を返し1文字も
+// 変化しない（既存のプレーン本文の抽出結果に影響なし）。
+// ※ GAS側（gas_updated.js の _stripHtmlIfNeeded_ / gmailIntake）に
+//   同一実装がある。どちらかを直したら両方直すこと
+//   （テスト結果＝実取り込み結果の一致方針）。
+const looksLikeHtml = (s) =>
+  /<\s*(html|body|div|span|br|p|table|td|tr|a|b|strong|font)\b/i.test(String(s || ""));
+const htmlToPlain = (s) => String(s)
+  .replace(/<style[\s\S]*?<\/style>/gi, "")
+  .replace(/<script[\s\S]*?<\/script>/gi, "")
+  .replace(/<br\s*\/?>/gi, "\n")
+  .replace(/<\/(p|div|tr|li|h[1-6]|table)>/gi, "\n")
+  .replace(/<[^>]+>/g, "")
+  .replace(/&nbsp;/gi, " ")
+  .replace(/&amp;/gi, "&")
+  .replace(/&lt;/gi, "<")
+  .replace(/&gt;/gi, ">")
+  .replace(/&quot;/gi, '"')
+  .replace(/&#0?39;/g, "'");
+const stripHtmlIfNeeded = (body) => {
+  const s = String(body || "");
+  return looksLikeHtml(s) ? htmlToPlain(s) : s;
+};
+
 const EMPTY_DATA = {
   subject: "", nameKey: "氏名：", phoneKey: "電話番号：",
   status: "", source: "", staffEmail: "", scenarioID: "", customKeys: [],
@@ -186,6 +213,10 @@ export default function GmailSettings({
   const [parsePreview, setParsePreview]     = useState(null);
   const [saving, setSaving]                 = useState(false);
   const [syncing, setSyncing]               = useState(false);
+  // 【D3-005/D3-006】保存を中止した理由をモーダル内に常時表示する。
+  // トースト（3.5秒で自動消滅）だけでは保存の成否が分からないまま残るため、
+  // ユーザー登録（UserForm.jsx showModal）と同じ「消えないエラー表示」を併設する。
+  const [formError, setFormError]           = useState("");
   const [successModal, setSuccessModal]     = useState({ open: false, message: "" });
   const [statusConfirmPending, setStatusConfirmPending] = useState(null);
   const [showAddNotifyUser, setShowAddNotifyUser]       = useState(false);
@@ -299,14 +330,14 @@ export default function GmailSettings({
 
   // ── モーダル開閉 ──────────────────────────────────────────
   const openNew = () => {
-    setTestBody(""); setParsePreview(null); setShowAddNotifyUser(false);
+    setTestBody(""); setParsePreview(null); setShowAddNotifyUser(false); setFormError("");
     setModal({ open: true, mode: "add", editLocalId: null, data: EMPTY_DATA });
   };
   const openEdit = (rule) => {
     const ck = safeParseCustomKeys(rule["カスタム項目キー"]);
     let notifyUsers = [];
     try { notifyUsers = JSON.parse(rule["通知先ユーザー"] || "[]"); } catch { notifyUsers = []; }
-    setTestBody(""); setParsePreview(null); setShowAddNotifyUser(false);
+    setTestBody(""); setParsePreview(null); setShowAddNotifyUser(false); setFormError("");
     setModal({
       open: true, mode: "edit", editLocalId: rule._localId,
       data: {
@@ -323,22 +354,25 @@ export default function GmailSettings({
       },
     });
   };
-  const closeModal = () => { setModal(m => ({ ...m, open: false })); setShowAddNotifyUser(false); };
+  const closeModal = () => { setModal(m => ({ ...m, open: false })); setShowAddNotifyUser(false); setFormError(""); };
 
   // ── テスト実行 ────────────────────────────────────────────
   const handleTest = () => {
     if (!testBody) return showToast("テスト用の本文を入力してください", "warning");
     try {
+      // 【D3-011】HTMLらしい本文はタグ除去・<br>改行変換してから抽出する
+      //（GAS側 gmailIntake の _stripHtmlIfNeeded_ と同一仕様）。
+      const bodyForTest = stripHtmlIfNeeded(testBody);
       const orDash   = (key, v) => (!key ? "－" : (v || "抽出失敗"));
       const customs  = {};
       (modal.data.customKeys || []).forEach(({ fieldName, keyword }) => {
-        if (fieldName && keyword) customs[fieldName] = orDash(keyword, extractCustomValue(testBody, keyword));
+        if (fieldName && keyword) customs[fieldName] = orDash(keyword, extractCustomValue(bodyForTest, keyword));
       });
       // 氏名の終端に使う「他の抽出キー」＝電話キー＋カスタムキー（GAS側と同一仕様）
       const nameOtherKeys = [modal.data.phoneKey, ...(modal.data.customKeys || []).map(c => c.keyword)].filter(Boolean);
       setParsePreview({
-        name:  orDash(modal.data.nameKey,  extractNameValue(testBody,  modal.data.nameKey, nameOtherKeys)),
-        phone: orDash(modal.data.phoneKey, extractPhoneValue(testBody, modal.data.phoneKey)),
+        name:  orDash(modal.data.nameKey,  extractNameValue(bodyForTest,  modal.data.nameKey, nameOtherKeys)),
+        phone: orDash(modal.data.phoneKey, extractPhoneValue(bodyForTest, modal.data.phoneKey)),
         customs,
       });
     } catch { showToast("キーの形式が正しくありません", "info"); }
@@ -358,8 +392,10 @@ export default function GmailSettings({
       const label = subjectKey === ""
         ? "ワイルドカード（空白）のルールはすでに存在します"
         : `件名キーワード「${subjectKey}」のルールはすでに存在します`;
+      setFormError(label);   // モーダル内に消えないエラーを表示（保存は中止・モーダルは残す）
       return showToast(label, "warning");
     }
+    setFormError("");
 
     // 🔧【D1-019 横展開】電話番号未登録の通知先がいる場合は警告する（保存はブロックしない）。
     const missingPhones = (formData.notifyUsers || []).filter(u => !(u.phone || "").trim());
@@ -426,7 +462,7 @@ export default function GmailSettings({
         notifyMessage: formData.notifyMessage || "",
       });
       onRefresh();
-    } catch {
+    } catch (e) {
       // ロールバックもIDはカウンター採番に統一する。削除済み判定は
       // useEffect（196-199行）と同じくフィンガープリントで行う
       //（deletedIdsRef はカウンターIDのSetなので、ここで作り直した行とは
@@ -436,7 +472,9 @@ export default function GmailSettings({
           .map((s, i) => ({ ...s, _localId: nextId(), _serverIdx: i }))
           .filter(s => !deletedFingerprintsRef.current.has(makeFingerprint(s)))
       );
-      showToast("保存に失敗しました。再度お試しください。", "error");
+      // 【D3-005/D3-006】GAS側の重複ガード（saveGmailSetting）が返す理由を
+      // そのまま表示する（apiCall は status!=="success" の message を throw する）。
+      showToast(e?.message || "保存に失敗しました。再度お試しください。", "error");
     } finally {
       setSyncing(false);
     }
@@ -921,6 +959,19 @@ export default function GmailSettings({
                   )}
                 </div>
               </div>
+
+              {/* 【D3-005/D3-006】保存を中止した理由（消えないインラインエラー） */}
+              {formError && (
+                <div style={{
+                  marginBottom: 12, padding: "10px 14px",
+                  background: "#FEF2F2", border: "1px solid #FCA5A5",
+                  borderRadius: 10, fontSize: 13, color: "#991B1B", fontWeight: 700,
+                  display: "flex", alignItems: "flex-start", gap: 8,
+                }}>
+                  <AlertCircle size={16} style={{ flexShrink: 0, marginTop: 1 }} />
+                  <span>{formError}</span>
+                </div>
+              )}
 
               {/* 保存・キャンセル */}
               <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", gap: 12 }}>

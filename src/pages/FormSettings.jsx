@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback, useMemo } from "react"
 import { useNavigate, useLocation } from "react-router-dom";
 import {
   Lock, Trash2, Plus, ChevronDown, ChevronUp,
-  Type, Calendar, List, ToggleLeft, ToggleRight, GripVertical, X, CheckCircle2, Loader2, Pencil
+  Type, Calendar, List, ToggleLeft, ToggleRight, GripVertical, X, CheckCircle2, Loader2, Pencil, Hash
 } from "lucide-react";
 import { THEME, GAS_URL } from "../lib/constants";
 import { styles } from "../lib/styles";
@@ -18,6 +18,13 @@ import { useWindowWidth } from "../lib/useWindowWidth";
 
 const FIELD_TYPES = [
   { value: "text",     label: "テキスト", icon: <Type size={15} /> },
+  // 【A2-031】仕様書4.11「フィールドタイプ: テキスト / 数値 / 日付 / 選択肢」に合わせて
+  //   数値型を追加。入力制限は DynamicField.jsx / CustomerDetail.jsx(EditNumber)、
+  //   保存時検証は CustomerForm.jsx handleSubmit / CustomerDetail.jsx handleSave、
+  //   CSV取込の不正値は GAS bulkAdd 側で空欄化＋取り込みエラー記録（A2-012 のQ7-C方式と同方針）。
+  //   GAS saveFormSettings / getAppData は type を素通しするため（gas_updated.js:1381, 3597）
+  //   サーバー側の定義変更は不要。
+  { value: "number",   label: "数値",     icon: <Hash size={15} /> },
   { value: "date",     label: "日付",     icon: <Calendar size={15} /> },
   { value: "dropdown", label: "選択肢",   icon: <List size={15} /> },
 ];

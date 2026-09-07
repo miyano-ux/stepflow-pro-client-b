@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from "react";
 import ConfirmModal from "../components/ConfirmModal";
+import SmsCountHint from "../components/SmsCountHint";
 import axios from "axios";
 import { Plus, Edit3, Trash2, Save, X, Loader2, CheckCircle2, RefreshCw } from "lucide-react";
 import { useToast } from "../ToastContext";
@@ -19,6 +20,10 @@ const VARIABLE_GROUPS = [
       { label: "姓",    value: "{{姓}}"    },
       { label: "名",    value: "{{名}}"    },
       { label: "電話番号", value: "{{電話番号}}" },
+      // 【C1-007】画面間の変数一覧を統一（DirectSms / ScenarioForm / 機能仕様書に揃える）。
+      //   置換処理（utils.js replaceVariables / GAS _resolveTemplateVars_）は
+      //   顧客リストの見出し名を総当たりするため既に対応済み。ボタン追加のみで完結する。
+      { label: "メールアドレス", value: "{{メールアドレス}}" },
     ],
   },
   {
@@ -446,12 +451,15 @@ export default function TemplateManager({ templates = [], onRefresh, gasUrl }) {
                     borderRadius: "0 0 12px 12px",
                     fontSize: 14, outline: "none", resize: "vertical",
                     lineHeight: 1.7, boxSizing: "border-box",
-                    fontFamily: "monospace", marginBottom: 24,
+                    fontFamily: "monospace", marginBottom: 8,
                   }}
                   value={modal.data.content}
                   onChange={(e) => setModal((m) => ({ ...m, data: { ...m.data, content: e.target.value } }))}
                   required
                 />
+
+                {/* 【C1-015／案B】文字数・通数の概算表示（変数は置換後に増減するため目安） */}
+                <SmsCountHint text={modal.data.content} style={{ marginBottom: 24 }} />
 
                 {/* 保存・キャンセル */}
                 <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", gap: 12 }}>

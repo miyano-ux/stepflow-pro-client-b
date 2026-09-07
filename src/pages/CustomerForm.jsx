@@ -98,18 +98,36 @@ function CustomerForm({ formSettings = [], scenarios = [], statuses = [], staffL
       });
       return obj;
     });
-    // レスポンスのエラーを確認してユーザーに通知
-    let res;
+    // 【Z-012】GAS実行時間上限（6分）対策：チャンク分割して送信する。
+    //   従来は全行を1回のPOSTで送っており、数千件では6分制限で強制終了
+    //   → GAS側は1件ずつ確定書込のため「部分的に登録済みなのにフロントはエラー表示」
+    //   というF3-001型の乖離が大規模に発生しうる構造だった。
+    //   チャンク単位なら各リクエストが制限内に収まり、途中失敗時も
+    //   「何件目まで送信確定したか」を正確に通知できる。
+    const CHUNK_SIZE = 200;
+    const allErrors = [];
+    let sentCount = 0;
     try {
-      res = await apiCall.post(GAS_URL, { action: "bulkAdd", customers: items });
+      for (let i = 0; i < items.length; i += CHUNK_SIZE) {
+        const chunk = items.slice(i, i + CHUNK_SIZE);
+        // apiCall.post は非get系のためリトライなし（二重登録防止。utils.js:143-144）
+        const res = await apiCall.post(GAS_URL, { action: "bulkAdd", customers: chunk });
+        allErrors.push(...(res?.errors || []));
+        sentCount += chunk.length;
+      }
     } catch (err) {
-      showToast("登録中にエラーが発生しました: " + err.message, "error");
+      // 途中失敗：確定済み件数を明示し、一覧を再取得して実登録状態を反映する
+      showToast(
+        `登録中にエラーが発生しました（${sentCount}/${items.length}件までは送信済み。` +
+        `失敗分は取込結果を確認のうえ再インポートしてください。重複行は自動スキップされます）: ${err.message}`,
+        "error"
+      );
+      if (sentCount > 0) onRefresh();
       return;
     }
-    const errs = res?.errors || [];
-    const successCount = items.length - errs.length;
+    const successCount = items.length - allErrors.length;
     onRefresh();
-    setImportResultModal({ successCount, errors: errs });
+    setImportResultModal({ successCount, errors: allErrors });
   };
 
   // CSV / xlsx どちらでもインポート可能
@@ -152,6 +170,9 @@ function CustomerForm({ formSettings = [], scenarios = [], statuses = [], staffL
               // Excel出力の ="090..." 形式（ゼロ落ち対策）をアンラップ
               const eqMatch = val.match(/^="(.*)"$/);
               if (eqMatch) val = eqMatch[1];
+              // 【CSV数式インジェクション対策】エクスポート側（utils.js downloadCSV）が
+              //   = + - @ 先頭のセルに前置したアポストロフィを除去する（往復でデータ不変）。
+              if (val.startsWith("'")) val = val.slice(1);
               return val;
             }));
           if (rows.length < 2) {
@@ -163,6 +184,15 @@ function CustomerForm({ formSettings = [], scenarios = [], statuses = [], staffL
           rowMaps = rows.slice(1)
             .filter((r) => r.length > 2)
             .map((r) => Object.fromEntries(headers.map((h, i) => [h, r[i] ?? ""])));
+        }
+
+        // 【A2-048】データ行0件はファイル不備の可能性が高いため、取込を中止して気づかせる。
+        //   従来はCSVの末尾改行の有無で「警告中止」と「登録成功0件モーダル」に挙動が
+        //   分かれていた（rows.length判定をすり抜けて rowMaps が空になる経路）。
+        //   ヘッダーのみ・空行のみのどちらも同一文言の警告トーストに統一する（Q5-A決定）。
+        if (rowMaps.length === 0) {
+          showToast("取り込めるデータ行がありません（ヘッダー行＋1行以上が必要です）", "warning");
+          return;
         }
 
         // 【A2-042】ヘッダー検証：必須列が1つでも欠けていたらインポート自体を中止する。
@@ -266,6 +296,9 @@ function CustomerForm({ formSettings = [], scenarios = [], statuses = [], staffL
       key:  f.name,
       note: f.type === "date"     ? "例: 2025/01/31（YYYY/MM/DD形式）"
           : f.type === "dropdown" ? "プルダウンから選択（未選択も可）"
+          // 【A2-031】数値型: 半角数字を案内。不正値はGAS取込時に空欄化され
+          //   取り込みエラーシートへ記録される（bulkAdd）。
+          : f.type === "number"   ? "半角数字で入力（例: 1200）"
           : "",
       type: f.type,
       field: f,
@@ -291,6 +324,7 @@ function CustomerForm({ formSettings = [], scenarios = [], statuses = [], staffL
       if (h.key === "シナリオID")     return "未選択";
       // カスタム項目
       if (h.type === "date")          return "2025/01/31";
+      if (h.type === "number")        return "1200";
       if (h.type === "dropdown") {
         const cd = customDropdowns.find((d) => d.field.name === h.key);
         return cd ? cd.opts[0] : "未選択"; // 先頭は「未選択」
@@ -391,6 +425,17 @@ function CustomerForm({ formSettings = [], scenarios = [], statuses = [], staffL
         showToast(`「${f.name}」は必須項目です`, "warning");
         setSubmitting(false);
         return;
+      }
+      // 【A2-031】数値型は空欄 または 0以上の数値のみ許容。DynamicField の入力制限では
+      //   "1.2.3" "." 等の不正形を防げないため、保存時に遮断する
+      //   （CustomerDetail.jsx handleSave / PropFormModal(A4-006) と同一基準）。
+      if (f.type === "number") {
+        const s = String(fd[f.name] ?? "").trim();
+        if (s !== "" && !/^\d+(\.\d+)?$/.test(s)) {
+          showToast(`「${f.name}」は0以上の数値で入力してください`, "warning");
+          setSubmitting(false);
+          return;
+        }
       }
     }
 

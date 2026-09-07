@@ -364,24 +364,35 @@ function LostReasonSelect({ value, options, onChange }) {
 
 // 失注モーダル
 const DEFAULT_LOST_REASONS = ["金額条件が合わなかった", "他社に決まった", "売却を取り止めた", "時期を再検討する", "連絡が取れなくなった", "その他"];
-function LostModal({ info, gasUrl, onDone, onCancel }) {
+function LostModal({ info, gasUrl, onDone, onCancel, showToast }) {
   const [reason, setReason]     = useState("");
   const [freeText, setFreeText] = useState("");
   const [saving, setSaving]     = useState(false);
   if (!info) return null;
 
+  // 【B1-032】ステータス設定側の選択肢に管理者が「その他」を含めていても
+  //   重複表示しない（無条件付加だったため2重に並んでいた）。
+  //   CustomerDetail.jsx の LostReasonModal と同一方針。
   const options = (info.lostReasonOptions && info.lostReasonOptions.length > 0)
-    ? [...info.lostReasonOptions, "その他"]
+    ? [...info.lostReasonOptions.filter(o => o !== "その他"), "その他"]
     : DEFAULT_LOST_REASONS;
 
   const handleConfirm = async () => {
     if (!reason) return;
     setSaving(true);
     const finalReason = reason === "その他" ? freeText || "その他" : reason;
-    await axios.post(gasUrl, JSON.stringify({ action: "updateStatus", id: info.customerId, status: info.newStatus, applyScenario: "" }), { headers: { "Content-Type": "text/plain;charset=utf-8" } });
-    await axios.post(gasUrl, JSON.stringify({ action: "saveLostReason", id: info.customerId, reason: finalReason }), { headers: { "Content-Type": "text/plain;charset=utf-8" } });
-    setSaving(false);
-    onDone();
+    // 【B1-032】旧実装は try/catch が無く、API失敗時に saving=true のまま
+    //   「処理中...」でモーダルが固まっていた。DormantModal(203) と同型の
+    //   エラー処理に揃える（既存の正常実装へ統一する方針）。
+    try {
+      await axios.post(gasUrl, JSON.stringify({ action: "updateStatus", id: info.customerId, status: info.newStatus, applyScenario: "" }), { headers: { "Content-Type": "text/plain;charset=utf-8" } });
+      await axios.post(gasUrl, JSON.stringify({ action: "saveLostReason", id: info.customerId, reason: finalReason }), { headers: { "Content-Type": "text/plain;charset=utf-8" } });
+      onDone();
+    } catch (e) {
+      showToast?.(e?.message || "更新に失敗しました", "error");
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -449,7 +460,7 @@ function LostModal({ info, gasUrl, onDone, onCancel }) {
 }
 
 // 受託越え前進モーダル（2フェーズ：物件選択 → 物件ごとの金額入力）
-function UketsukeModal({ info, gasUrl, contractTypes, staffList, onDone, onCancel }) {
+function UketsukeModal({ info, gasUrl, contractTypes, staffList, onDone, onCancel, showToast }) {
   const hasProps = info?.customerProperties && info.customerProperties.length > 0;
 
   // フェーズ: "select"（物件選択＋共通項目）| "price"（物件ごと金額入力）| "new"（新規物件登録）
@@ -542,7 +553,9 @@ function UketsukeModal({ info, gasUrl, contractTypes, staffList, onDone, onCance
       }
       onDone(info.customerId, info.newStatus, info.prevStatus, staffEmail);
     } catch {
-      showToast("更新に失敗しました", "error");
+      // 【修正】旧実装はモジュールスコープに showToast が存在せず、
+      //   失敗時に ReferenceError で画面ごと落ちていた。props 経由で受け取る。
+      showToast?.("更新に失敗しました", "error");
       setSaving(false);
     }
   };
@@ -771,7 +784,7 @@ function UketsukeModal({ info, gasUrl, contractTypes, staffList, onDone, onCance
 }
 
 // 成約モーダル（物件ごとに成約金額を入力するウィザード）
-function WonModal({ info, gasUrl, onDone, onCancel }) {
+function WonModal({ info, gasUrl, onDone, onCancel, showToast }) {
   const hasProps = info?.customerProperties && info.customerProperties.length > 0;
   const [phase, setPhase]           = useState(hasProps ? "select" : "confirm");
   const [checkedIds, setCheckedIds] = useState(
@@ -815,7 +828,9 @@ function WonModal({ info, gasUrl, onDone, onCancel }) {
       }
       onDone(info.customerId, info.newStatus, info.prevStatus);
     } catch {
-      showToast("更新に失敗しました", "error");
+      // 【修正】旧実装はモジュールスコープに showToast が存在せず、
+      //   失敗時に ReferenceError で画面ごと落ちていた。props 経由で受け取る。
+      showToast?.("更新に失敗しました", "error");
       setSaving(false);
     }
   };
@@ -1556,7 +1571,9 @@ export default function KanbanBoard({
                     </div>
                     {days !== null && color && (
                       <span style={{ fontSize: 11, fontWeight: 800, backgroundColor: color.bg, color: color.text, padding: "2px 9px", borderRadius: 99 }}>
-                        {days === 0 ? "本日" : `${days}日滞留中`}
+                        {/* 【B1-009】判定は24時間基準（calcDaysInStatus）のまま、表記を実態に合わせる。
+                            「本日」だと暦日と誤読されるため（前日23時変更の顧客が翌朝も表示される） */}
+                        {days === 0 ? "24時間以内" : `${days}日滞留中`}
                       </span>
                     )}
                   </div>
@@ -1635,14 +1652,14 @@ export default function KanbanBoard({
         {/* モーダル群（PC版と共通） */}
         <ScenarioConfirmModal info={scenarioModal} onConfirm={handleScenarioConfirm} onCancel={() => setScenarioModal(null)} />
         <DormantModal key={dormantModal ? `${dormantModal.customerId}-${dormantModal.newStatus}` : "none"} info={dormantModal} scenarios={scenarios} statuses={statuses} gasUrl={gasUrl} showToast={showToast} onDone={handleModalDone} onCancel={() => setDormantModal(null)} />
-        <LostModal info={lostModal} gasUrl={gasUrl} onDone={handleModalDone} onCancel={() => setLostModal(null)} />
+        <LostModal info={lostModal} gasUrl={gasUrl} showToast={showToast} onDone={handleModalDone} onCancel={() => setLostModal(null)} />
         {wonModal && (
-          <WonModal info={wonModal} gasUrl={gasUrl} onDone={handleWonDone} onCancel={() => setWonModal(null)} />
+          <WonModal info={wonModal} gasUrl={gasUrl} showToast={showToast} onDone={handleWonDone} onCancel={() => setWonModal(null)} />
         )}
         {uketsukeModal && (
           <UketsukeModal
             info={uketsukeModal} gasUrl={gasUrl} contractTypes={contractTypes} staffList={staffList}
-            onDone={handleUketsukeDone} onCancel={() => setUketsukeModal(null)}
+            showToast={showToast} onDone={handleUketsukeDone} onCancel={() => setUketsukeModal(null)}
           />
         )}
         <UketsukeBackModal info={uketsukeBackModal} onConfirm={handleUketsukeBackConfirm} onCancel={() => setUketsukeBackModal(null)} />
@@ -1782,7 +1799,8 @@ export default function KanbanBoard({
                               {days !== null && color && (
                                 <div style={{ marginTop: 8 }}>
                                   <span style={{ fontSize: 11, fontWeight: 800, backgroundColor: color.bg, color: color.text, padding: "3px 10px", borderRadius: 99 }}>
-                                    {days === 0 ? "本日" : `${days}日滞留中`}
+                                    {/* 【B1-009】判定は24時間基準（calcDaysInStatus）のまま、表記を実態に合わせる */}
+                                    {days === 0 ? "24時間以内" : `${days}日滞留中`}
                                   </span>
                                 </div>
                               )}
@@ -1932,11 +1950,12 @@ export default function KanbanBoard({
       {/* モーダル群 */}
       <ScenarioConfirmModal info={scenarioModal} onConfirm={handleScenarioConfirm} onCancel={() => setScenarioModal(null)} />
       <DormantModal key={dormantModal ? `${dormantModal.customerId}-${dormantModal.newStatus}` : "none"} info={dormantModal} scenarios={scenarios} statuses={statuses} gasUrl={gasUrl} showToast={showToast} onDone={handleModalDone} onCancel={() => setDormantModal(null)} />
-      <LostModal info={lostModal} gasUrl={gasUrl} onDone={handleModalDone} onCancel={() => setLostModal(null)} />
+      <LostModal info={lostModal} gasUrl={gasUrl} showToast={showToast} onDone={handleModalDone} onCancel={() => setLostModal(null)} />
       {wonModal && (
         <WonModal
           info={wonModal}
           gasUrl={gasUrl}
+          showToast={showToast}
           onDone={handleWonDone}
           onCancel={() => setWonModal(null)}
         />
@@ -1947,6 +1966,7 @@ export default function KanbanBoard({
           gasUrl={gasUrl}
           contractTypes={contractTypes}
           staffList={staffList}
+          showToast={showToast}
           onDone={handleUketsukeDone}
           onCancel={() => setUketsukeModal(null)}
         />

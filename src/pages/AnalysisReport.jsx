@@ -171,24 +171,29 @@ export default function AnalysisReport({ customers = [], statuses = [], tracking
 
   // ── 棒グラフ・フェーズ別滞在日数の対象：
   //    ・通常フロー列（terminalType なし）→ 常に含める
-  //    ・終点ステータスは placement === "right" かつ excluded 以外のみ含める
-  //    ・excluded は右下コーナー固定なので常に除く
-  //    ・失注など placement === "bottom" の終点ステータスも除く
+  //    ・終点ステータスは「レポート集計」チェック（reportCount）が ON のもののみ含める
+  //    ・excluded は設計決定事項どおり常に除く
+  //   【B1-002 / E4-003】placement は KanbanBoard.jsx のとおり「カンバンのどこに
+  //   置くか」を決めるレイアウト設定であり、レポートの集計可否とは無関係のため
+  //   判定に使わない（SourceReport.jsx / StatusAnalysisReport.jsx の E4-003 修正と
+  //   同一方針へ統一）。旧実装は placement === "right" を条件にしていたため、
+  //   全終点を下部配置にすると本レポートから終点が黙って消えていた。
   const chartStatuses = useMemo(() =>
     statuses.filter(s =>
       !s.terminalType ||
-      (s.terminalType !== "excluded" && (s.placement || "bottom") === "right")
+      (s.terminalType !== "excluded" && s.reportCount)
     ),
     [statuses]
   );
 
-  // ── 下部サマリカード用：右側配置の終点ステータスのみ（excluded 除く）
+  // ── 下部サマリカード用：レポート集計 ON の終点ステータスのみ（excluded 除く）
+  //   【B1-002 / E4-003】上と同じく placement 判定を撤去し reportCount 基準へ統一。
   const terminalStatuses = useMemo(() =>
     statuses.filter(s =>
       s.terminalType &&
       s.terminalType !== "excluded" &&
       s.terminalType !== "won" &&            // 成約は上部「案件分布」グラフに表示済みのため下部サマリからは除外
-      (s.placement || "bottom") === "right"
+      s.reportCount
     ),
     [statuses]
   );

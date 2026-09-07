@@ -201,10 +201,23 @@ export const replaceVariables = (text, customer, staff = null) => {
  * @param {string} filename - ダウンロード時のファイル名
  */
 export const downloadCSV = (rows, filename) => {
+  // 【CSV数式インジェクション対策】先頭が = + - @ タブ CR のセルは、Excel等で
+  //   数式として解釈されないようアポストロフィを前置する（OWASP推奨方式）。
+  //   インポート側（CustomerForm.jsx handleUpload）が先頭アポストロフィを除去するため
+  //   エクスポート→再インポートの往復でデータは変化しない。
+  //   除外1: 電話番号のゼロ落ち対策で自前生成する ="0901..." 形式（数字のみ）は
+  //          インジェクション不能な安全な式のため前置しない（CustomerList.jsx:459）。
+  //   除外2: 単独の "-"（未設定日付の表示値 formatDateJP 由来）は無害のため前置しない。
+  const sanitizeCell = (cell) => {
+    const s = (cell ?? "").toString();
+    if (/^="\d*"$/.test(s)) return s;
+    if (s === "-") return s;
+    return /^[=+\-@\t\r]/.test(s) ? "'" + s : s;
+  };
   const content = rows
     .map((row) =>
       row
-        .map((cell) => `"${(cell || "").toString().replace(/"/g, '""')}"`)
+        .map((cell) => `"${sanitizeCell(cell).replace(/"/g, '""')}"`)
         .join(",")
     )
     .join("\n");

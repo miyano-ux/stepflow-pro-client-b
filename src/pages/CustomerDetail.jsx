@@ -113,6 +113,9 @@ function PropSyncingBadge({ syncing }) {
 // ── 物件追加・編集モーダル ────────────────────────────────────
 function PropFormModal({ open, mode, data, propTypes, propStatuses, onSave, onClose }) {
   const [form, setForm] = useState(data);
+  // 【A4-002】物件名未入力のサイレント失敗対策：既存の必須エラー実装
+  //   （UserManager.jsx / ScenarioForm.jsx と同じ showToast(warning) 方式）に揃える
+  const showToast = useToast();
   const { isMobile } = useWindowWidth();
   useEffect(() => { setForm(data); }, [data]);
   if (!open) return null;
@@ -157,11 +160,13 @@ function PropFormModal({ open, mode, data, propTypes, propStatuses, onSave, onCl
           <div>
             <label style={{ fontSize: 11, fontWeight: 800, color: "#64748B", display: "block", marginBottom: 5 }}>査定金額（万円）</label>
             <input style={{ width: "100%", padding: "10px 14px", borderRadius: 8, border: "1px solid #E2E8F0", fontSize: 14, outline: "none", boxSizing: "border-box" }}
+              inputMode="decimal"
               placeholder="例: 8500" value={form.assessmentPrice || ""} onChange={e => set("assessmentPrice", e.target.value)} />
           </div>
           <div>
             <label style={{ fontSize: 11, fontWeight: 800, color: "#64748B", display: "block", marginBottom: 5 }}>成約金額（万円）</label>
             <input style={{ width: "100%", padding: "10px 14px", borderRadius: 8, border: "1px solid #E2E8F0", fontSize: 14, outline: "none", boxSizing: "border-box" }}
+              inputMode="decimal"
               placeholder="例: 8200" value={form.contractPrice || ""} onChange={e => set("contractPrice", e.target.value)} />
           </div>
           <div style={{ gridColumn: "1 / -1" }}>
@@ -189,7 +194,23 @@ function PropFormModal({ open, mode, data, propTypes, propStatuses, onSave, onCl
         {/* ボタン */}
         <div style={{ display: "flex", gap: 10 }}>
           <button
-            onClick={() => { if (!form.name) return; onSave(form); }}
+            onClick={() => {
+              // 【A4-002】ブロック条件は従来どおり（!form.name）。通知だけを追加する。
+              if (!form.name) { showToast("物件名を入力してください", "warning"); return; }
+              // 【A4-006/A4-007】金額は空欄 または 0以上の数値（小数可・万円単位）のみ許容。
+              //   負値・文字列を保存すると formatPrice（本ファイル:443-448 / CustomerList.jsx:1075-1080）が
+              //   符号・文字を除去するため「-100 → ¥100万」の誤表示や「あいう → －」の
+              //   無言保存が起きていた。A4-002 と同じ showToast(warning) 方式で保存前に遮断する。
+              //   ※ 0 は許容（表示は従来どおり「－」）。GAS側は変更しない（Q1-A決定）。
+              for (const [label, v] of [["査定金額", form.assessmentPrice], ["成約金額", form.contractPrice]]) {
+                const s = String(v ?? "").trim();
+                if (s !== "" && !/^\d+(\.\d+)?$/.test(s)) {
+                  showToast(`${label}は0以上の数値（万円）で入力してください`, "warning");
+                  return;
+                }
+              }
+              onSave(form);
+            }}
             style={{ flex: 2, padding: "12px", borderRadius: 10, border: "none", backgroundColor: "#4F46E5", color: "white", fontWeight: 800, fontSize: 14, cursor: "pointer" }}
           >
             {isEdit ? "更新する" : "登録する"}
@@ -226,8 +247,11 @@ function LostReasonModal({ open, lostReasonOptions = [], onConfirm, onCancel }) 
 
   if (!open) return null;
 
+  // 【B1-032】ステータス設定側の選択肢に管理者が「その他」を含めていても
+  //   重複表示しない（無条件付加だったため2重に並んでいた）。
+  //   KanbanBoard.jsx の LostModal と同一方針。
   const options = (lostReasonOptions && lostReasonOptions.length > 0)
-    ? [...lostReasonOptions, "その他"]
+    ? [...lostReasonOptions.filter(o => o !== "その他"), "その他"]
     : DEFAULT_LOST_REASONS;
 
   const handleConfirm = () => {
@@ -347,6 +371,30 @@ const EditSelect = ({ label, fieldName, options = [], value, onChange }) => {
   );
 };
 
+// 【A2-031】数値型カスタム項目の編集欄。DynamicField.jsx の number 分岐と同じ入力制限
+//   （全角→半角変換のうえ数字・小数点以外を除去）。"1.2.3" 等は handleSave の保存時検証で遮断。
+const EditNumber = ({ label, fieldName, value, onChange }) => {
+  const inputId = `detail-${fieldName}`;
+  return (
+    <div style={styles.inputGroup}>
+      <label htmlFor={inputId} style={{ ...styles.label, userSelect: "none" }}>{label}</label>
+      <input
+        id={inputId}
+        style={styles.input}
+        type="text"
+        inputMode="decimal"
+        value={value || ""}
+        onChange={(e) => {
+          const v = e.target.value
+            .replace(/[０-９]/g, (c) => String.fromCharCode(c.charCodeAt(0) - 0xFEE0))
+            .replace(/[^0-9.]/g, "");
+          onChange(fieldName, v);
+        }}
+      />
+    </div>
+  );
+};
+
 const EditDate = ({ label, fieldName, value, onChange }) => (
   <div style={styles.inputGroup}>
     <label style={{ ...styles.label, userSelect: "none" }}>{label}</label>
@@ -379,6 +427,10 @@ const CustomField = ({ field, isEditing, value, onChange }) => {
 
   if (field.type === "date") {
     return <div><EditDate label={field.name} fieldName={field.name} value={value} onChange={onChange} />{requiredWarn}</div>;
+  }
+  // 【A2-031】数値型 → 入力制限付き数値欄（保存時検証は handleSave 側）
+  if (field.type === "number") {
+    return <div><EditNumber label={field.name} fieldName={field.name} value={value} onChange={onChange} />{requiredWarn}</div>;
   }
   if (field.type === "dropdown") {
     const opts = (field.options || "").split(",").map((o) => o.trim()).filter(Boolean);
@@ -530,6 +582,17 @@ export default function CustomerDetail({
   );
 
   const handleSave = async () => {
+    // 【A2-031】数値型カスタム項目の保存時検証。EditNumber の入力制限では
+    //   "1.2.3" "." 等の不正形を防げないため、空欄 または 0以上の数値のみ許容する
+    //   （PropFormModal の金額検証（A4-006/A4-007）と同一基準）。
+    for (const f of formSettings || []) {
+      if (f.type !== "number") continue;
+      const s = String(formData?.[f.name] ?? "").trim();
+      if (s !== "" && !/^\d+(\.\d+)?$/.test(s)) {
+        showToast(`「${f.name}」は0以上の数値で入力してください`, "warning");
+        return;
+      }
+    }
     setSyncingCount((p) => p + 1);
     let snapshot = { ...formData };
     try {
@@ -1281,7 +1344,10 @@ export default function CustomerDetail({
               </h3>
               <p style={{ fontSize: 14, color: "#64748B", lineHeight: 1.8, margin: 0 }}>
                 <strong style={{ color: "#6366F1" }}>「{scenarioConfirm.newStatus}」</strong> に変更します。<br />
-                シナリオ <strong>「{scenarioConfirm.scenarioId}」</strong> が自動で適用されます。
+                {/* 【C2-012】旧文言「自動で適用されます」は、この時点で適用済みと誤解させていた。
+                    実際の適用（シナリオID保存・配信予約作成）は「保存する」押下時（handleSave →
+                    GAS update）に行われるため、実挙動どおりの文言に修正する。 */}
+                この画面で <strong>「保存する」を押すと</strong>、シナリオ <strong>「{scenarioConfirm.scenarioId}」</strong> が適用され配信予約が作成されます。
               </p>
             </div>
             <div style={{ display: "flex", gap: 12 }}>

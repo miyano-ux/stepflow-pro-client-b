@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { apiCall } from "../lib/utils";
+import SmsCountHint from "../components/SmsCountHint";
 import { Plus, Trash2, Calendar, Clock, Save, Loader2, ArrowLeft, CheckCircle2 } from "lucide-react";
 import { useToast } from "../ToastContext";
 import { useWindowWidth } from "../lib/useWindowWidth";
@@ -54,21 +55,37 @@ function renderPreview(text, varMap = {}) {
   return parts.map((part, i) => {
     if (/^{{.+}}$/.test(part)) {
       const key = part.slice(2, -2);
-      const val = varMap[key];
-      if (val) {
-        // 実データあり → 緑ハイライトで実値を表示
+      // 【C3-008/C1-007】DirectSms.renderPreview と同じ区別を適用する。
+      //   「置換対象だが値が空」（灰・空欄で送信）と「置換対象外の未知タグ」（紫）を
+      //   分けて表示し、空文字置換を未置換と誤認させない。
+      if (key in varMap) {
+        const val = varMap[key];
+        if (val) {
+          // 実データあり → 緑ハイライトで実値を表示
+          return (
+            <mark key={i} title={`変数: ${part}`} style={{
+              backgroundColor: "#ECFDF5", color: "#059669",
+              borderRadius: 4, padding: "1px 5px",
+              fontWeight: 800, fontStyle: "normal",
+              border: "1px solid #A7F3D0",
+            }}>
+              {val}
+            </mark>
+          );
+        }
+        // データ未登録 → 空欄で送信される旨を明示（未置換タグと区別）
         return (
-          <mark key={i} title={`変数: ${part}`} style={{
-            backgroundColor: "#ECFDF5", color: "#059669",
+          <mark key={i} title={`変数: ${part} — データ未登録のため空欄で送信されます`} style={{
+            backgroundColor: "#F1F5F9", color: THEME.textMuted,
             borderRadius: 4, padding: "1px 5px",
             fontWeight: 800, fontStyle: "normal",
-            border: "1px solid #A7F3D0",
+            border: "1px dashed #CBD5E1",
           }}>
-            {val}
+            （{key}: 空欄）
           </mark>
         );
       }
-      // データなし → 紫ハイライトで変数名そのまま
+      // 置換対象外（未知タグ） → 紫ハイライトで変数名そのまま
       return (
         <mark key={i} style={{
           backgroundColor: "#EEF2FF", color: "#4F46E5",
@@ -331,6 +348,18 @@ export default function ScenarioForm({ scenarios = [], customers = [], staffList
     if (st.some(s => !String(s.message || "").trim())) {
       return showToast("本文が空のステップがあります。入力するか、そのステップを削除してください", "warning");
     }
+    // 【C2-010】経過日数のバリデーション。input の min=1 はスピナー操作にしか効かず、
+    //   タイプ入力では空文字（Number("")=0 → 当日予約）・負数（過去日時予約）・
+    //   小数が素通りして GAS 側にも検証が無いため、保存時に弾く。
+    if (st.some(s => { const n = Number(s.elapsedDays); return !Number.isInteger(n) || n < 1; })) {
+      return showToast("経過日数は1以上の整数で入力してください", "warning");
+    }
+    // 【C2-010／要件決定】上限は365日で保存拒否。1年を超える掘り起こしは
+    //   休眠再アプローチ機能（月単位の復帰予定）の守備範囲とし、
+    //   9999等の打ち間違いによる遠未来予約の混入を防ぐ。
+    if (st.some(s => Number(s.elapsedDays) > 365)) {
+      return showToast("経過日数は365日以内で入力してください（1年を超える追客は休眠再アプローチをご利用ください）", "warning");
+    }
     setSaving(true);
     try {
       // 【A2-026】生 axios を廃止し apiCall.post へ統一。
@@ -438,7 +467,7 @@ export default function ScenarioForm({ scenarios = [], customers = [], staffList
                     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                       <input
                         style={{ ...formStyles.input, width: "90px" }}
-                        type="number" min={1}
+                        type="number" min={1} max={365}
                         value={item.elapsedDays}
                         onChange={e => updateStep(idx, "elapsedDays", e.target.value)}
                       />
@@ -502,6 +531,8 @@ export default function ScenarioForm({ scenarios = [], customers = [], staffList
                     onChange={e => updateStep(idx, "message", e.target.value)}
                     placeholder="本文を入力、または上のボタンで変数を挿入..."
                   />
+                  {/* 【C1-015／案B】文字数・通数の概算表示（変数は置換後に増減するため目安） */}
+                  <SmsCountHint text={item.message} style={{ marginTop: 8 }} />
                 </div>
 
                 {/* プレビュー（変数を実データで置換して表示） */}

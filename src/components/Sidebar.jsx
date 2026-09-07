@@ -53,7 +53,7 @@ const isSettingsPath = (pathname) =>
     pathname === item.path || (item.path !== "/" && pathname.startsWith(item.path))
   ) || ["/status-settings", "/sources", "/contract-types", "/scenarios", "/source-integrations"].some(p => pathname.startsWith(p));
 
-const Sidebar = ({ onLogout }) => {
+const Sidebar = ({ onLogout, userEmail = "" }) => {
   const location = useLocation();
   const { isMobile } = useWindowWidth();
 
@@ -199,15 +199,35 @@ const Sidebar = ({ onLogout }) => {
         })}
       </nav>
 
+      {/* 【H-008】ログイン中のメールアドレス（左下・ログアウトの直上） */}
+      {userEmail && (isMobile || expanded) && (
+        <div
+          title={userEmail}
+          style={{
+            padding: "10px 16px 0",
+            marginTop: "8px",
+            borderTop: `1px solid ${BORDER}`,
+            fontSize: "11px", color: MUTED,
+            overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+          }}
+        >
+          {userEmail}
+        </div>
+      )}
+
       {/* ログアウト */}
       <button
         onClick={onLogout}
-        title={!(isMobile || expanded) ? "Logout" : undefined}
+        title={!(isMobile || expanded) ? "ログアウト" : undefined}
         style={{
           display: "flex", alignItems: "center",
-          padding: "14px 16px", marginTop: "8px",
+          padding: "14px 16px",
+          // 【H-008】メール表示がある場合は区切り線・余白をメール側に寄せる
+          //（収納時・メール未取得時は従来どおりボタン側に線を引く）
+          marginTop: userEmail && (isMobile || expanded) ? "0" : "8px",
           background: "transparent", color: MUTED,
-          border: "none", borderTop: `1px solid ${BORDER}`,
+          border: "none",
+          borderTop: userEmail && (isMobile || expanded) ? "none" : `1px solid ${BORDER}`,
           cursor: "pointer", width: "100%",
           justifyContent: (isMobile || expanded) ? "flex-start" : "center",
         }}

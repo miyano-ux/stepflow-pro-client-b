@@ -196,16 +196,20 @@ function ImportErrorList({ errors = [], onRefresh }) {
                     <span style={{ fontSize: 12, color: THEME.textMuted }}>
                       {formatDate(e["日時"])}
                     </span>
-                    <button
-                      onClick={() => setSelected(e)}
-                      style={{
-                        display: "flex", alignItems: "center", justifyContent: "center",
-                        background: "#EEF2FF", border: "none", borderRadius: 8,
-                        color: THEME.primary, cursor: "pointer", padding: 6, flexShrink: 0,
-                      }}
-                    >
-                      <Eye size={16} />
-                    </button>
+                    {/* 【D4-005】詳細が空の行（媒体連携由来の一部エラー等）は👁を表示しない。
+                        空のモーダルが開くだけで意味がないため、詳細列は空欄扱いにする。 */}
+                    {String(e["詳細"] || "").trim() && (
+                      <button
+                        onClick={() => setSelected(e)}
+                        style={{
+                          display: "flex", alignItems: "center", justifyContent: "center",
+                          background: "#EEF2FF", border: "none", borderRadius: 8,
+                          color: THEME.primary, cursor: "pointer", padding: 6, flexShrink: 0,
+                        }}
+                      >
+                        <Eye size={16} />
+                      </button>
+                    )}
                   </div>
                   <div style={{ fontSize: 13, fontWeight: 700, color: THEME.textMain, marginTop: 6 }}>
                     {e["送信元"]}
@@ -260,17 +264,20 @@ function ImportErrorList({ errors = [], onRefresh }) {
                       </span>
                     </td>
                     <td style={{ ...styles.tableTd, textAlign: "right" }}>
-                      <button
-                        onClick={() => setSelected(e)}
-                        style={{
-                          background: "none",
-                          border: "none",
-                          color: THEME.primary,
-                          cursor: "pointer",
-                        }}
-                      >
-                        <Eye size={18} />
-                      </button>
+                      {/* 【D4-005】詳細が空の行（媒体連携由来の一部エラー等）は👁を出さず空欄にする */}
+                      {String(e["詳細"] || "").trim() && (
+                        <button
+                          onClick={() => setSelected(e)}
+                          style={{
+                            background: "none",
+                            border: "none",
+                            color: THEME.primary,
+                            cursor: "pointer",
+                          }}
+                        >
+                          <Eye size={18} />
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))

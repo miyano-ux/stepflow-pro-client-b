@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
-import axios from "axios";
 import { Plus, Trash2, Globe, Loader2, GripVertical, CheckCircle2 } from "lucide-react";
 import { THEME, GAS_URL } from "../lib/constants";
+import { apiCall } from "../lib/utils";
 import { styles } from "../lib/styles";
 import Page from "../components/Page";
 import ConfirmModal from "../components/ConfirmModal";
@@ -156,19 +156,33 @@ export default function SourceManager({ sources = [], onRefresh, gasUrl = GAS_UR
     setSaving(true);
 
     try {
-      await axios.post(
-        gasUrl,
-        JSON.stringify({ action: "addSource", name }),
-        { headers: { "Content-Type": "text/plain;charset=utf-8" } }
-      );
+      // 【G3-001】素の axios → apiCall.post に統一（レスポンスボディ検証つき）。
+      //   GAS WebアプリのPOSTは 302 → script.googleusercontent.com/.../echo の一時URLへ
+      //   リダイレクトされ、この一時URLがまれに 404 を返す（E3-014と同一事象）。
+      //   このとき GAS 側の処理は完了済みのため「404だが保存済み」になる。
+      //   addSource は GAS 側の重複チェック（gas_updated.js addSource）により冪等
+      //   （再送しても二重登録されない）ため、更新系だが retry:true を明示できる。
+      await apiCall.post(gasUrl, { action: "addSource", name }, { retry: true });
       setSaved(true);
       setTimeout(() => setSaved(false), 1800);
       onRefresh(); // useEffect で仮エントリが正式エントリに置き換わる
-    } catch {
-      // ロールバック：仮エントリを取り消す
-      setLocalSources((prev) => prev.filter((s) => !(s.name === name && s._isTemp)));
-      setInput(name);
-      showToast("追加に失敗しました", "error");
+    } catch (e) {
+      // 【G3-001】リトライ後段で「すでに登録済みです」が返るのは、直前の試行が
+      //   （404レスポンスにもかかわらず）GAS側で成功していた証拠。
+      //   ローカル一覧に無い名前であることは handleAdd 冒頭で確認済みのため、
+      //   成功として扱い、再取得（onRefresh）で正式エントリに置き換える。
+      if (/すでに登録済み/.test(e?.message || "")) {
+        setSaved(true);
+        setTimeout(() => setSaved(false), 1800);
+        onRefresh();
+      } else {
+        // ロールバック：仮エントリを取り消す
+        setLocalSources((prev) => prev.filter((s) => !(s.name === name && s._isTemp)));
+        setInput(name);
+        showToast("追加に失敗しました", "error");
+        // 実際の保存状態と表示・キャッシュ（appCache）の乖離を残さないため再取得する
+        onRefresh();
+      }
     } finally {
       setSaving(false);
     }
@@ -195,16 +209,16 @@ export default function SourceManager({ sources = [], onRefresh, gasUrl = GAS_UR
     setCostSaving(name);
 
     try {
-      await axios.post(
-        gasUrl,
-        JSON.stringify({ action: "updateSourceCost", name, cost }),
-        { headers: { "Content-Type": "text/plain;charset=utf-8" } }
-      );
+      // 【G3-001同種対策】updateSourceCost は同値の再設定になるだけの冪等な更新のため、
+      //   一時URL404（E3-014）に対して retry:true で自己回復させる。
+      await apiCall.post(gasUrl, { action: "updateSourceCost", name, cost }, { retry: true });
       onRefresh();
     } catch {
       // ロールバック
       setLocalSources(prevSources);
       showToast("コストの保存に失敗しました", "error");
+      // 実際の保存状態と表示の乖離を残さないため再取得する
+      onRefresh();
     } finally {
       setCostSaving(null);
     }
@@ -225,17 +239,18 @@ export default function SourceManager({ sources = [], onRefresh, gasUrl = GAS_UR
         setDeletingName(name);
 
         try {
-          await axios.post(
-            gasUrl,
-            JSON.stringify({ action: "deleteSource", name }),
-            { headers: { "Content-Type": "text/plain;charset=utf-8" } }
-          );
+          // 【G3-001同種対策】deleteSource は対象行が無くても success を返す冪等な実装
+          //   （gas_updated.js deleteSource）のため、一時URL404（E3-014）に対して
+          //   retry:true で自己回復させる（G3-011 の「削除失敗表示だが実は削除済み」の予防）。
+          await apiCall.post(gasUrl, { action: "deleteSource", name }, { retry: true });
           onRefresh();
         } catch {
           // ロールバック：削除意図を取り消してUIに戻す
           deletedNamesRef.current.delete(name);
           setLocalSources(sources.filter((s) => !deletedNamesRef.current.has(s.name)));
           showToast("削除に失敗しました", "error");
+          // 実際の削除状態と表示の乖離を残さないため再取得する
+          onRefresh();
         } finally {
           setDeletingName(null);
         }

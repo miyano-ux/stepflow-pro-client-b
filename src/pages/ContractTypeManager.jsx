@@ -4,6 +4,7 @@ import { ChevronLeft, Plus, Trash2, Save, GripVertical, ChevronUp, ChevronDown }
 import { THEME, GAS_URL } from "../lib/constants";
 import { styles } from "../lib/styles";
 import { apiCall } from "../lib/utils";
+import ConfirmModal from "../components/ConfirmModal";
 import { useToast } from "../ToastContext";
 import { useWindowWidth } from "../lib/useWindowWidth";
 
@@ -18,13 +19,15 @@ import { useWindowWidth } from "../lib/useWindowWidth";
 //   旧GAS（未返却＝null）の間は従来判定と同じ初期値
 //   （名称に「専任」を含む＝ON）で表示し、保存時に列として確定させる。
 
-export default function ContractTypeManager({ contractTypes: propTypes = [], exclusiveContractTypes: propExclusive = null, onRefresh, gasUrl }) {
+export default function ContractTypeManager({ contractTypes: propTypes = [], exclusiveContractTypes: propExclusive = null, customers = [], onRefresh, gasUrl }) {
   const showToast = useToast();
   const navigate = useNavigate();
   const { isMobile } = useWindowWidth();
-  const [types, setTypes]     = useState([]);   // [{ name, isExclusive }]
+  const [types, setTypes]     = useState([]);   // [{ name, isExclusive, _originalName }]
   const [saving, setSaving]   = useState(false);
   const [dragIdx, setDragIdx] = useState(null);
+  // 【G4-012】改名マイグレーションの確認モーダル（StatusSettings の G1-006 と同方針）
+  const [confirmModal, setConfirmModal] = useState(null);
 
   useEffect(() => {
     const base = propTypes.length > 0 ? [...propTypes] : ["一般媒介契約", "専任媒介契約"];
@@ -36,10 +39,25 @@ export default function ContractTypeManager({ contractTypes: propTypes = [], exc
     setTypes(base.map(n => ({
       name: n,
       isExclusive: exSet ? exSet.has(String(n).trim()) : String(n).includes("専任"),
+      // 【G4-012】読み込み時点の名称を控える。保存時に現在の name と突き合わせ、
+      // 改名分だけ {from, to} で GAS に送る（StatusSettings の G1-020 と同方式）。
+      _originalName: n,
     })));
   }, [propTypes, propExclusive]);
 
-  const handleAdd    = () => setTypes(p => [...p, { name: "", isExclusive: false }]);
+  // 【G4-012】契約種別名ごとの利用顧客件数（StatusSettings の usageByName と同方式）。
+  // 契約種別は ID を持たず「名称」だけで顧客レコード（顧客リスト「契約種別」列）と
+  // 紐づいているため、改名前に影響件数を提示して無言のデータ書き換えを避ける。
+  const usageOf = React.useMemo(() => {
+    const map = {};
+    (customers || []).forEach(c => {
+      const k = String(c?.["契約種別"] || "").trim();
+      if (k) map[k] = (map[k] || 0) + 1;
+    });
+    return (name) => map[String(name || "").trim()] || 0;
+  }, [customers]);
+
+  const handleAdd    = () => setTypes(p => [...p, { name: "", isExclusive: false, _originalName: "" }]);
   const handleDelete = (i) => setTypes(p => p.filter((_, idx) => idx !== i));
   const handleChange = (i, v) => setTypes(p => p.map((t, idx) => idx === i ? { ...t, name: v } : t));
   const handleToggleExclusive = (i) =>
@@ -87,25 +105,75 @@ export default function ContractTypeManager({ contractTypes: propTypes = [], exc
       showToast(`契約種別「${[...new Set(dups)].join("、")}」が重複しています。名称は一意にしてください。`, "warning");
       return;
     }
-    setSaving(true);
-    try {
-      await apiCall.post(gasUrl || GAS_URL, {
-        action: "saveContractTypes",
-        types: names,
-        // 【E3-010】専任系フラグ。GAS は「専任系」列（true/false）として保存する
-        exclusive: clean.filter(t => t.isExclusive).map(t => t.name),
+
+    // ── 【G4-012】改名マイグレーション用の対応表を作る ──────────────
+    // 読み込み時に控えておいた _originalName と現在の name を突き合わせ、
+    // 変わっているものだけ {from, to} で GAS に送る。
+    // GAS 側（saveContractTypes）が顧客シートの「契約種別」を一括で付け替える。
+    // renames が空配列のときは GAS は顧客シートに一切触らない（従来と同じ挙動）。
+    const renames = clean
+      .filter(t => t._originalName && t._originalName.trim() !== t.name)
+      .map(t => ({ from: t._originalName.trim(), to: t.name }));
+
+    const doSave = async () => {
+      setConfirmModal(null);
+      setSaving(true);
+      try {
+        // 【G3-001同種対策/G4-002】saveContractTypes は同一ペイロード再送で同一結果になる
+        //   冪等な全件上書きのため、GAS一時URLの404（E3-014）に対して retry:true で
+        //   自己回復させる（「保存に失敗しました」表示だが実は保存済み、の予防）。
+        //   ※ renames も同一対応表の再適用は no-op（from が残っていない）のため冪等。
+        await apiCall.post(gasUrl || GAS_URL, {
+          action: "saveContractTypes",
+          types: names,
+          // 【E3-010】専任系フラグ。GAS は「専任系」列（true/false）として保存する
+          exclusive: clean.filter(t => t.isExclusive).map(t => t.name),
+          // 【G4-012】改名の対応表。旧GASは未知パラメータとして無視する（後方互換）
+          renames,
+        }, { retry: true });
+        await onRefresh();
+        showToast("保存しました", "success");
+      } catch {
+        showToast("保存に失敗しました", "error");
+      } finally {
+        setSaving(false);
+      }
+    };
+
+    // 改名がある場合は、影響件数を提示して確認を取る（無言のデータ書き換えを避ける。
+    // StatusSettings.jsx handleSave の migrations 確認と同方針）
+    if (renames.length > 0) {
+      const detail = renames
+        .map(r => `・「${r.from}」→「${r.to}」（${usageOf(r.from)} 件）`)
+        .join("\n");
+      const total = renames.reduce((sum, r) => sum + usageOf(r.from), 0);
+      setConfirmModal({
+        title: "契約種別の改名を顧客データに反映しますか？",
+        message: detail,
+        note: total > 0
+          ? `該当する ${total} 件の顧客の契約種別を一括で書き換えます。`
+          : "該当する顧客はいないため、顧客データは変更されません。",
+        onConfirm: doSave,
       });
-      await onRefresh();
-      showToast("保存しました", "success");
-    } catch {
-      showToast("保存に失敗しました", "error");
-    } finally {
-      setSaving(false);
+      return;
     }
+
+    doSave();
   };
 
   return (
     <div style={{ minHeight: "100vh", backgroundColor: THEME.bg, padding: isMobile ? "20px 16px" : "40px 48px", boxSizing: "border-box" }}>
+      {/* 【G4-012】改名マイグレーションの確認モーダル（共通コンポーネント） */}
+      <ConfirmModal
+        open={!!confirmModal}
+        title={confirmModal?.title || ""}
+        message={confirmModal?.message}
+        note={confirmModal?.note}
+        confirmLabel="保存する"
+        confirmColor={THEME.primary}
+        onConfirm={confirmModal?.onConfirm}
+        onCancel={() => setConfirmModal(null)}
+      />
       <div style={{ maxWidth: 600, margin: "0 auto" }}>
         {/* ヘッダー */}
         <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", alignItems: isMobile ? "stretch" : "center", justifyContent: "space-between", gap: isMobile ? 14 : 0, marginBottom: 32 }}>

@@ -46,6 +46,8 @@ const getLabel = (key) => SALES_FIELDS.find(f => f.key === key)?.label || key;
 // ドラッグ可能な汎用行コンポーネント
 const DraggableRow = ({ it, idx, total, dragIdx, onDragStart, onDragOver, onDragEnd, onToggleVisible, onToggleSearchable, onMoveUp, onMoveDown }) => {
   const { isMobile } = useWindowWidth();
+  // 【G5-003】必須項目（氏名・電話番号・対応ステータス）は非表示にできない
+  const isRequired = REQUIRED_KEYS.includes(it.key);
   return (
   <div
     draggable={!isMobile}
@@ -81,8 +83,10 @@ const DraggableRow = ({ it, idx, total, dragIdx, onDragStart, onDragOver, onDrag
     </div>
     <div style={{ display: "flex", gap: isMobile ? 8 : 20, flexShrink: 0 }}>
       <button
-        onClick={onToggleVisible}
-        style={{ background: "none", border: "none", cursor: "pointer", display: "flex", alignItems: "center", gap: 4, color: it.visible ? THEME.primary : THEME.textMuted, fontWeight: 800, fontSize: 13 }}
+        onClick={isRequired ? undefined : onToggleVisible}
+        disabled={isRequired}
+        title={isRequired ? "必須項目のため非表示にできません" : undefined}
+        style={{ background: "none", border: "none", cursor: isRequired ? "not-allowed" : "pointer", display: "flex", alignItems: "center", gap: 4, color: it.visible ? THEME.primary : THEME.textMuted, opacity: isRequired ? 0.55 : 1, fontWeight: 800, fontSize: 13 }}
       >
         {it.visible ? <Eye size={17} /> : <EyeOff size={17} />}
         {!isMobile && (it.visible ? "表示中" : "非表示")}
@@ -177,12 +181,16 @@ export default function ColumnSettings({ displaySettings = [], formSettings = []
   const handleSave = async () => {
     setSaving(true);
     try {
+      // 【G5-003】UIのdisabledに加え保存時にも必須項目のvisibleをtrueへ強制する。
+      //   過去に非表示のまま保存された設定（localStorage/表示設定シート）も
+      //   次回保存で自動的に是正される。
       const expanded = [...salesItems, ...defaultItems, ...customItems].flatMap(it => {
+        const vis = REQUIRED_KEYS.includes(it.key) ? true : it.visible;
         if (it.key === "氏名") return [
-          { name: "姓", visible: it.visible, searchable: it.searchable },
-          { name: "名", visible: it.visible, searchable: it.searchable },
+          { name: "姓", visible: vis, searchable: it.searchable },
+          { name: "名", visible: vis, searchable: it.searchable },
         ];
-        return [{ name: it.key, visible: it.visible, searchable: it.searchable }];
+        return [{ name: it.key, visible: vis, searchable: it.searchable }];
       });
       await onSaveDisplaySettings(expanded);
       showToast("設定を保存しました", "success");

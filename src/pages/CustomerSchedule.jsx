@@ -16,6 +16,18 @@ function CustomerSchedule({ customers = [], deliveryLogs = [], onRefresh, isLoad
 
   const justScheduled = location.state?.justScheduled || false;
 
+  // 【C4-005】ステップ名の表示整形。シートの値は「<シナリオID> STEP<n>」形式
+  //  （gas_updated.js scheduleScenarioSteps の scenarioID + " STEP" + 番号）。
+  //   シート値そのものを変えると、ステップ名でシナリオを判定する既存処理
+  //  （中止・再送・配信種別判定）に波及するため、表示のみ「シナリオのステップn」に
+  //   整形する。形式に一致しない値（"個別SMS" 等）は変換せずそのまま表示する。
+  //   元の値（シナリオID込み）は title 属性でホバー確認できるようにする。
+  const formatStepName = (name) => {
+    const s = String(name || "");
+    const m = s.match(/^(\S+)\s+STEP(\d+)$/);
+    return m ? `シナリオのステップ${m[2]}` : s;
+  };
+
   const c = customers?.find((x) => String(x.id) === String(id));
 
   const [edit, setEdit]                 = useState(null);
@@ -150,6 +162,14 @@ function CustomerSchedule({ customers = [], deliveryLogs = [], onRefresh, isLoad
   };
 
   const handleSaveEdit = async () => {
+    // 【C4-007】本文を空（空白のみ含む）にして保存するガード。
+    //   GAS updateDeliveryTime は newMessage をそのまま書き込むため、ここで止めないと
+    //   空本文の配信待ちレコードが作れてしまう。DirectSms handleConfirmOpen の
+    //   trim 判定（GAS sendDirectSms「本文が空です」と同基準）に揃える。
+    if (!String(edit?.m ?? "").trim()) {
+      showToast("本文を入力してください", "warning");
+      return;
+    }
     // 【C4-008】過去日時のすり抜け対策（保存時チェック）
     //   未来日時を選んだままモーダルを放置し、その時刻を過ぎてから保存された場合、
     //   リアルタイム警告（isPastEditTime）は再描画されず表示されないため、ここで受け止める。
@@ -274,8 +294,8 @@ function CustomerSchedule({ customers = [], deliveryLogs = [], onRefresh, isLoad
               ? `完了: ${formatDate(l["完了日時"])}`
               : `予定: ${formatDate(l["配信予定日時"])}`}
           </span>
-          <span style={{ marginLeft: "12px", color: THEME.textMuted, fontSize: "11px" }}>
-            {l["ステップ名"]}
+          <span title={l["ステップ名"]} style={{ marginLeft: "12px", color: THEME.textMuted, fontSize: "11px" }}>
+            {formatStepName(l["ステップ名"])}
           </span>
         </div>
 
@@ -432,7 +452,8 @@ function CustomerSchedule({ customers = [], deliveryLogs = [], onRefresh, isLoad
             </div>
           ))}
           {scenarioParentLogs.length === 0 && (
-            <LogsPlaceholder label="シナリオ配信の履歴はありません" />
+            // 【C4-017】期待文言「履歴はありません」に統一（個別側の文言は一致済みのため変更なし）
+            <LogsPlaceholder label="履歴はありません" />
           )}
 
           <h3 style={{

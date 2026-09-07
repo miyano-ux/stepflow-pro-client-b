@@ -152,8 +152,11 @@ function UserForm({ masterUrl, onRefreshStaff, staffList = [] }) {
 
   // 公開URL（slug が決まっていれば組み立て）
   const effectiveSlug = (form.slug || (!isEdit ? slugFromEmail(form.email) : "")).trim();
+  // 【F3-016】保存時は effectiveSlug.toLowerCase() で書き込むため（handleSave の profile.slug）、
+  // 表示・コピーするURLも小文字に統一する。ユーザー一覧「コピー」（UserManager.jsx の
+  // memberUrl はサーバー返却の小文字 slug を使用）と文字列一致させるための是正。
   const publicUrl = effectiveSlug
-    ? `${window.location.origin}/m/${effectiveSlug}`
+    ? `${window.location.origin}/m/${effectiveSlug.toLowerCase()}`
     : "";
 
   const copyUrl = async () => {
@@ -165,6 +168,30 @@ function UserForm({ masterUrl, onRefreshStaff, staffList = [] }) {
     } catch { /* noop */ }
   };
 
+  // 保存結果の実確認：list を再取得し、送信した値が実際に反映されたかを突き合わせる。
+  // 通信エラー（G3-001/E3-014 同型：GAS側は保存完了しているのに一時URLの404等で
+  // フロントにはエラーとして返る）の後に呼び、表示を実状態に一致させる。
+  // 戻り値: true=反映済み / false=未反映 / null=確認自体が失敗
+  const verifySaved = async () => {
+    try {
+      const email = (isEdit ? decodeURIComponent(id) : String(form.email).trim()).toLowerCase();
+      const res = await axios.get(
+        `${masterUrl}?action=list&company=${encodeURIComponent(CLIENT_COMPANY_NAME)}&_t=${Date.now()}`
+      );
+      const u = (res?.data?.users || []).find(
+        (x) => String(x.email || "").trim().toLowerCase() === email
+      );
+      if (!u) return false;
+      return (
+        String(u.slug || "") === effectiveSlug.toLowerCase() &&
+        !!u.published === !!form.published &&
+        String(u.lastName || "") === String(form.lastName || "")
+      );
+    } catch {
+      return null;
+    }
+  };
+
   // 保存処理
   const handleSave = async () => {
     if (!form.email || !form.lastName) {
@@ -173,6 +200,10 @@ function UserForm({ masterUrl, onRefreshStaff, staffList = [] }) {
     // 公開する場合は slug 必須
     if (form.published && !effectiveSlug) {
       return showModal("error", "紹介ページを公開するには、公開URL（slug）を入力してください");
+    }
+    // slug の文字種チェック（半角英数と - _ . のみ / 大文字は保存時に小文字化）
+    if (effectiveSlug && !/^[a-z0-9._-]+$/.test(effectiveSlug.toLowerCase())) {
+      return showModal("error", "公開URL（slug）に使用できるのは半角英数字と「-」「_」「.」のみです");
     }
 
     // 新規登録時のみ: 既存ユーザーとのメール重複を事前にチェック
@@ -198,7 +229,7 @@ function UserForm({ masterUrl, onRefreshStaff, staffList = [] }) {
 
       // 紹介ページ項目（add/edit 共通）
       const profile = {
-        "slug": effectiveSlug,
+        "slug": effectiveSlug.toLowerCase(),
         "役職": form.role || "",
         "写真URL": form.photoUrl || "",
         "キャッチコピー": form.catchphrase || "",
@@ -241,7 +272,16 @@ function UserForm({ masterUrl, onRefreshStaff, staffList = [] }) {
         showModal("error", "保存失敗: " + (res.data.message || "不明なエラー"));
       }
     } catch (e) {
-      showModal("error", "通信エラーが発生しました。インターネット接続を確認してください。");
+      // 通信エラーでも GAS 側では保存が完了している場合がある（F3-001）。
+      // 実際の反映状態を確認してから成功／失敗を表示する。
+      const verified = await verifySaved();
+      if (verified === true) {
+        showModal("success", isEdit ? "ユーザー情報を更新しました" : "新しいユーザーを登録しました");
+      } else if (verified === false) {
+        showModal("error", "通信エラーが発生しました。変更は反映されていません。時間をおいて再度お試しください。");
+      } else {
+        showModal("error", "通信エラーが発生しました。保存されたかどうか確認できませんでした。ユーザー一覧を再読み込みしてご確認ください。");
+      }
     } finally {
       setLoading(false);
     }
@@ -366,7 +406,7 @@ function UserForm({ masterUrl, onRefreshStaff, staffList = [] }) {
               <input
                 style={styles.input}
                 value={form.slug}
-                onChange={(e) => setForm({ ...form, slug: e.target.value.toLowerCase().replace(/[^a-z0-9._-]/g, "") })}
+                onChange={(e) => setForm({ ...form, slug: e.target.value })}
                 placeholder={!isEdit ? `未入力なら「${slugFromEmail(form.email) || "yamada"}」を使用` : "例: yamada-taro"}
               />
               {publicUrl && (
