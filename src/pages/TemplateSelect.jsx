@@ -175,15 +175,16 @@ function TemplateSelect() {
         </div>
       </div>
 
-      {/* ── 全画面サンプルプレビュー ── */}
+      {/* ── 全画面サンプルプレビュー ──
+          MemberTemplate は iframe(srcDoc) 描画のため、上部バー＋残り全面のflex構成にする。
+          iframe内はサンプルHTMLと同一文書なので、見た目はサンプルをブラウザで開いた場合と同一。 */}
       {previewId && (
-        <div style={{ position: "fixed", inset: 0, zIndex: 5000, background: "#fff", overflowY: "auto" }}>
+        <div style={{ position: "fixed", inset: 0, zIndex: 5000, background: "#fff", display: "flex", flexDirection: "column" }}>
           {/* 操作バー */}
           <div style={{
-            position: "sticky", top: 0, zIndex: 10,
+            flexShrink: 0,
             display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12,
-            padding: "10px 16px", background: "rgba(30,30,36,.92)", color: "#fff",
-            backdropFilter: "blur(4px)",
+            padding: "10px 16px", background: "rgba(30,30,36,.95)", color: "#fff",
           }}>
             <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
               <span style={{
@@ -219,9 +220,9 @@ function TemplateSelect() {
             </div>
           </div>
 
-          {/* テンプレート本体（サンプルデータ・操作不可） */}
-          <div style={{ pointerEvents: "none" }}>
-            <MemberTemplate id={previewId} d={SAMPLE_MEMBER(CLIENT_COMPANY_NAME)} page />
+          {/* テンプレート本体（サンプルデータ・iframe内で完結） */}
+          <div style={{ flex: 1, minHeight: 0 }}>
+            <MemberTemplate id={previewId} d={SAMPLE_MEMBER(CLIENT_COMPANY_NAME)} />
           </div>
         </div>
       )}
