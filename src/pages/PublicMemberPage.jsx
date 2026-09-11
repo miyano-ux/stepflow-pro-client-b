@@ -105,6 +105,8 @@ function PublicMemberPage() {
     cta: {
       phone: String(state.company?.phone || "").trim(),
       bookingUrl: String(state.company?.bookingUrl || "").trim(),
+      urlType: String(state.company?.urlType || "").trim(),   // 予約/ホームページ/その他（空・不正値はテンプレート側で「予約」扱い）
+      urlLabel: String(state.company?.urlLabel || "").trim(), // 「その他」時のボタン表示テキスト
     },
   };
 

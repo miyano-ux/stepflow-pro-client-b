@@ -18,8 +18,10 @@ import React from "react";
 //   2. 右上の比較用バッジ（.badge の div）を出力しない（CSS定義は原本のまま残置）
 //   3. ロゴ画像（images/dummy-logo.svg の img）→ 会社名テキストに置換
 //      （置換用CSSは原本CSSの後に追記。原本CSSは無改変）
-//   4. CTAバー：電話番号・予約URLのどちらかが設定されている場合のみ出力。
-//      非表示時は body{padding-bottom:0;} を追記して下余白も外す
+//   4. CTAバー：電話番号・URLのどちらかが設定されている場合のみ出力。
+//      非表示時は body{padding-bottom:0;} を追記して下余白も外す。
+//      URL側ボタンの表記は cta.urlType で切替（予約=原本どおり「予約日時を選択」/
+//      ホームページ=「ホームページ」/ その他=cta.urlLabel のテキスト）
 //   5. データ注入：空のフィールドは行ごと出力しない
 //
 // 利用側：
@@ -112,16 +114,27 @@ const photoTag = (d, indent, cls) => {
 };
 
 // CTAバー（原本と同一マークアップ。設定済みのボタンのみ出力）
+// URL側ボタンの表記は cta.urlType で切替：
+//   「予約」（既定）    → 📅 予約日時を選択（原本どおり）
+//   「ホームページ」    → 🏠 ホームページ
+//   「その他」         → 🔗 cta.urlLabel のテキスト（未入力時は「リンクを開く」）
 const ctaHtml = (d) => {
   const tel = String(d.cta?.phone || "");
   const book = String(d.cta?.bookingUrl || "");
+  const type = String(d.cta?.urlType || "予約");
+  const icon = type === "ホームページ" ? "🏠" : type === "その他" ? "🔗" : "📅";
+  const label = type === "ホームページ"
+    ? "ホームページ"
+    : type === "その他"
+      ? (String(d.cta?.urlLabel || "").trim() || "リンクを開く")
+      : "予約日時を選択";
   const L = [`  <div class="cta-bar">`, `    <div class="cta-bar-inner">`];
   if (tel) {
     L.push(`      <a class="cta-tel" href="tel:${tel.replace(/[^\d+]/g, "")}"><span aria-hidden="true">📞</span>${T(tel)}</a>`);
   }
   if (book) {
     const ext = /^https?:\/\//.test(book) ? ` target="_blank" rel="noreferrer"` : "";
-    L.push(`      <a class="cta-book" href="${A(book)}"${ext}><span aria-hidden="true">📅</span>予約日時を選択</a>`);
+    L.push(`      <a class="cta-book" href="${A(book)}"${ext}><span aria-hidden="true">${icon}</span>${T(label)}</a>`);
   }
   L.push(`    </div>`, `  </div>`);
   return L.join("\n");

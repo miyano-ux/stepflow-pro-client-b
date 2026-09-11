@@ -16,13 +16,9 @@ import { useWindowWidth } from "../lib/useWindowWidth";
 // 👥 UserManager - ユーザー管理 + グループ管理
 // ==========================================
 
-// 公開メンバーページのURL組み立て・コピー
+// 公開メンバーページのURL組み立て
 const memberUrl = (slug) =>
   slug ? `${window.location.origin}/m/${slug}` : "";
-// 【F3-016】writeText は Promise を返すため、同期 try/catch では拒否
-// （クリップボード権限なし・非セキュアコンテキスト等）が unhandled rejection になる。
-// UserForm.jsx の copyUrl（async/await + catch）と同じく非同期側で握る。
-const copyText = (t) => { navigator.clipboard.writeText(t).catch(() => {}); };
 
 const lS = {
   main:    { minHeight: "100vh", backgroundColor: THEME.bg },
@@ -293,6 +289,20 @@ export default function UserManager({
   const showToast = useToast();
   const navigate = useNavigate();
   const { isMobile } = useWindowWidth();
+
+  // 公開ページURLのコピー（成功・失敗をトーストで必ず通知する）
+  // 【F3-016】writeText は Promise を返すため async/await + catch で握る
+  // （クリップボード権限なし・非セキュアコンテキスト等での unhandled rejection 防止）
+  const handleCopyUrl = async (slug) => {
+    const url = memberUrl(slug);
+    if (!url) return;
+    try {
+      await navigator.clipboard.writeText(url);
+      showToast("公開ページのURLをコピーしました", "success");
+    } catch {
+      showToast("コピーに失敗しました。URLを選択して手動でコピーしてください", "error");
+    }
+  };
   const [refreshing,      setRefreshing]      = useState(false);
   const [addingGroup,     setAddingGroup]      = useState(false);
   const [newGroupName,    setNewGroupName]     = useState("");
@@ -537,6 +547,10 @@ export default function UserManager({
                       <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
                         <span style={{ fontSize: 11, fontWeight: 800, color: THEME.primary, backgroundColor: "#EEF2FF", padding: "2px 7px", borderRadius: 99 }}>公開中</span>
                         <span style={{ fontSize: 12 }}>/m/{u.slug}</span>
+                        <button onClick={() => handleCopyUrl(u.slug)}
+                          style={{ background: "none", border: "none", color: THEME.primary, cursor: "pointer", fontSize: 12, fontWeight: 700, padding: "0 2px" }}>
+                          コピー
+                        </button>
                       </div>
                     )}
                   </div>
@@ -600,7 +614,7 @@ export default function UserManager({
                             style={{ fontSize: 12, color: THEME.textMuted, textDecoration: "none" }}>
                             /m/{u.slug}
                           </a>
-                          <button onClick={() => copyText(memberUrl(u.slug))}
+                          <button onClick={() => handleCopyUrl(u.slug)}
                             style={{ background: "none", border: "none", color: THEME.primary, cursor: "pointer", fontSize: 12, fontWeight: 700, padding: 0 }}>
                             コピー
                           </button>
