@@ -51,6 +51,52 @@ function AlertModal({ modal, onClose }) {
 const slugFromEmail = (email) =>
   String(email || "").split("@")[0].toLowerCase().replace(/[^a-z0-9._-]/g, "");
 
+// ==========================================
+// 🎨 紹介ページ デザインテンプレート定義
+// ==========================================
+// 公開ページ（PublicMemberPage.jsx）の8テンプレートと1対1対応。
+// accent/subColor/bg はミニプレビュー描画用の代表色、round は写真の形（円形か）。
+const TEMPLATE_GROUPS = [
+  {
+    no: 1, title: "高級・信頼",
+    items: [
+      { id: "1a", label: "ゴールド系", accent: "#C6A15B", subColor: "#1F2937", bg: "#FBF9F5", round: false },
+      { id: "1b", label: "ネイビー系", accent: "#2563EB", subColor: "#0B1E39", bg: "#F7F9FC", round: false },
+    ],
+  },
+  {
+    no: 2, title: "爽やか・明るい",
+    items: [
+      { id: "2a", label: "ブルー系", accent: "#209CFF", subColor: "#68E0CF", bg: "#F5FBFC", round: false },
+      { id: "2b", label: "レッド系", accent: "#F5323F", subColor: "#FF6A4D", bg: "#FFFBFA", round: false },
+    ],
+  },
+  {
+    no: 3, title: "親しみ・優しい",
+    items: [
+      { id: "3a", label: "コーラル系", accent: "#F0805E", subColor: "#FDE7DE", bg: "#FFF8F1", round: true },
+      { id: "3b", label: "パープル系", accent: "#6C5CE7", subColor: "#F1EEFB", bg: "#FBFAFF", round: true },
+    ],
+  },
+  {
+    no: 4, title: "シンプル・洗練",
+    items: [
+      { id: "4a", label: "グリーン系", accent: "#0F766E", subColor: "#E4F3F1", bg: "#F2F4F3", round: true },
+      { id: "4b", label: "ブラウン系", accent: "#C1633A", subColor: "#F7E7DE", bg: "#F7F2EE", round: true },
+    ],
+  },
+];
+const TEMPLATE_IDS = TEMPLATE_GROUPS.flatMap((g) => g.items.map((t) => t.id));
+
+// テンプレートIDの正規化（未設定・不正値は既定の 1a に落とす）
+const normalizeTemplateId = (raw) => {
+  const v = String(raw || "").trim().toLowerCase().replace(/[^0-9ab]/g, "");
+  return TEMPLATE_IDS.includes(v) ? v : "1a";
+};
+
+// "1a" → "1-A" 表示用
+const templateDisplayId = (id) => `${id[0]}-${id[1].toUpperCase()}`;
+
 // Google ドライブの共有リンクを <img> で表示できる直リンクへ変換する
 // （公開ページ PublicMemberPage.jsx と同じロジック。プレビュー表示に使用）
 const toDisplayablePhotoUrl = (raw) => {
@@ -141,9 +187,11 @@ function UserForm({ masterUrl, onRefreshStaff, staffList = [] }) {
       career: "",
       achievements: "",
       published: false,
+      template: "1a",  // デザインテンプレート（既定: 1-A 高級・信頼／ゴールド）
     };
     if (isEdit && location.state?.user) {
-      return { ...base, ...location.state.user };
+      const u = location.state.user;
+      return { ...base, ...u, template: normalizeTemplateId(u.template) };
     }
     return base;
   });
@@ -237,6 +285,7 @@ function UserForm({ masterUrl, onRefreshStaff, staffList = [] }) {
         "経歴": form.career || "",
         "実績": form.achievements || "",
         "公開": form.published ? "TRUE" : "",
+        "テンプレート": normalizeTemplateId(form.template),
       };
 
       // GAS の許可リストシートの列名に合わせたペイロード
@@ -437,6 +486,71 @@ function UserForm({ masterUrl, onRefreshStaff, staffList = [] }) {
                   )}
                 </div>
               )}
+            </div>
+
+            {/* デザインテンプレート */}
+            <div style={{ ...styles.inputGroup, marginBottom: 24 }}>
+              <label style={styles.label}>デザインテンプレート</label>
+              <p style={{ fontSize: 11, color: THEME.textMuted, margin: "4px 0 12px", lineHeight: 1.6 }}>
+                紹介ページの配色・レイアウトを選択します（保存後、公開ページに反映されます）
+              </p>
+              <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+                {TEMPLATE_GROUPS.map((g) => (
+                  <div key={g.no}>
+                    <p style={{ margin: "0 0 8px", fontSize: 12, fontWeight: 800, color: THEME.textMain }}>
+                      {g.no}. {g.title}
+                    </p>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                      {g.items.map((t) => {
+                        const selected = form.template === t.id;
+                        return (
+                          <button
+                            type="button"
+                            key={t.id}
+                            onClick={() => setForm({ ...form, template: t.id })}
+                            aria-pressed={selected}
+                            style={{
+                              position: "relative", textAlign: "left", cursor: "pointer",
+                              borderRadius: 10, padding: 10,
+                              border: selected ? `2px solid ${THEME.primary}` : `1px solid ${THEME.border}`,
+                              backgroundColor: selected ? "#F5F3FF" : "#fff",
+                              transition: "border-color .12s, background .12s",
+                            }}
+                          >
+                            {/* ミニプレビュー（配色イメージ） */}
+                            <div style={{
+                              height: 46, borderRadius: 6, overflow: "hidden", position: "relative",
+                              backgroundColor: t.bg, border: `1px solid ${THEME.border}`, marginBottom: 8,
+                            }}>
+                              <div style={{ height: 9, backgroundColor: t.accent }} />
+                              <div style={{
+                                position: "absolute", left: 8, top: 15, width: 22, height: 22,
+                                borderRadius: t.round ? "50%" : 3, backgroundColor: t.subColor,
+                              }} />
+                              <div style={{ position: "absolute", left: 38, top: 18, right: 8 }}>
+                                <div style={{ height: 4, borderRadius: 2, backgroundColor: t.accent, width: "55%", marginBottom: 5, opacity: .85 }} />
+                                <div style={{ height: 3, borderRadius: 2, backgroundColor: "#D8D8DF", width: "82%" }} />
+                              </div>
+                            </div>
+                            <span style={{ fontSize: 12.5, fontWeight: 800, color: THEME.textMain }}>
+                              {templateDisplayId(t.id)} {t.label}
+                            </span>
+                            {selected && (
+                              <span style={{
+                                position: "absolute", top: 8, right: 8, width: 20, height: 20,
+                                borderRadius: "50%", backgroundColor: THEME.primary,
+                                display: "inline-flex", alignItems: "center", justifyContent: "center",
+                              }}>
+                                <Check size={13} color="#fff" strokeWidth={3} />
+                              </span>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
 
             {/* 役職 */}
