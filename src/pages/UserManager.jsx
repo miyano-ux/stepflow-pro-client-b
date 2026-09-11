@@ -8,6 +8,7 @@ import {
 import { THEME, GAS_URL } from "../lib/constants";
 import { styles } from "../lib/styles";
 import ConfirmModal from "../components/ConfirmModal";
+import PublicPageSettings from "./PublicPageSettings";
 import { useToast } from "../ToastContext";
 import { useWindowWidth } from "../lib/useWindowWidth";
 
@@ -631,6 +632,9 @@ export default function UserManager({
           </table>
         </div>
         )}
+
+        {/* ── 紹介ページ共通設定（CTAバー：電話・予約URL） ── */}
+        <PublicPageSettings masterUrl={masterUrl} companyName={companyName} />
 
         {/* ── グループ管理 ── */}
         <div style={{ display: "flex", flexDirection: isMobile ? "column" : "row", justifyContent: "space-between", alignItems: isMobile ? "stretch" : "flex-end", gap: isMobile ? 14 : 0, marginBottom: 20 }}>

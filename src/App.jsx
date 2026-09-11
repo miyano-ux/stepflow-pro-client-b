@@ -44,6 +44,7 @@ import ImportErrorList       from "./pages/ImportErrorList";
 import ResponseImportPortal  from "./pages/ResponseImportPortal";
 import CustomerStatusList    from "./pages/CustomerStatusList";
 import UserForm              from "./pages/UserForm";
+import TemplateSelect        from "./pages/TemplateSelect.jsx";
 import SourceManager         from "./pages/SourceManager";
 import ContractTypeManager   from "./pages/ContractTypeManager";
 import MasterSettings        from "./pages/MasterSettings";
@@ -453,6 +454,7 @@ function App() {
               {/* 管理（ユーザー / SMS配信） */}
               <Route path="/users" element={<UserManager staffList={staffList} groups={d?.groups} statuses={d?.statuses} onRefreshStaff={refreshStaff} onRefresh={refresh} masterUrl={MASTER_WHITELIST_API} companyName={CLIENT_COMPANY_NAME} gasUrl={GAS_URL} />} />
               <Route path="/users/add" element={<UserForm masterUrl={MASTER_WHITELIST_API} onRefreshStaff={refreshStaff} staffList={staffList} />} />
+              <Route path="/users/template-select" element={<TemplateSelect />} />
               <Route path="/users/edit/:id" element={<UserForm masterUrl={MASTER_WHITELIST_API} onRefreshStaff={refreshStaff} />} />
               <Route path="/sms-usage" element={<SmsUsageReport isLoading={load} deliveryLogs={d?.deliveryLogs} customers={d?.customers} />} />
 

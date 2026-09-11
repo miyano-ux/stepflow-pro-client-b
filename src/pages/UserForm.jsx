@@ -6,6 +6,9 @@ import { THEME, CLIENT_COMPANY_NAME, MASTER_WHITELIST_API } from "../lib/constan
 import { styles } from "../lib/styles";
 import Page from "../components/Page";
 import { useWindowWidth } from "../lib/useWindowWidth";
+import {
+  TemplatePreviewThumb, TEMPLATE_META, normalizeTemplateId, templateDisplayId,
+} from "../components/MemberTemplates";
 
 // ==========================================
 // 💬 Toast/Modal コンポーネント
@@ -50,52 +53,6 @@ function AlertModal({ modal, onClose }) {
 // メールのローカル部から slug の初期候補を作る
 const slugFromEmail = (email) =>
   String(email || "").split("@")[0].toLowerCase().replace(/[^a-z0-9._-]/g, "");
-
-// ==========================================
-// 🎨 紹介ページ デザインテンプレート定義
-// ==========================================
-// 公開ページ（PublicMemberPage.jsx）の8テンプレートと1対1対応。
-// accent/subColor/bg はミニプレビュー描画用の代表色、round は写真の形（円形か）。
-const TEMPLATE_GROUPS = [
-  {
-    no: 1, title: "高級・信頼",
-    items: [
-      { id: "1a", label: "ゴールド系", accent: "#C6A15B", subColor: "#1F2937", bg: "#FBF9F5", round: false },
-      { id: "1b", label: "ネイビー系", accent: "#2563EB", subColor: "#0B1E39", bg: "#F7F9FC", round: false },
-    ],
-  },
-  {
-    no: 2, title: "爽やか・明るい",
-    items: [
-      { id: "2a", label: "ブルー系", accent: "#209CFF", subColor: "#68E0CF", bg: "#F5FBFC", round: false },
-      { id: "2b", label: "レッド系", accent: "#F5323F", subColor: "#FF6A4D", bg: "#FFFBFA", round: false },
-    ],
-  },
-  {
-    no: 3, title: "親しみ・優しい",
-    items: [
-      { id: "3a", label: "コーラル系", accent: "#F0805E", subColor: "#FDE7DE", bg: "#FFF8F1", round: true },
-      { id: "3b", label: "パープル系", accent: "#6C5CE7", subColor: "#F1EEFB", bg: "#FBFAFF", round: true },
-    ],
-  },
-  {
-    no: 4, title: "シンプル・洗練",
-    items: [
-      { id: "4a", label: "グリーン系", accent: "#0F766E", subColor: "#E4F3F1", bg: "#F2F4F3", round: true },
-      { id: "4b", label: "ブラウン系", accent: "#C1633A", subColor: "#F7E7DE", bg: "#F7F2EE", round: true },
-    ],
-  },
-];
-const TEMPLATE_IDS = TEMPLATE_GROUPS.flatMap((g) => g.items.map((t) => t.id));
-
-// テンプレートIDの正規化（未設定・不正値は既定の 1a に落とす）
-const normalizeTemplateId = (raw) => {
-  const v = String(raw || "").trim().toLowerCase().replace(/[^0-9ab]/g, "");
-  return TEMPLATE_IDS.includes(v) ? v : "1a";
-};
-
-// "1a" → "1-A" 表示用
-const templateDisplayId = (id) => `${id[0]}-${id[1].toUpperCase()}`;
 
 // Google ドライブの共有リンクを <img> で表示できる直リンクへ変換する
 // （公開ページ PublicMemberPage.jsx と同じロジック。プレビュー表示に使用）
@@ -189,7 +146,10 @@ function UserForm({ masterUrl, onRefreshStaff, staffList = [] }) {
       published: false,
       template: "1a",  // デザインテンプレート（既定: 1-A 高級・信頼／ゴールド）
     };
-    if (isEdit && location.state?.user) {
+    // location.state.user は次の2経路で渡ってくるため、編集・新規を問わず復元する：
+    //   ① ユーザー一覧 → 編集（既存データ）
+    //   ② テンプレート選択画面（/users/template-select）からの復帰（入力途中の値＋選択テンプレート）
+    if (location.state?.user) {
       const u = location.state.user;
       return { ...base, ...u, template: normalizeTemplateId(u.template) };
     }
@@ -488,69 +448,56 @@ function UserForm({ masterUrl, onRefreshStaff, staffList = [] }) {
               )}
             </div>
 
-            {/* デザインテンプレート */}
+            {/* デザインテンプレート（選択は一覧画面 /users/template-select で行う） */}
             <div style={{ ...styles.inputGroup, marginBottom: 24 }}>
               <label style={styles.label}>デザインテンプレート</label>
-              <p style={{ fontSize: 11, color: THEME.textMuted, margin: "4px 0 12px", lineHeight: 1.6 }}>
-                紹介ページの配色・レイアウトを選択します（保存後、公開ページに反映されます）
-              </p>
-              <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-                {TEMPLATE_GROUPS.map((g) => (
-                  <div key={g.no}>
-                    <p style={{ margin: "0 0 8px", fontSize: 12, fontWeight: 800, color: THEME.textMain }}>
-                      {g.no}. {g.title}
-                    </p>
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-                      {g.items.map((t) => {
-                        const selected = form.template === t.id;
-                        return (
-                          <button
-                            type="button"
-                            key={t.id}
-                            onClick={() => setForm({ ...form, template: t.id })}
-                            aria-pressed={selected}
-                            style={{
-                              position: "relative", textAlign: "left", cursor: "pointer",
-                              borderRadius: 10, padding: 10,
-                              border: selected ? `2px solid ${THEME.primary}` : `1px solid ${THEME.border}`,
-                              backgroundColor: selected ? "#F5F3FF" : "#fff",
-                              transition: "border-color .12s, background .12s",
-                            }}
-                          >
-                            {/* ミニプレビュー（配色イメージ） */}
-                            <div style={{
-                              height: 46, borderRadius: 6, overflow: "hidden", position: "relative",
-                              backgroundColor: t.bg, border: `1px solid ${THEME.border}`, marginBottom: 8,
-                            }}>
-                              <div style={{ height: 9, backgroundColor: t.accent }} />
-                              <div style={{
-                                position: "absolute", left: 8, top: 15, width: 22, height: 22,
-                                borderRadius: t.round ? "50%" : 3, backgroundColor: t.subColor,
-                              }} />
-                              <div style={{ position: "absolute", left: 38, top: 18, right: 8 }}>
-                                <div style={{ height: 4, borderRadius: 2, backgroundColor: t.accent, width: "55%", marginBottom: 5, opacity: .85 }} />
-                                <div style={{ height: 3, borderRadius: 2, backgroundColor: "#D8D8DF", width: "82%" }} />
-                              </div>
-                            </div>
-                            <span style={{ fontSize: 12.5, fontWeight: 800, color: THEME.textMain }}>
-                              {templateDisplayId(t.id)} {t.label}
-                            </span>
-                            {selected && (
-                              <span style={{
-                                position: "absolute", top: 8, right: 8, width: 20, height: 20,
-                                borderRadius: "50%", backgroundColor: THEME.primary,
-                                display: "inline-flex", alignItems: "center", justifyContent: "center",
-                              }}>
-                                <Check size={13} color="#fff" strokeWidth={3} />
-                              </span>
-                            )}
-                          </button>
-                        );
-                      })}
+              {(() => {
+                const tid = normalizeTemplateId(form.template);
+                const meta = TEMPLATE_META[tid];
+                return (
+                  <div style={{
+                    display: "flex", flexDirection: isMobile ? "column" : "row",
+                    gap: 14, border: `1px solid ${THEME.border}`, borderRadius: 12,
+                    padding: 12, marginTop: 4, alignItems: isMobile ? "stretch" : "center",
+                  }}>
+                    {/* 選択中テンプレートの縮小ライブプレビュー */}
+                    <TemplatePreviewThumb
+                      id={tid}
+                      width={isMobile ? 280 : 190}
+                      height={isMobile ? 140 : 126}
+                      companyName={CLIENT_COMPANY_NAME}
+                      style={isMobile ? { margin: "0 auto" } : undefined}
+                    />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <p style={{ margin: "0 0 2px", fontSize: 14, fontWeight: 800, color: THEME.textMain }}>
+                        {templateDisplayId(tid)} {meta.label}
+                      </p>
+                      <p style={{ margin: "0 0 12px", fontSize: 12, color: THEME.textMuted, lineHeight: 1.6 }}>
+                        {meta.groupTitle}｜{meta.desc}
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          navigate("/users/template-select", {
+                            state: { form: { ...form }, returnTo: location.pathname },
+                          })
+                        }
+                        style={{
+                          display: "inline-flex", alignItems: "center", gap: 6,
+                          fontSize: 13, fontWeight: 800, color: THEME.primary,
+                          background: "none", border: `1.5px solid ${THEME.primary}`,
+                          borderRadius: 999, padding: "8px 18px", cursor: "pointer",
+                        }}
+                      >
+                        テンプレートを選択
+                      </button>
                     </div>
                   </div>
-                ))}
-              </div>
+                );
+              })()}
+              <p style={{ fontSize: 11, color: THEME.textMuted, margin: "8px 0 0", lineHeight: 1.6 }}>
+                一覧画面でサンプルを確認して選択できます。選択するとこの画面に戻ります（入力内容は保持されます）。
+              </p>
             </div>
 
             {/* 役職 */}
