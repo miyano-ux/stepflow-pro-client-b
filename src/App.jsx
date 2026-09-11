@@ -439,8 +439,8 @@ function App() {
               {/* テンプレート・シナリオ */}
               <Route path="/templates" element={<TemplateManager templates={d?.templates} onRefresh={refresh} gasUrl={GAS_URL} />} />
               <Route path="/scenarios" element={<ScenarioList scenarios={d?.scenarios} statuses={d?.statuses} onRefresh={refresh} gasUrl={GAS_URL} />} />
-              <Route path="/scenarios/new" element={<ScenarioForm scenarios={d?.scenarios} customers={d?.customers} staffList={staffList} currentUser={user} onRefresh={refresh} onOptimisticAdd={optimisticAddScenario} gasUrl={GAS_URL} />} />
-              <Route path="/scenarios/edit/:id" element={<ScenarioForm scenarios={d?.scenarios} customers={d?.customers} staffList={staffList} currentUser={user} onRefresh={refresh} onOptimisticAdd={optimisticAddScenario} gasUrl={GAS_URL} />} />
+              <Route path="/scenarios/new" element={<ScenarioForm scenarios={d?.scenarios} customers={d?.customers} staffList={staffList} templates={d?.templates} formSettings={d?.formSettings} currentUser={user} onRefresh={refresh} onOptimisticAdd={optimisticAddScenario} gasUrl={GAS_URL} />} />
+              <Route path="/scenarios/edit/:id" element={<ScenarioForm scenarios={d?.scenarios} customers={d?.customers} staffList={staffList} templates={d?.templates} formSettings={d?.formSettings} currentUser={user} onRefresh={refresh} onOptimisticAdd={optimisticAddScenario} gasUrl={GAS_URL} />} />
 
               {/* 媒体連携設定 */}
               <Route path="/source-integrations" element={<SourceIntegrationIndex sourceCredsStatus={d?.sourceCredsStatus ?? {}} clientInfo={d?.clientInfo ?? {}} gmailSettings={d?.gmailSettings ?? []} />} />
