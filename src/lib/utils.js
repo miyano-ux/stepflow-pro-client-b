@@ -273,3 +273,29 @@ export const smsUnits = (text) => {
   const len = s.length;
   return len <= 70 ? 1 : Math.ceil(len / 67);
 };
+
+/**
+ * SMS本文 → 課金換算の文字数を返す（smsUnits と同じ判定・同じ正規化）。
+ *
+ * SMS配信レポートの明細「文字数」列で使う。旧表示の String(body).length は
+ *   ・CRLF を 2 文字と数える（送信時は LF に正規化されるため実際は 1 文字）
+ *   ・GSM-7 の拡張文字（^ { } [ ] ~ | € \）を 1 文字と数える（課金上は 2 文字）
+ * の2点で通数換算ルール表と食い違い、「文字数と通数が合わない」ように見えていた。
+ * 本関数は smsUnits の判定と完全に同じ土俵の文字数（レンジ表と突き合う値）を返す。
+ * ※ ロジックを変えるときは smsUnits と必ずセットで見直すこと。
+ *
+ * @param {string} text SMS本文
+ * @returns {number} 課金換算の文字数
+ */
+export const smsCharCount = (text) => {
+  const s = String(text ?? "").replace(/\r\n/g, "\n");
+  if (!s) return 0;
+  let isGsm7 = true;
+  let gsmLen = 0;
+  for (const ch of s) {
+    if (GSM7_BASIC.indexOf(ch) >= 0)     gsmLen += 1;
+    else if (GSM7_EXT.indexOf(ch) >= 0)  gsmLen += 2;
+    else { isGsm7 = false; break; }
+  }
+  return isGsm7 ? gsmLen : s.length;
+};

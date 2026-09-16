@@ -23,10 +23,17 @@ function toYM(date) {
   return `${d.getFullYear()}年${String(d.getMonth() + 1).padStart(2, "0")}月`;
 }
 // 日付を "YYYY-MM" キーに変換（input[type=month]の値と同形式・文字列比較可能）
+// 【A5-001】月境界の判定は Asia/Tokyo 固定にする。
+//   旧実装（getFullYear/getMonth）はブラウザのローカルTZ依存で、海外からの
+//   アクセス時に月初・月末の成約/反響が隣月へ計上され、SMS配信レポート
+//   （SmsUsageReport.jsx / GAS 側 toMonthKey_ = Asia/Tokyo）と基準がずれていた。
+//   sv-SE ロケールは "YYYY-MM-DD" を返すため slice(0,7) で月キーになる
+//   （SmsUsageReport.jsx:45-51 の toMonthKey と同方式）。
 function ymKey(dateStr) {
+  if (!dateStr) return null;
   const d = new Date(dateStr);
-  if (isNaN(d)) return null;
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+  if (isNaN(d.getTime())) return null;
+  return d.toLocaleDateString("sv-SE", { timeZone: "Asia/Tokyo" }).slice(0, 7);
 }
 // 月キーが指定範囲 { from, to } 内かどうか判定（from/to空欄は無制限）
 function inMonthRange(ym, range) {
@@ -50,6 +57,25 @@ function parseMan(val) {
 //   trim に揃えた E3-009 / E2-002（KanbanBoard.jsx:1350-1356 と同条件）と同じ方針。
 function custKey(v) { return String(v ?? "").trim(); }
 function srcKey(v)  { return String(v ?? "").trim(); }
+// 【A5-002】成約顧客リストの重複排除（顧客ID→c.id の順で採ったキーでユニーク化）。
+//   同一顧客が「成約→他ステータス→再成約」すると won 履歴が複数件になり、
+//   履歴→顧客の JOIN（filteredWon.map(...)）は同じ顧客オブジェクトを複数回返す。
+//   仕様確定（2026-09-11）:
+//     ・成約「件数」は履歴イベント数のまま数える（再成約は2件）
+//     ・成約「金額」は顧客単位で1回だけ集計する（propsOf が顧客の全物件を
+//       返すため、イベントごとに flatMap すると同じ成約金額が二重加算される）
+//   よって金額系（prices / avgPrice）の母集団だけ本関数でユニーク化する。
+function uniqCusts(custs) {
+  const seen = new Set();
+  const out = [];
+  for (const c of custs) {
+    const k = custKey(c["顧客ID"]) || custKey(c.id);
+    if (!k || seen.has(k)) continue;
+    seen.add(k);
+    out.push(c);
+  }
+  return out;
+}
 function fmtMan(n) {
   if (!n) return "−";
   if (n >= 10000) return (n / 10000).toFixed(1) + "億";
@@ -275,52 +301,67 @@ export default function SourceReport({
   // ── 既存②：費用対効果 ────────────────────────────
   // 【E3-009】ステータス名は必ず trim して保持する。
   //   比較先（顧客の「対応ステータス」/ ステータス履歴の「ステータス」）は
-  //   いずれも .trim() 済みの値で突合しているのに、ここだけ生の s.name を
-  //   使っていたため、ステータス設定の名称に前後空白が混じると
-  //   成約判定が全件 false になり、費用対効果の成約件数と
-  //   契約獲得力（専任率）が丸ごと 0 件になっていた。
-  //   判定条件を KanbanBoard.jsx:1351-1352 / AnalysisReport.jsx:195-204 /
-  //   同ファイル 331行（E2-002 修正済み）に揃える。
-  const terminalStatusNames = useMemo(() =>
-    statuses.filter(s => s.terminalType && s.terminalType !== "excluded").map(s => (s.name || "").trim()),
-    [statuses]
-  );
+  //   trim 済みの値で突合するため、判定条件を KanbanBoard.jsx:1351-1352 /
+  //   AnalysisReport.jsx:195-204 に揃える（E2-002 と同方針）。
   const wonStatusNames = useMemo(() =>
     statuses.filter(s => s.terminalType === "won").map(s => (s.name || "").trim()),
     [statuses]
   );
 
-  // 顧客データ（ステータス変更日/登録日）の利用可能な月範囲（input[type=month]のmin/max用）
-  const costMonthBounds = useMemo(() => {
-    const keys = customers
-      .map(c => ymKey(c["ステータス変更日"] || c["登録日"]))
-      .filter(Boolean);
+  // 【A5-003】期間フィルターの日付基準を用途別に分離する（仕様確定 2026-09-11）。
+  //   ・反響（獲得数・広告費の分母）……… 登録日 基準（regYm）。反響が発生した月で数える。
+  //     旧実装は「ステータス変更日||登録日」だったため、後からステータスが動いた
+  //     顧客が反響月からずれ、広告費が期間へ正しく追随しなかった。
+  //     登録日が空の旧データのみステータス変更日へフォールバックする。
+  //   ・状態（成約件数など現在ステータスの集計）… ステータス変更日||登録日 基準
+  //     （chgYm・従来どおり）。
+  const regYm = (c) => ymKey(c["登録日"] || c["ステータス変更日"]);
+  const chgYm = (c) => ymKey(c["ステータス変更日"] || c["登録日"]);
+  const filterCustsByReg = (custs, range) => {
+    if (!range.from && !range.to) return custs;
+    return custs.filter(c => inMonthRange(regYm(c), range));
+  };
+  const filterCustsByChange = (custs, range) => {
+    if (!range.from && !range.to) return custs;
+    return custs.filter(c => inMonthRange(chgYm(c), range));
+  };
+
+  // 顧客データの利用可能な月範囲（input[type=month]のmin/max・初期プリセット用）。
+  // 【A5-003】登録日・ステータス変更日の両基準を使うため、両方の月キーを合算した
+  //   範囲にする（範囲＝両基準の全データを含む＝初期プリセットが全期間と等価になる）。
+  const custMonthBounds = useMemo(() => {
+    const keys = [];
+    customers.forEach(c => {
+      const r = regYm(c); if (r) keys.push(r);
+      const g = chgYm(c); if (g) keys.push(g);
+    });
     if (!keys.length) return { min: undefined, max: undefined };
     return {
       min: keys.reduce((a, b) => (a < b ? a : b)),
       max: keys.reduce((a, b) => (a > b ? a : b)),
     };
   }, [customers]);
+  const costMonthBounds = custMonthBounds;
 
-  const filterCusts = (custs, range) => {
-    if (!range.from && !range.to) return custs;
-    return custs.filter(c =>
-      inMonthRange(ymKey(c["ステータス変更日"] || c["登録日"]), range)
-    );
-  };
-
+  // 【A5-004】総獲得コスト ＝ 期間内の全反響件数 × 反響単価（仕様確定 2026-09-11）。
+  //   旧実装は「終点到達件数 × 単価」で、同一ページの成約金額ROI（広告費 ＝
+  //   全反響件数 × 単価）と同じ単価に別の乗数を掛けており、媒体費の解釈が
+  //   セクション間で食い違っていた。流入元設定の「コスト」は反響1件あたりの
+  //   課金額のため、全反響件数×単価へ統一する。
+  //   成約件数（1成約あたりコストの分母）は従来どおり現在ステータス基準
+  //   （ステータス変更日で期間フィルタ）。
   const costData = useMemo(() =>
     sourceNames.map(src => {
-      const allList = bySource[src] || [];
-      const list = filterCusts(allList, periodCost);
+      const allList  = bySource[src] || [];
       const unitCost = (sources.find(s => s.name === src) || {}).cost || 0;
-      const terminalCount = list.filter(c => terminalStatusNames.includes((c["対応ステータス"] || "").trim())).length;
-      const totalCost = terminalCount * unitCost;
-      const wonCount = list.filter(c => wonStatusNames.includes((c["対応ステータス"] || "").trim())).length;
+      const inflowCount = filterCustsByReg(allList, periodCost).length;
+      const totalCost   = inflowCount * unitCost;
+      const wonCount = filterCustsByChange(allList, periodCost)
+        .filter(c => wonStatusNames.includes((c["対応ステータス"] || "").trim())).length;
       const costPerWon = wonCount > 0 ? Math.round(totalCost / wonCount) : null;
-      return { src, unitCost, terminalCount, totalCost, wonCount, costPerWon };
+      return { src, unitCost, inflowCount, totalCost, wonCount, costPerWon };
     }).filter(d => d.unitCost > 0),
-    [sourceNames, bySource, sources, terminalStatusNames, wonStatusNames, periodCost]
+    [sourceNames, bySource, sources, wonStatusNames, periodCost]
   );
   const maxTotalCost  = Math.max(...costData.map(d => d.totalCost), 1);
   const maxCostPerWon = Math.max(...costData.map(d => d.costPerWon ?? 0), 1);
@@ -364,9 +405,25 @@ export default function SourceReport({
     };
   }, [wonEntries]);
 
+  // 【A5-005】成約金額ROIの月範囲は「成約履歴の月」と「顧客（登録日/変更日）の月」の
+  //   合成範囲にする。ROIは成約（won履歴）と反響（顧客の登録日）の両方を期間で
+  //   絞るため、won側だけの範囲を初期プリセットすると、最初の成約より前に
+  //   発生した反響が広告費の分母から脱落し、初期表示のROIが「クリア（全期間）」
+  //   と食い違っていた（初期表示でROI過大）。合成範囲なら初期プリセットは
+  //   両基準に対して no-op ＝ 全期間と厳密に一致する。
+  const roiMonthBounds = useMemo(() => {
+    const mins = [wonMonthBounds.min, custMonthBounds.min].filter(Boolean);
+    const maxs = [wonMonthBounds.max, custMonthBounds.max].filter(Boolean);
+    if (!mins.length || !maxs.length) return { min: undefined, max: undefined };
+    return {
+      min: mins.reduce((a, b) => (a < b ? a : b)),
+      max: maxs.reduce((a, b) => (a > b ? a : b)),
+    };
+  }, [wonMonthBounds, custMonthBounds]);
+
   // ── 期間フィルターの初期プリセット ─────────────────
   // データ読込後、各フィルターを「最古月〜最新月」で一度だけ初期化する。
-  // （全期間と同じ集計結果だが、画面上に範囲を明示するため）
+  // （全期間と同じ集計結果になる範囲を選ぶこと。画面上に範囲を明示するのが目的）
   useEffect(() => {
     if (!periodInit.current.cp && wonMonthBounds.min && wonMonthBounds.max) {
       setPeriodCP({ from: wonMonthBounds.min, to: wonMonthBounds.max });
@@ -374,11 +431,12 @@ export default function SourceReport({
     }
   }, [wonMonthBounds]);
   useEffect(() => {
-    if (!periodInit.current.roi && wonMonthBounds.min && wonMonthBounds.max) {
-      setPeriodROI({ from: wonMonthBounds.min, to: wonMonthBounds.max });
+    // 【A5-005】ROIは合成範囲でプリセット（won範囲だけだと反響側が欠ける）
+    if (!periodInit.current.roi && roiMonthBounds.min && roiMonthBounds.max) {
+      setPeriodROI({ from: roiMonthBounds.min, to: roiMonthBounds.max });
       periodInit.current.roi = true;
     }
-  }, [wonMonthBounds]);
+  }, [roiMonthBounds]);
   useEffect(() => {
     if (!periodInit.current.cost && costMonthBounds.min && costMonthBounds.max) {
       setPeriodCost({ from: costMonthBounds.min, to: costMonthBounds.max });
@@ -435,35 +493,42 @@ export default function SourceReport({
     sourceNames.map(src => {
       const srcObj   = sources.find(s => s.name === src) || {};
       const unitCost = srcObj.cost  || 0;
-      // 【E3-002】獲得数（全反響件数）と広告費（＝獲得数×単価）も集計期間に追随させる。
-      //   従来は流入元マスタの累計 count（gas_updated.js:3160-3176 で全期間の顧客件数を
-      //   サーバ集計した値）をそのまま使っていたため、期間を変えても分母が一切変わらず、
-      //   「期間フィルタが数値に反映されない」ように見えていた。
-      //   期間指定時の件数算出は、同ページで正しく期間追随している「費用対効果」の
-      //   filterCusts（本ファイル上方・ステータス変更日||登録日 基準）に揃える。
-      //   フィルタ未指定（全期間）時は従来どおりマスタ累計を使い表示互換を保つ。
+      // 【E3-002→A5-003】獲得数（全反響件数）と広告費（＝獲得数×単価）は集計期間に追随する。
+      //   期間基準は「登録日（反響発生日）」（filterCustsByReg・仕様確定 2026-09-11）。
+      //   旧実装のマスタ累計 count（サーバ集計・trim なしの生値一致）は使わない：
+      //   フロントの bySource（trim 一致）と件数の基準が異なり、全期間⇄期間指定の
+      //   切り替えで獲得数が不連続に変わる余地があったため、常にフロント側の
+      //   同一基準（allList）で数える。全期間（フィルタ空）は allList.length。
       const allList = bySource[src] || [];
-      const inflow  = (!periodROI.from && !periodROI.to)
-        ? (srcObj.count || allList.length)
-        : filterCusts(allList, periodROI).length;  // 全流入件数（成約・非成約含む）
+      const inflow  = filterCustsByReg(allList, periodROI).length;  // 全反響件数（成約・非成約含む）
+      // 成約件数＝won履歴イベント数（再成約は複数件と数える・仕様確定 2026-09-11）
       const wonCusts = filteredWonROI
         .map(h => custById[custKey(h["顧客ID"])])
         .filter(c => c && srcKey(c["流入元"]) === srcKey(src));
       const wonCount = wonCusts.length;
-      const prices = wonCusts.flatMap(c =>
+      // 【A5-002】成約金額は顧客単位で1回だけ集計する。propsOf は顧客の全物件を
+      //   返すため、won履歴が複数件ある顧客をイベントごとに flatMap すると
+      //   同じ成約金額が履歴件数ぶん二重加算される。
+      const uniqWon = uniqCusts(wonCusts);
+      const prices = uniqWon.flatMap(c =>
         propsOf(c)
           .filter(p => p.contractPrice)
           .map(p => parseMan(p.contractPrice))
       ).filter(v => v > 0);
+      // 成約金額が1件も取れていない成約顧客数（ユニーク）。3%分が未計上である
+      //   ことを画面に注記するために数える（A4-016 で確認済みの挙動の可視化）。
+      const noPriceCount = uniqWon.filter(c =>
+        !propsOf(c).some(p => p.contractPrice && parseMan(p.contractPrice) > 0)
+      ).length;
       const totalAmt     = prices.reduce((a, b) => a + b, 0);
       const avgAmt       = prices.length > 0 ? Math.round(totalAmt / prices.length) : 0;
       const commission   = Math.round(totalAmt * 0.03) + wonCount * 6;  // 想定仲介手数料（万円）= 成約金額×3% + 成約件数×6万
-      const totalCostYen = inflow * unitCost;              // 全流入件数 × 単価（円）
+      const totalCostYen = inflow * unitCost;              // 全反響件数 × 単価（円）
       const totalCostMan = totalCostYen / 10000;           // 万円換算
       const roiNum = totalCostMan > 0 && commission > 0 ? commission / totalCostMan : null;
       const roi    = roiNum;
       const roiStr = roiNum !== null ? roiNum.toFixed(2) : null;
-      return { src, unitCost, inflow, wonCount, totalAmt, avgAmt, commission, totalCostYen, totalCostMan, roi, roiStr };
+      return { src, unitCost, inflow, wonCount, noPriceCount, totalAmt, avgAmt, commission, totalCostYen, totalCostMan, roi, roiStr };
     }),
     [sourceNames, filteredWonROI, custById, propsByCustomer, sources, bySource, periodROI]
   );
@@ -476,8 +541,41 @@ export default function SourceReport({
     const topRoi         = [...roiData].filter(d => d.roi !== null).sort((a, b) => b.roi - a.roi)[0];
     const totalCostAll   = roiData.reduce((a, b) => a + b.totalCostMan, 0);
     const overallRoi     = totalCostAll > 0 ? totalCommission / totalCostAll : null;
-    return { totalAmt, totalWon, avgAmt, topRoi, overallRoi, totalCommission };
+    const totalNoPrice   = roiData.reduce((a, b) => a + b.noPriceCount, 0);   // 【A5-006】金額未入力の成約顧客数
+    return { totalAmt, totalWon, avgAmt, topRoi, overallRoi, totalCommission, totalNoPrice };
   }, [roiData]);
+
+  // 【A5-007】集計対象外になった成約履歴の可視化（StatusAnalysisReport の E4-008 と同方針）。
+  //   ・orphan ……… 顧客リストに存在しない顧客IDの成約履歴（顧客削除後に履歴だけ残った等）
+  //   ・unassigned … 顧客は居るが「流入元」がマスタ（sourceNames）に無い成約
+  //   どちらも各セクションのどの行にも乗らず黙って消えるため、件数だけ表示して
+  //   「合計が実感より少ない」原因を画面から追えるようにする（集計値は変えない）。
+  const sourceNameSet = useMemo(() => new Set(sourceNames.map(srcKey)), [sourceNames]);
+  const countExcludedWon = useCallback((entries) => {
+    let orphan = 0, unassigned = 0;
+    entries.forEach(h => {
+      const c = custById[custKey(h["顧客ID"])];
+      if (!c) { orphan++; return; }
+      if (!sourceNameSet.has(srcKey(c["流入元"]))) unassigned++;
+    });
+    return { orphan, unassigned, total: orphan + unassigned };
+  }, [custById, sourceNameSet]);
+  const excludedCP  = useMemo(() => countExcludedWon(filteredWon),    [countExcludedWon, filteredWon]);
+  const excludedROI = useMemo(() => countExcludedWon(filteredWonROI), [countExcludedWon, filteredWonROI]);
+
+  // 対象外件数の注記行（0件のときは何も出さない）
+  const ExcludedNote = ({ ex }) => ex.total === 0 ? null : (
+    <div style={{
+      fontSize: 11, color: "#92400E", background: "#FEF3C7", border: "1px solid #FDE68A",
+      borderRadius: 8, padding: "8px 12px", marginBottom: 14, lineHeight: 1.7,
+    }}>
+      集計対象外の成約 {ex.total}件（
+      {ex.unassigned > 0 && `流入元がマスタ未登録: ${ex.unassigned}件`}
+      {ex.unassigned > 0 && ex.orphan > 0 && " ／ "}
+      {ex.orphan > 0 && `顧客データなし: ${ex.orphan}件`}
+      ）は下表のどの流入元にも含まれていません
+    </div>
+  );
 
   const maxRoiAmt  = Math.max(...roiData.map(d => d.totalAmt), 1);
   const maxRoiCost = Math.max(...roiData.map(d => d.totalCostMan), 1);
@@ -512,8 +610,10 @@ export default function SourceReport({
       const seninCount = seninCusts.length;
       const withContract = wonCusts.filter(c => (c["契約種別"] || "").trim() !== "");
       const seninRate  = withContract.length > 0 ? Math.round((seninCount / withContract.length) * 100) : 0;
+      // 【A5-002】金額は顧客単位で1回だけ集計（won履歴の重複による物件金額の
+      //   二重加算を防ぐ）。件数系（total / seninCount 等）はイベント数のまま。
       const avgPrice = (custs) => {
-        const ps = custs.flatMap(c =>
+        const ps = uniqCusts(custs).flatMap(c =>
           propsOf(c)
             .filter(p => p.contractPrice).map(p => parseMan(p.contractPrice))
         ).filter(v => v > 0);
@@ -623,6 +723,9 @@ export default function SourceReport({
           <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 16, marginTop: -8 }}>
             <MonthRangeFilter value={periodCP} onChange={setPeriodCP} min={wonMonthBounds.min} max={wonMonthBounds.max} />
           </div>
+
+          {/* 【A5-007】JOIN落ちした成約履歴の可視化 */}
+          <ExcludedNote ex={excludedCP} />
 
           {/* KPIカード */}
           <div style={{ display: "flex", gap: 12, marginBottom: 20 }}>
@@ -784,16 +887,31 @@ export default function SourceReport({
             <span style={{ fontSize: 12, fontWeight: 700, color: THEME.textMuted, marginLeft: 8 }}>— ROI = 想定仲介手数料（成約金額×3%＋6万×件数） ÷ 広告費（単価×全反響件数）</span>
           </SectionTitle>
 
-          {/* 期間フィルター */}
+          {/* 期間フィルター（【A5-005】成約月∪反響月の合成範囲。初期プリセット＝全期間と等価） */}
           <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 16, marginTop: -8 }}>
-            <MonthRangeFilter value={periodROI} onChange={setPeriodROI} min={wonMonthBounds.min} max={wonMonthBounds.max} />
+            <MonthRangeFilter value={periodROI} onChange={setPeriodROI} min={roiMonthBounds.min} max={roiMonthBounds.max} />
           </div>
+
+          {/* 【A5-007】JOIN落ちした成約履歴の可視化 */}
+          <ExcludedNote ex={excludedROI} />
+
+          {/* 【A5-006】成約金額未入力の注記（3%分が未計上のままROIが表示されることの明示） */}
+          {roiKpi.totalNoPrice > 0 && (
+            <div style={{
+              fontSize: 11, color: THEME.textMuted, background: THEME.bg,
+              border: `1px solid ${THEME.border}`, borderRadius: 8,
+              padding: "8px 12px", marginBottom: 14, lineHeight: 1.7,
+            }}>
+              成約金額が未入力の成約 {roiKpi.totalNoPrice}件：仲介手数料は件数分（6万円×件数）のみ計上され、
+              成約金額×3% は含まれていません。物件の成約金額を入力すると反映されます。
+            </div>
+          )}
 
           {/* KPIカード */}
           <div style={{ display: "flex", gap: 12, marginBottom: 20 }}>
-            <KpiCard label="仲介手数料合計（推定）" value={fmtMan(roiKpi.totalCommission)} sub={`成約金額合計 ${fmtMan(roiKpi.totalAmt)} の3%`} color="#059669" />
-            <KpiCard label="1成約あたり平均金額" value={roiKpi.avgAmt > 0 ? fmtMan(roiKpi.avgAmt) : "−"} sub="全流入元の単純平均" />
-            <KpiCard label="全体平均ROI" value={roiKpi.overallRoi ? roiKpi.overallRoi.toFixed(2) + "倍" : "−"} sub="成約金額合計 ÷ 広告費合計" color={roiKpi.overallRoi >= 1 ? "#1D6F42" : "#C0392B"} />
+            <KpiCard label="仲介手数料合計（推定）" value={fmtMan(roiKpi.totalCommission)} sub={`成約金額合計 ${fmtMan(roiKpi.totalAmt)} の3% ＋ 6万×${roiKpi.totalWon}件`} color="#059669" />
+            <KpiCard label="1成約あたり平均金額" value={roiKpi.avgAmt > 0 ? fmtMan(roiKpi.avgAmt) : "−"} sub="成約金額合計 ÷ 成約件数" />
+            <KpiCard label="全体平均ROI" value={roiKpi.overallRoi ? roiKpi.overallRoi.toFixed(2) + "倍" : "−"} sub="仲介手数料合計 ÷ 広告費合計" color={roiKpi.overallRoi >= 1 ? "#1D6F42" : "#C0392B"} />
             <KpiCard label="ROI最高流入元" value={roiKpi.topRoi ? roiKpi.topRoi.src : "−"} sub={roiKpi.topRoi && roiKpi.topRoi.roi ? `${roiKpi.topRoi.roiStr}倍（標準比 ${Math.round(roiKpi.topRoi.roi / 8.3 * 100)}%）` : undefined} color="#185FA5" />
           </div>
 
@@ -934,7 +1052,7 @@ export default function SourceReport({
           <div style={card}>
             <SectionTitle color="#059669">
               <span style={{ fontSize: 18 }}>💰</span> 費用対効果
-              <span style={{ fontSize: 12, fontWeight: 700, color: THEME.textMuted, marginLeft: 8 }}>— コスト設定済みの流入元のみ表示</span>
+              <span style={{ fontSize: 12, fontWeight: 700, color: THEME.textMuted, marginLeft: 8 }}>— 総獲得コスト＝期間内の全反響件数×反響単価（コスト設定済みの流入元のみ表示）</span>
             </SectionTitle>
 
             {/* 期間フィルター */}
@@ -959,7 +1077,7 @@ export default function SourceReport({
                     <div style={{ display: "flex", alignItems: "baseline", gap: 4 }}>
                       <span style={{ fontSize: 22, fontWeight: 900, color: "#059669", lineHeight: 1 }}>{d.totalCost.toLocaleString()}</span>
                       <span style={{ fontSize: 12, fontWeight: 700, color: THEME.textMuted }}>円</span>
-                      <span style={{ fontSize: 11, color: THEME.textMuted, marginLeft: 4 }}>（{d.terminalCount}件 × {d.unitCost.toLocaleString()}円）</span>
+                      <span style={{ fontSize: 11, color: THEME.textMuted, marginLeft: 4 }}>（反響{d.inflowCount}件 × {d.unitCost.toLocaleString()}円）</span>
                     </div>
                     <div style={{ width: "100%", backgroundColor: "#D1FAE5", borderRadius: 6, overflow: "hidden", height: 16 }}>
                       <div style={{ width: `${Math.max((d.totalCost / maxTotalCost) * 100, d.totalCost > 0 ? 3 : 0)}%`, height: "100%", backgroundColor: "#059669", borderRadius: 6, transition: "width 0.6s ease" }} />

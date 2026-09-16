@@ -5,7 +5,9 @@ import {
 } from "lucide-react";
 import { THEME, GAS_URL } from "../lib/constants";
 import { useWindowWidth } from "../lib/useWindowWidth";
-import { formatDate, downloadCSV, smsUnits, apiCall } from "../lib/utils";
+// 通数（_units）は GAS 側 smsUnits_ の算出値を表示するため、フロントの smsUnits は
+// 本画面では未使用（文字数表示は同一判定の smsCharCount を使う）。
+import { formatDate, downloadCSV, smsCharCount, apiCall } from "../lib/utils";
 import { useReport } from "../lib/useReport";   // 【レポート高速化】
 
 // ==========================================
@@ -127,7 +129,13 @@ export default function SmsUsageReport({ isLoading = false, deliveryLogs = [], c
   const maxUnits  = Math.max(1, ...byMonth.map((m) => m.units));
 
   // ── CSV出力 ───────────────────────────────────
+  // 【A5-008】サーバ集計（summary）が届く前は byMonth がゼロ埋めプレースホルダーの
+  //   ため、そのままエクスポートすると「全行0のCSV」が黙って生成される。
+  //   本レポートは請求根拠になるので、集計未取得の間はボタンを無効化し、
+  //   万一呼ばれても出力しない二重ガードにする。
+  const exportDisabled = summaryLoading || !summary;
   const handleExport = () => {
+    if (exportDisabled) return;
     const header = ["月", "配信件数", "送信通数（課金対象）", "うち個別SMS（通）", "うちシナリオ自動（通）", "2通以上の件数", "配信エラー（件）"];
     const rows = byMonth.map((m) => [
       monthLabel(m.key),
@@ -224,12 +232,16 @@ export default function SmsUsageReport({ isLoading = false, deliveryLogs = [], c
 
             <button
               onClick={handleExport}
+              disabled={exportDisabled}
+              title={exportDisabled ? "集計の取得が完了するとダウンロードできます" : "月別集計をCSVでダウンロード"}
               style={{
                 display: "inline-flex", alignItems: "center", gap: 6,
                 padding: isMobile ? "8px 12px" : "9px 16px",
                 backgroundColor: "white", color: THEME.textMain,
                 border: `1px solid ${THEME.border}`, borderRadius: 10,
-                fontSize: 12, fontWeight: 800, cursor: "pointer",
+                fontSize: 12, fontWeight: 800,
+                cursor: exportDisabled ? "not-allowed" : "pointer",
+                opacity: exportDisabled ? 0.45 : 1,
               }}
             >
               <Download size={14} /> CSV
@@ -478,8 +490,10 @@ export default function SmsUsageReport({ isLoading = false, deliveryLogs = [], c
                                             {isManualSms(log) ? "個別SMS" : (log["ステップ名"] || "シナリオ")}
                                           </span>
                                         </td>
+                                        {/* 【A5-009】文字数は課金換算（smsUnits と同じ正規化・GSM拡張2文字換算）で表示。
+                                            旧表示の生 length は CRLF・GSM拡張文字で通数換算ルール表と食い違っていた。 */}
                                         <td style={{ padding: "8px", fontSize: 11, color: THEME.textMuted, textAlign: "right" }}>
-                                          {String(log["内容"] || "").length}
+                                          {smsCharCount(log["内容"])}
                                         </td>
                                         <td style={{
                                           padding: "8px", fontSize: 12, textAlign: "right",
