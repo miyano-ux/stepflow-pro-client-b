@@ -130,11 +130,18 @@ export default function ContractTypeManager({ contractTypes: propTypes = [], exc
           exclusive: clean.filter(t => t.isExclusive).map(t => t.name),
           // 【G4-012】改名の対応表。旧GASは未知パラメータとして無視する（後方互換）
           renames,
+          // 【G4-007追加ガード】この画面が読み込み時に認識していた既存種別名。
+          //   GAS 側（saveContractTypes）が「クライアントが見ていない既存種別」の
+          //   削除を伴う保存を拒否する（saveFormSettings の knownNames と同方式。
+          //   旧GASは未知パラメータとして無視する＝後方互換）。
+          knownNames: (propTypes || []).map(n => String(n).trim()).filter(Boolean),
         }, { retry: true });
         await onRefresh();
         showToast("保存しました", "success");
-      } catch {
-        showToast("保存に失敗しました", "error");
+      } catch (e) {
+        // 【サイレント失敗対策】GAS 側ガード（全件削除・重複・knownNames）の拒否理由を
+        //   汎用文言でマスクせず、そのまま提示する（StatusSettings / FormSettings と同流儀）。
+        showToast("保存に失敗しました: " + (e?.message || ""), "error");
       } finally {
         setSaving(false);
       }

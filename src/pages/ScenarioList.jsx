@@ -1,6 +1,6 @@
 import React from "react";
 import { Link, useNavigate } from "react-router-dom";
-import axios from "axios";
+import { apiCall } from "../lib/utils";
 import { Plus, Trash2, Clock, ChevronRight, Settings, Zap, List, CheckCircle2, Loader2 } from "lucide-react";
 import { THEME, GAS_URL } from "../lib/constants";
 import { styles } from "../lib/styles";
@@ -77,7 +77,7 @@ function DeleteConfirmModal({ open, scenarioId, deleting, onConfirm, onCancel })
           「{scenarioId}」
         </p>
         <p style={{ margin: "0 0 28px", fontSize: 13, color: "#6B7280" }}>
-          紐づいているステータスの設定も解除されます。
+          紐づいているステータス設定・受信設定・媒体連携設定・顧客のシナリオ適用は解除され、このシナリオの「配信待ち」予約はすべて中止されます。
         </p>
 
         <button
@@ -219,11 +219,10 @@ export default function ScenarioList({ scenarios = [], statuses = [], onRefresh,
     const targetId = deleteModal.scenarioId;
     setDeleting(true);
     try {
-      await axios.post(
-        gasUrl || GAS_URL,
-        JSON.stringify({ action: "deleteScenario", scenarioID: targetId }),
-        { headers: { "Content-Type": "text/plain;charset=utf-8" } }
-      );
+      // 【虚偽成功対策】生 axios を廃止し apiCall.post へ統一（saveScenario の A2-026 と同方針）。
+      //   GAS が HTTP 200 で status:"error" を返した場合も例外化されるため（utils.js:154-155）、
+      //   「実際には削除されていないのに『削除しました』と表示される」経路を塞ぐ。
+      await apiCall.post(gasUrl || GAS_URL, { action: "deleteScenario", scenarioID: targetId });
       // 即時非表示（モーダル表示中も画面から消す）
       setHiddenIds(prev => new Set([...prev, targetId]));
       setDeleteModal(null);
@@ -233,9 +232,10 @@ export default function ScenarioList({ scenarios = [], statuses = [], onRefresh,
         title: "削除しました",
         message: `シナリオ「${targetId}」を削除しました。`,
       });
-    } catch {
+    } catch (e) {
       setDeleting(false);
-      showToast("削除に失敗しました", "error");
+      // GAS 側の拒否理由（例外メッセージ等）をそのまま提示する
+      showToast("削除に失敗しました: " + (e?.message || ""), "error");
     }
   };
 

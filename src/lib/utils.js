@@ -149,15 +149,43 @@ export const apiCall = {
         const res = await axios.post(url, body, {
           headers: { "Content-Type": "text/plain;charset=utf-8" },
         });
-        // 一時URLの404はHTML文字列で返るため、JSON.parse 失敗 or status≠success を失敗扱いにする
-        const result = typeof res.data === "string" ? JSON.parse(res.data) : res.data;
-        if (!result || result.status !== "success") {
-          throw new Error(result?.message || "GASからエラーレスポンスが返りました");
+        // 一時URLの404はHTML文字列で返るため、JSON.parse 失敗 or status≠success を失敗扱いにする。
+        // 【安定化】失敗の種類を区別してエラーに印を付ける:
+        //   ・transient  … 通信・一時URL404・HTML応答など「GASの処理結果が届かなかった」失敗
+        //                  → リトライで自己回復しうる
+        //   ・deliberate … GASが意図して返した status:"error"（stale_baseline / バリデーション等）
+        //                  → リトライしても結果は変わらないため即座に呼び出し元へ返す
+        //   併せて result.code / result 本体をエラーへ透過し、呼び出し側が
+        //   e.code === "stale_baseline" のように文字列 includes に頼らず判定できるようにする。
+        let result;
+        if (typeof res.data === "string") {
+          try {
+            result = JSON.parse(res.data);
+          } catch (parseErr) {
+            const err = new Error(
+              "GASの応答を受信できませんでした（一時URLの404等の既知事象）。通信状況を確認のうえ、もう一度お試しください。"
+            );
+            err.transient = true;
+            throw err;
+          }
+        } else {
+          result = res.data;
+        }
+        if (!result || typeof result !== "object" || result.status !== "success") {
+          const err = new Error(
+            result?.message || `GASからエラーレスポンスが返りました（action: ${action || "不明"}）`
+          );
+          err.code   = result?.code;
+          err.result = result;
+          // GASが明示的に返したエラーで、GAS自身が retryable:true を付けていないものは再試行しない
+          err.deliberate = !!(result && result.status === "error" && result.retryable !== true);
+          throw err;
         }
         console.log("[apiCall.post] response:", result?.status, result?.message || "");
         return result;
       } catch (e) {
         lastErr = e;
+        if (e?.deliberate) throw e;   // GASの意図的なエラーは再試行せず即座に返す
         if (attempt < maxAttempts) {
           await new Promise(r => setTimeout(r, 400 * attempt)); // 0.4s, 0.8s の指数バックオフ
           continue;

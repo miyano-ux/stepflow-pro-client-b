@@ -483,9 +483,16 @@ export default function StatusSettings({ statuses: statusesProp = [], scenarios 
   const navigate  = useNavigate();
   const showToast = useToast();
   const { isMobile } = useWindowWidth();
-  const [flowRows,     setFlowRows]     = useState([]);
-  const [terminalRows, setTerminalRows] = useState([]);
-  const [saving,       setSaving]       = useState(false);
+  const [flowRows,     setFlowRowsRaw]     = useState([]);
+  const [terminalRows, setTerminalRowsRaw] = useState([]);
+  const [saving,       setSaving]          = useState(false);
+  // 【安定化】ユーザーが編集を始めたかどうか。true の間は statusesProp の変化
+  // （起動時キャッシュ→裏refresh完了・保存後のバックグラウンド更新等）で
+  // 編集中の行 state を初期化しない（＝入力内容が黙って消える事故の防止）。
+  // 別端末との衝突は保存時の G1-013（baseline照合）がサーバー側で検知する。
+  const dirtyRef = useRef(false);
+  const setFlowRows     = (updater) => { dirtyRef.current = true; setFlowRowsRaw(updater); };
+  const setTerminalRows = (updater) => { dirtyRef.current = true; setTerminalRowsRaw(updater); };
   const [dragIdx,      setDragIdx]      = useState(null);
   const [confirmModal, setConfirmModal] = useState(null);
   // 【G1-013】保存時の楽観ロック用に「読み込んだ時点の statuses」をそのまま控える。
@@ -514,6 +521,12 @@ export default function StatusSettings({ statuses: statusesProp = [], scenarios 
   const usageOf = (name) => usageByName[String(name || "").trim()] || 0;
 
   useEffect(() => {
+    // 【安定化】編集中（dirty）・保存処理中は外部由来の statusesProp 更新で
+    // 行 state を初期化しない。従来はここが無条件で走るため、
+    //   ・起動時キャッシュ表示→裏の refresh() 完了
+    //   ・保存後のバックグラウンド更新
+    // のタイミングで編集内容が丸ごと消え「挙動が安定しない」原因になっていた。
+    if (dirtyRef.current || saving) return;
     // 【G1-013】照合用スナップショット（編集 state とは別に、受信値を無加工で保持）
     baselineRef.current = statusesProp;
     if (statusesProp.length > 0) {
@@ -523,29 +536,30 @@ export default function StatusSettings({ statuses: statusesProp = [], scenarios 
       // 保存時に現在の name と突き合わせ、改名分だけ GAS へ renames として送る。
       // （_originalName は saveStatuses のシート書き込み列には含まれないため、
       //   ペイロードに残っていても保存内容には影響しない）
-      setFlowRows(flows.map(s => ({ ...s, _originalName: s.name })));
+      setFlowRowsRaw(flows.map(s => ({ ...s, _originalName: s.name })));
 
       const termArr = terminals.map(s => ({ placement: "bottom", reapproachMonths: 0, reapproachScenarioId: "", reapproachNextStatus: "", ...s, _originalName: s.name }));
       // 必須ステータスが存在しない場合は補完
       if (!termArr.some(s => s.terminalType === "won"))
-        termArr.push({ name: "成約", terminalType: "won", placement: "bottom", scenarioId: "", reportArrival: false, reportCount: true });
+        termArr.push({ name: "成約", terminalType: "won", placement: "bottom", scenarioId: "", reportArrival: false, reportCount: true, promptFields: [], lostReasonOptions: [] });
       if (!termArr.some(s => s.terminalType === "lost"))
-        termArr.push({ name: "失注", terminalType: "lost", placement: "bottom", scenarioId: "", reportArrival: false, reportCount: false });
+        termArr.push({ name: "失注", terminalType: "lost", placement: "bottom", scenarioId: "", reportArrival: false, reportCount: false, promptFields: [], lostReasonOptions: [] });
       if (!termArr.some(s => s.terminalType === "excluded"))
-        termArr.push({ name: "除外", terminalType: "excluded", placement: "right", scenarioId: "", reportArrival: false, reportCount: false });
-      setTerminalRows(termArr);
+        termArr.push({ name: "除外", terminalType: "excluded", placement: "right", scenarioId: "", reportArrival: false, reportCount: false, promptFields: [], lostReasonOptions: [] });
+      setTerminalRowsRaw(termArr);
     } else {
-      setFlowRows([
-        { name: "未対応", terminalType: "", scenarioId: "", reportArrival: false, reportCount: true },
-        { name: "対応中", terminalType: "", scenarioId: "", reportArrival: false, reportCount: true },
+      setFlowRowsRaw([
+        { name: "未対応", terminalType: "", scenarioId: "", reportArrival: false, reportCount: true,  promptFields: [], lostReasonOptions: [] },
+        { name: "対応中", terminalType: "", scenarioId: "", reportArrival: false, reportCount: true,  promptFields: [], lostReasonOptions: [] },
       ]);
-      setTerminalRows([
-        { name: "休眠",   terminalType: "dormant",  placement: "bottom", scenarioId: "", reportArrival: false, reportCount: false, reapproachMonths: 0, reapproachScenarioId: "", reapproachNextStatus: "" },
-        { name: "成約",   terminalType: "won",      placement: "bottom", scenarioId: "", reportArrival: false, reportCount: true  },
-        { name: "失注",   terminalType: "lost",     placement: "bottom", scenarioId: "", reportArrival: false, reportCount: false },
-        { name: "除外",   terminalType: "excluded", placement: "right",  scenarioId: "", reportArrival: false, reportCount: false },
+      setTerminalRowsRaw([
+        { name: "休眠",   terminalType: "dormant",  placement: "bottom", scenarioId: "", reportArrival: false, reportCount: false, reapproachMonths: 0, reapproachScenarioId: "", reapproachNextStatus: "", promptFields: [], lostReasonOptions: [] },
+        { name: "成約",   terminalType: "won",      placement: "bottom", scenarioId: "", reportArrival: false, reportCount: true,  promptFields: [], lostReasonOptions: [] },
+        { name: "失注",   terminalType: "lost",     placement: "bottom", scenarioId: "", reportArrival: false, reportCount: false, promptFields: [], lostReasonOptions: [] },
+        { name: "除外",   terminalType: "excluded", placement: "right",  scenarioId: "", reportArrival: false, reportCount: false, promptFields: [], lostReasonOptions: [] },
       ]);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [statusesProp]);
 
   // フロー行操作
@@ -571,7 +585,10 @@ export default function StatusSettings({ statuses: statusesProp = [], scenarios 
       },
     });
   };
-  const handleFlowAdd      = () => setFlowRows(prev => [...prev, { name: "", terminalType: "", scenarioId: "", reportArrival: false, reportCount: false }]);
+  // 【安定化】新規行は全キーを明示して作る。キー欠落（undefined）の行は GAS 側の
+  // G1-013恒久対策フォールバックが「同名の旧行セルを引き継ぐ」ため、過去に同名で
+  // 存在したステータスの設定が意図せず復活し、baseline照合の不一致要因にもなる。
+  const handleFlowAdd      = () => setFlowRows(prev => [...prev, { name: "", terminalType: "", scenarioId: "", reportArrival: false, reportCount: false, promptFields: [], lostReasonOptions: [], reapproachMonths: 0, reapproachScenarioId: "", reapproachNextStatus: "" }]);
   const handlePromptAdd    = (idx, fk) => setFlowRows(prev => prev.map((r, i) => i === idx ? { ...r, promptFields: [...(r.promptFields || []).filter(p => p !== fk), fk] } : r));
   const handlePromptRemove = (idx, pi) => setFlowRows(prev => prev.map((r, i) => i === idx ? { ...r, promptFields: (r.promptFields || []).filter((_, j) => j !== pi) } : r));
 
@@ -628,7 +645,7 @@ export default function StatusSettings({ statuses: statusesProp = [], scenarios 
     });
   };
   const handleTerminalAdd    = () => {
-    setTerminalRows(prev => [...prev, { name: "終点", terminalType: "dormant", placement: "bottom", scenarioId: "", reportArrival: false, reportCount: false, reapproachMonths: 0, reapproachScenarioId: "", reapproachNextStatus: "" }]);
+    setTerminalRows(prev => [...prev, { name: "終点", terminalType: "dormant", placement: "bottom", scenarioId: "", reportArrival: false, reportCount: false, reapproachMonths: 0, reapproachScenarioId: "", reapproachNextStatus: "", promptFields: [], lostReasonOptions: [] }]);
   };
 
   const usedScenarios = new Set([...flowRows, ...terminalRows].map(r => r.scenarioId).filter(Boolean));
@@ -735,15 +752,16 @@ export default function StatusSettings({ statuses: statusesProp = [], scenarios 
           : "該当する顧客はいないため、顧客データは変更されません。",
         confirmLabel: "保存する",
         confirmColor: THEME.primary,
-        onConfirm: () => { setConfirmModal(null); doSave(allRows, migrations); },
+        onConfirm: () => { setConfirmModal(null); doSave(flowRows, normalizedTerminals, migrations); },
       });
       return;
     }
 
-    doSave(allRows, []);
+    doSave(flowRows, normalizedTerminals, []);
   };
 
-  const doSave = async (allRows, renames) => {
+  const doSave = async (flows, terminals, renames) => {
+    const allRows = [...flows, ...terminals];
     setSaving(true);
     try {
       await apiCall.post(gasUrl || GAS_URL, {
@@ -753,16 +771,36 @@ export default function StatusSettings({ statuses: statusesProp = [], scenarios 
         // 【G1-013】読み込み時点のスナップショット。GAS 側が現在のシートと照合し、
         // 乖離（＝この画面が知らない更新が既に入っている）なら保存を拒否する。
         baseline: baselineRef.current,
-      });
+      // 【安定化】GAS 側の saveStatuses を冪等化（受信内容＝現シートなら no-op success）
+      // したため、リトライを有効化できる。これにより GAS 既知の「302先の一時URLが
+      // 404を返す」事象（＝書き込みは成功しているのに応答だけ失われる）で
+      //   1回目: 書き込み成功・応答喪失 → 2回目: no-op success
+      // と自己回復し、「エラー表示なのに実は保存されていた」不安定挙動が解消される。
+      }, { retry: true });
+
+      // ── 保存成功: ローカルで状態を確定し、全量再取得（onRefresh）の完了を待たない ──
+      // 従来はここで await onRefresh()（getAppData 全量再構築）を待ってから
+      // 「保存しました」を出していたため、データ量が多い環境では保存のたびに
+      // 数十秒待たされていた。保存後のシート内容＝allRows と確定しているので、
+      //   ・baseline を保存内容へ更新（連続編集→再保存を即座に可能にする）
+      //   ・_originalName を現在名に揃える（次回保存で同じ renames を再送しない）
+      // をローカルで行い、最新化はバックグラウンドに回す。
+      baselineRef.current = allRows.map(r => ({ ...r }));
+      setFlowRowsRaw(flows.map(r => ({ ...r, _originalName: r.name })));
+      setTerminalRowsRaw(terminals.map(r => ({ ...r, _originalName: r.name })));
       setPendingReassigns([]);   // 【G1-006】反映済みの付け替え予約をクリア
-      await onRefresh();
+      dirtyRef.current = false;  // 未編集状態に戻す（裏の refresh 完了時に安全に再初期化される）
       showToast("保存しました", "success");
+      Promise.resolve(onRefresh?.()).catch(() => { /* 背景更新の失敗は保存結果に影響しない */ });
     } catch (e) {
       // 【G1-013】stale_baseline 拒否時は GAS のメッセージ（再読み込み案内）をそのまま表示し、
       // 最新データへ同期する（編集内容は破棄されるが、他所の更新を黙って潰すよりも安全側に倒す）。
       const msg = e?.message || "保存に失敗しました";
       showToast(msg, "error");
-      if (msg.includes("再読み込み")) { try { await onRefresh(); } catch { /* noop */ } }
+      if (e?.code === "stale_baseline" || msg.includes("再読み込み")) {
+        dirtyRef.current = false;   // サーバー最新の内容で再初期化させる
+        try { await onRefresh(); } catch { /* noop */ }
+      }
     } finally {
       setSaving(false);
     }
