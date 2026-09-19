@@ -521,12 +521,16 @@ export default function StatusSettings({ statuses: statusesProp = [], scenarios 
   const usageOf = (name) => usageByName[String(name || "").trim()] || 0;
 
   useEffect(() => {
-    // 【安定化】編集中（dirty）・保存処理中は外部由来の statusesProp 更新で
-    // 行 state を初期化しない。従来はここが無条件で走るため、
+    // 【安定化】編集中（dirty）は外部由来の statusesProp 更新で行 state を初期化しない。
+    // 従来はここが無条件で走るため、
     //   ・起動時キャッシュ表示→裏の refresh() 完了
     //   ・保存後のバックグラウンド更新
     // のタイミングで編集内容が丸ごと消え「挙動が安定しない」原因になっていた。
-    if (dirtyRef.current || saving) return;
+    // ※ ガードは dirty のみ。saving を条件に含めると、stale_baseline エラー後の
+    //   catch 内 `await onRefresh()`（saving===true の間に完了する）による再初期化が
+    //   スキップされ、baseline が古いまま固定 → 以後すべての保存が stale_baseline で
+    //   拒否されるループに陥る。
+    if (dirtyRef.current) return;
     // 【G1-013】照合用スナップショット（編集 state とは別に、受信値を無加工で保持）
     baselineRef.current = statusesProp;
     if (statusesProp.length > 0) {
@@ -764,7 +768,7 @@ export default function StatusSettings({ statuses: statusesProp = [], scenarios 
     const allRows = [...flows, ...terminals];
     setSaving(true);
     try {
-      await apiCall.post(gasUrl || GAS_URL, {
+      const saveRes = await apiCall.post(gasUrl || GAS_URL, {
         action: "saveStatuses",
         statuses: allRows,
         renames,
@@ -781,13 +785,24 @@ export default function StatusSettings({ statuses: statusesProp = [], scenarios 
       // ── 保存成功: ローカルで状態を確定し、全量再取得（onRefresh）の完了を待たない ──
       // 従来はここで await onRefresh()（getAppData 全量再構築）を待ってから
       // 「保存しました」を出していたため、データ量が多い環境では保存のたびに
-      // 数十秒待たされていた。保存後のシート内容＝allRows と確定しているので、
-      //   ・baseline を保存内容へ更新（連続編集→再保存を即座に可能にする）
-      //   ・_originalName を現在名に揃える（次回保存で同じ renames を再送しない）
-      // をローカルで行い、最新化はバックグラウンドに回す。
-      baselineRef.current = allRows.map(r => ({ ...r }));
-      setFlowRowsRaw(flows.map(r => ({ ...r, _originalName: r.name })));
-      setTerminalRowsRaw(terminals.map(r => ({ ...r, _originalName: r.name })));
+      // 数十秒待たされていた。
+      // 【重要】baseline は必ず「シートを読み戻した値」から作る。Google Sheets は
+      // setValues 時に自動型変換（"true"→Boolean・数字様文字列→数値 等）を行うため、
+      // クライアント送信値（allRows）をそのまま baseline にすると、次回照合時の
+      // シート読み戻し値と型がズレて stale_baseline の誤検知になりうる。
+      // GAS（saveStatuses）は保存後のシート実体を statuses としてレスポンスに
+      // 同梱するので、それを baseline・行 state の両方に採用する。
+      const echoed = Array.isArray(saveRes?.statuses) ? saveRes.statuses : null;
+      if (echoed) {
+        baselineRef.current = echoed;
+        setFlowRowsRaw(echoed.filter(s => !s.terminalType).map(s => ({ ...s, _originalName: s.name })));
+        setTerminalRowsRaw(echoed.filter(s => s.terminalType).map(s => ({ placement: "bottom", reapproachMonths: 0, reapproachScenarioId: "", reapproachNextStatus: "", ...s, _originalName: s.name })));
+      } else {
+        // 旧版GAS（エコー非対応）へのフォールバック: 従来どおりローカル値で確定
+        baselineRef.current = allRows.map(r => ({ ...r }));
+        setFlowRowsRaw(flows.map(r => ({ ...r, _originalName: r.name })));
+        setTerminalRowsRaw(terminals.map(r => ({ ...r, _originalName: r.name })));
+      }
       setPendingReassigns([]);   // 【G1-006】反映済みの付け替え予約をクリア
       dirtyRef.current = false;  // 未編集状態に戻す（裏の refresh 完了時に安全に再初期化される）
       showToast("保存しました", "success");
