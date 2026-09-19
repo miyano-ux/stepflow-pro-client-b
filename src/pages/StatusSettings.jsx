@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
-import { GripVertical, Plus, Trash2, ChevronLeft, Save, Flag, Trash, X, ChevronUp, ChevronDown } from "lucide-react";
+import { GripVertical, Plus, Trash2, ChevronLeft, Save, Flag, Trash, X, ChevronUp, ChevronDown, Loader2 } from "lucide-react";
 import CustomSelect from "../components/CustomSelect";
 import ConfirmModal from "../components/ConfirmModal";
 import { THEME, GAS_URL } from "../lib/constants";
@@ -479,7 +479,7 @@ function SectionHeader({ icon, label, color, canAdd, onAdd, addLabel, note }) {
 }
 
 // ── メイン ────────────────────────────────────────────
-export default function StatusSettings({ statuses: statusesProp = [], scenarios = [], customers = [], onRefresh, gasUrl }) {
+export default function StatusSettings({ statuses: statusesProp = [], scenarios = [], customers = [], isLoading = false, loadError = false, onRefresh, gasUrl }) {
   const navigate  = useNavigate();
   const showToast = useToast();
   const { isMobile } = useWindowWidth();
@@ -551,7 +551,14 @@ export default function StatusSettings({ statuses: statusesProp = [], scenarios 
       if (!termArr.some(s => s.terminalType === "excluded"))
         termArr.push({ name: "除外", terminalType: "excluded", placement: "right", scenarioId: "", reportArrival: false, reportCount: false, promptFields: [], lostReasonOptions: [] });
       setTerminalRowsRaw(termArr);
-    } else {
+    } else if (!isLoading && !loadError) {
+      // 【読込表示】既定行（未対応・対応中・休眠…）での初期化は
+      // 「取得が完了して真にステータス0件（新規環境）」のときだけ行う。
+      // 従来はリロード直後の statusesProp=[]（データ未着）でもここを通るため、
+      // 実際のステータスの代わりにハードコードの既定行が表示され、
+      // 「一部ステータスしか無い／消えた」ように見えていた。
+      // 読込中・取得失敗時は行を空のままにし、レンダー側でローディング／
+      // エラー表示に切り替える（SourceManager / FormSettings と同方針）。
       setFlowRowsRaw([
         { name: "未対応", terminalType: "", scenarioId: "", reportArrival: false, reportCount: true,  promptFields: [], lostReasonOptions: [] },
         { name: "対応中", terminalType: "", scenarioId: "", reportArrival: false, reportCount: true,  promptFields: [], lostReasonOptions: [] },
@@ -564,7 +571,7 @@ export default function StatusSettings({ statuses: statusesProp = [], scenarios 
       ]);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [statusesProp]);
+  }, [statusesProp, isLoading, loadError]);
 
   // フロー行操作
   const handleFlowChange   = (idx, key, val) => setFlowRows(prev => prev.map((r, i) => i === idx ? { ...r, [key]: val } : r));
@@ -667,6 +674,8 @@ export default function StatusSettings({ statuses: statusesProp = [], scenarios 
   );
 
   const handleSave = async () => {
+    // 【読込表示】取得完了前の保存を禁止（FormSettings.jsx handleSave と同方針）
+    if (isLoading && flowRows.length === 0 && terminalRows.length === 0) { showToast("ステータスを読み込み中です。完了までお待ちください", "warning"); return; }
     if (flowRows.some(r => !r.name.trim()))     { showToast("ステータス名を入力してください", "warning"); return; }
     if (terminalRows.some(r => !r.name.trim())) { showToast("終点ステータス名を入力してください", "warning"); return; }
     if (!terminalRows.some(r => r.terminalType === "won"))  { showToast("「成約」ステータスは必須です", "warning"); return; }
@@ -849,7 +858,7 @@ export default function StatusSettings({ statuses: statusesProp = [], scenarios 
           </button>
           <h1 style={{ fontSize: isMobile ? 20 : 28, fontWeight: 900, color: THEME.textMain, margin: 0 }}>ステータス設定</h1>
         </div>
-        <button onClick={handleSave} disabled={saving} style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, padding: "12px 28px", backgroundColor: THEME.primary, color: "white", border: "none", borderRadius: 12, fontWeight: 900, fontSize: 15, cursor: "pointer", opacity: saving ? 0.7 : 1, ...(isMobile ? { width: "100%", boxSizing: "border-box" } : {}) }}>
+        <button onClick={handleSave} disabled={saving || ((isLoading || loadError) && flowRows.length === 0 && terminalRows.length === 0)} style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, padding: "12px 28px", backgroundColor: THEME.primary, color: "white", border: "none", borderRadius: 12, fontWeight: 900, fontSize: 15, cursor: "pointer", opacity: (saving || ((isLoading || loadError) && flowRows.length === 0 && terminalRows.length === 0)) ? 0.7 : 1, ...(isMobile ? { width: "100%", boxSizing: "border-box" } : {}) }}>
           <Save size={16} /> {saving ? "保存中..." : "保存する"}
         </button>
       </div>
@@ -860,6 +869,29 @@ export default function StatusSettings({ statuses: statusesProp = [], scenarios 
           : "💡 ドラッグで順番を変更できます。終点ステータスは「下部ゾーン」か「右側エリア」への配置を選択できます。"}
       </div>
 
+      {/* ── 【読込表示】データ未着の間はローディング、取得失敗はエラーを表示 ──
+          スピナーとカードの体裁は SourceManager.jsx（登録済み流入元の読込表示）と、
+          取得失敗の文言・配色は FormSettings.jsx（G2-012 / E3-014）と揃えている。
+          「取得失敗」と「取得成功かつ0件（既定行で初期化）」を区別するのは
+          両画面と同じ理由（実データがあるのに消えたと誤認させない）。 */}
+      {isLoading && flowRows.length === 0 && terminalRows.length === 0 ? (
+        <div style={{
+          padding: "56px 0", textAlign: "center",
+          color: THEME.textMuted, fontSize: 14,
+          background: "#F8FAFC", borderRadius: 12,
+          border: `1.5px dashed ${THEME.border}`,
+          display: "flex", alignItems: "center", justifyContent: "center", gap: 10,
+        }}>
+          <Loader2 size={18} style={{ animation: "spin 1s linear infinite" }} />
+          <span style={{ fontSize: 13, fontWeight: 700 }}>ステータス設定を読み込んでいます...</span>
+          <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
+        </div>
+      ) : loadError && flowRows.length === 0 && terminalRows.length === 0 ? (
+        <div style={{ textAlign: "center", padding: "40px 20px", color: "#B45309", fontSize: 14, border: "2px dashed #FCD34D", backgroundColor: "#FFFBEB", borderRadius: 12, lineHeight: 1.7 }}>
+          ステータス設定の取得に失敗しました。<br />
+          実際の登録内容が表示されていない可能性があります。ページを再読み込みしてください。
+        </div>
+      ) : (<>
       {/* ── フロー列（通常 / 契約混在・順番通り） ── */}
       {flowRows.map((s, idx) =>
         s.isFixed ? (
@@ -956,6 +988,7 @@ export default function StatusSettings({ statuses: statusesProp = [], scenarios 
           />
         ))}
       </div>
+      </>)}
     </div>
   );
 }

@@ -434,7 +434,7 @@ function App() {
               {/* 【G4-012】customers を伝播（改名マイグレーションの影響件数提示用。G2-014 と同方針） */}
               <Route path="/contract-types" element={<ContractTypeManager contractTypes={d?.contractTypes} exclusiveContractTypes={d?.exclusiveContractTypes} customers={d?.customers} onRefresh={refresh} gasUrl={GAS_URL} />} />
               <Route path="/master-settings" element={<MasterSettings isLoading={load} statuses={d?.statuses} sources={d?.sources} contractTypes={d?.contractTypes} scenarios={d?.scenarios} />} />
-              <Route path="/status-settings" element={<StatusSettings statuses={d?.statuses} scenarios={d?.scenarios} customers={d?.customers} onRefresh={refresh} gasUrl={GAS_URL} />} />
+              <Route path="/status-settings" element={<StatusSettings statuses={d?.statuses} scenarios={d?.scenarios} customers={d?.customers} isLoading={load} loadError={loadError} onRefresh={refresh} gasUrl={GAS_URL} />} />
 
               {/* テンプレート・シナリオ */}
               <Route path="/templates" element={<TemplateManager templates={d?.templates} onRefresh={refresh} gasUrl={GAS_URL} />} />
