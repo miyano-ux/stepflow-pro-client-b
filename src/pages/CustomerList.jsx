@@ -277,15 +277,24 @@ export default function CustomerList({
     const fallback  = new Set(["姓", "名", "電話番号", "登録日", "対応ステータス", "担当者メール", "シナリオID"]);
     const vis = (key) => hasSaved ? isVisible(key) : fallback.has(key);
 
-    // 【G5-006】表示列設定の保存順（displaySettings の行順）を列順として採用する。
-    //   ColumnSettings.jsx handleSave は画面の並び順どおりに配列を保存し、
-    //   GAS（表示設定シート）・localStorage とも行順を維持するため、
-    //   ここで行順をそのまま使えば「設定どおりの左→右」になる。
+    // 【G5-006改】表示列設定の保存順を「セクション内の並び」として採用し、
+    //   セクション自体の順序は デフォルト → 管理（営業） → カスタム に固定する。
+    //   設定画面（ColumnSettings）はセクションをまたぐ並べ替えができないため、
+    //   セクション順を固定しても失われるカスタマイズはない。
+    //   これにより旧順序（管理項目が先頭）で保存された既存データも、
+    //   再保存を待たずに新しいセクション順で表示される。
     //   未保存キー（一度も保存していない項目・後から追加された項目）は
-    //   従来の固定順（デフォルト → 営業管理 → カスタム）で末尾に補完する。
-    const allKeys    = [...DEFAULT_KEYS, ...SALES_KEYS, ...customKeys];
-    const savedOrder = (displaySettings || []).map(d => d.name).filter(k => allKeys.includes(k));
-    const ordered    = [...savedOrder, ...allKeys.filter(k => !savedOrder.includes(k))];
+    //   各セクションの末尾に補完する。
+    const savedOrder = (displaySettings || []).map(d => d.name).filter(Boolean);
+    const sectionOrdered = (keys) => {
+      const saved = savedOrder.filter(k => keys.includes(k));
+      return [...saved, ...keys.filter(k => !saved.includes(k))];
+    };
+    const ordered = [
+      ...sectionOrdered(DEFAULT_KEYS),
+      ...sectionOrdered(SALES_KEYS),
+      ...sectionOrdered(customKeys),
+    ];
 
     // 姓・名 → 仮想列「氏名」に統合しつつ、順序を保って可視列を確定する
     const cols = [];
@@ -318,11 +327,19 @@ export default function CustomerList({
     const fallback   = new Set(["姓", "名", "対応ステータス", "担当者メール", "シナリオID", "登録日"]);
     const srch = (key) => hasSaved ? isSearchable(key) : fallback.has(key);
 
-    // 【G5-006】検索欄の並び順も表示列設定の保存順に揃える（vCols と同方式）。
-    //   列と検索欄の並びが一致し、ユーザーが設定した順序が両方に反映される。
-    const allKeys    = [...DEFAULT_KEYS, ...SALES_KEYS, ...customKeys];
-    const savedOrder = (displaySettings || []).map(d => d.name).filter(k => allKeys.includes(k));
-    const ordered    = [...savedOrder, ...allKeys.filter(k => !savedOrder.includes(k))];
+    // 【G5-006改】検索欄の並び順も vCols と同方式：セクション順は
+    //   デフォルト → 管理 → カスタム に固定し、セクション内は保存順を尊重。
+    //   列と検索欄の並びが一致する。
+    const savedOrder = (displaySettings || []).map(d => d.name).filter(Boolean);
+    const sectionOrdered = (keys) => {
+      const saved = savedOrder.filter(k => keys.includes(k));
+      return [...saved, ...keys.filter(k => !saved.includes(k))];
+    };
+    const ordered = [
+      ...sectionOrdered(DEFAULT_KEYS),
+      ...sectionOrdered(SALES_KEYS),
+      ...sectionOrdered(customKeys),
+    ];
 
     const cols = [];
     const seen = new Set();
