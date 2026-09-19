@@ -184,7 +184,9 @@ export default function ColumnSettings({ displaySettings = [], formSettings = []
       // 【G5-003】UIのdisabledに加え保存時にも必須項目のvisibleをtrueへ強制する。
       //   過去に非表示のまま保存された設定（localStorage/表示設定シート）も
       //   次回保存で自動的に是正される。
-      const expanded = [...salesItems, ...defaultItems, ...customItems].flatMap(it => {
+      // 【表示順変更】一覧画面の列順（displaySettings の行順）に合わせて
+      //   デフォルト項目 → 管理項目 → カスタム項目 の順で保存する。
+      const expanded = [...defaultItems, ...salesItems, ...customItems].flatMap(it => {
         const vis = REQUIRED_KEYS.includes(it.key) ? true : it.visible;
         if (it.key === "氏名") return [
           { name: "姓", visible: vis, searchable: it.searchable },
@@ -254,6 +256,24 @@ export default function ColumnSettings({ displaySettings = [], formSettings = []
           表示順・表示/非表示・検索対象をカスタマイズできます。
         </div>
 
+        {/* デフォルト項目（【表示順変更】一覧の列順に合わせて先頭に配置） */}
+        <div style={{ marginBottom: 36 }}>
+          <SectionTitle>デフォルト項目</SectionTitle>
+          {defaultItems.map((it, i) => (
+            <DraggableRow
+              key={it.key} it={it} idx={i} total={defaultItems.length}
+              dragIdx={dragSec === "default" ? dragIdx : null}
+              onDragStart={defaultDrag.onDragStart}
+              onDragOver={defaultDrag.onDragOver}
+              onDragEnd={defaultDrag.onDragEnd}
+              onMoveUp={defaultMove.onMoveUp}
+              onMoveDown={defaultMove.onMoveDown}
+              onToggleVisible={() => toggle(setDefaultItems, i, "visible")}
+              onToggleSearchable={() => toggle(setDefaultItems, i, "searchable")}
+            />
+          ))}
+        </div>
+
         {/* 管理項目 */}
         <div style={{ marginBottom: 36 }}>
           <SectionTitle>管理項目</SectionTitle>
@@ -268,24 +288,6 @@ export default function ColumnSettings({ displaySettings = [], formSettings = []
               onMoveDown={salesMove.onMoveDown}
               onToggleVisible={() => toggle(setSalesItems, i, "visible")}
               onToggleSearchable={() => toggle(setSalesItems, i, "searchable")}
-            />
-          ))}
-        </div>
-
-        {/* デフォルト項目 */}
-        <div style={{ marginBottom: 36 }}>
-          <SectionTitle>デフォルト項目</SectionTitle>
-          {defaultItems.map((it, i) => (
-            <DraggableRow
-              key={it.key} it={it} idx={i} total={defaultItems.length}
-              dragIdx={dragSec === "default" ? dragIdx : null}
-              onDragStart={defaultDrag.onDragStart}
-              onDragOver={defaultDrag.onDragOver}
-              onDragEnd={defaultDrag.onDragEnd}
-              onMoveUp={defaultMove.onMoveUp}
-              onMoveDown={defaultMove.onMoveDown}
-              onToggleVisible={() => toggle(setDefaultItems, i, "visible")}
-              onToggleSearchable={() => toggle(setDefaultItems, i, "searchable")}
             />
           ))}
         </div>
