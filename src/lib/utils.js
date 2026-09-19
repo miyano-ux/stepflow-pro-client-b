@@ -148,6 +148,16 @@ export const apiCall = {
         console.log("[apiCall.post] action:", action, `(試行 ${attempt}/${maxAttempts})`, "url:", url?.slice(0, 60));
         const res = await axios.post(url, body, {
           headers: { "Content-Type": "text/plain;charset=utf-8" },
+          // 【ストール対策】axios のデフォルト timeout は 0＝無制限。一時URL
+          // （script.googleusercontent.com）は「即404」だけでなく「応答が返って
+          // こないまま接続が開き続ける」形でも失敗することがあり、その場合
+          // await が永遠に解決せずスピナーが止まらなくなる（リトライは catch に
+          // 到達して初めて働くため、タイムアウトが無いと1回目で無限待機する）。
+          // GAS 本体の処理は通常数秒〜十数秒で完了するため、実行時間に対して
+          // 十分大きい60秒で打ち切る。タイムアウト時は ECONNABORTED として
+          // throw され、下の transient マーキング → リトライ（retryable な
+          // アクションのみ）→ 最終的に日本語メッセージ、の既存経路に乗る。
+          timeout: 60000,
         });
         // 一時URLの404はHTML文字列で返るため、JSON.parse 失敗 or status≠success を失敗扱いにする。
         // 【安定化】失敗の種類を区別してエラーに印を付ける:

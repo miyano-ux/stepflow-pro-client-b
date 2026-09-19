@@ -144,7 +144,7 @@ function App() {
   const refreshStaff = useCallback(async () => {
     if (!MASTER_WHITELIST_API || !CLIENT_COMPANY_NAME) return;
     try {
-      const res = await axios.get(`${MASTER_WHITELIST_API}?action=list&company=${CLIENT_COMPANY_NAME}&_t=${Date.now()}`);
+      const res = await axios.get(`${MASTER_WHITELIST_API}?action=list&company=${CLIENT_COMPANY_NAME}&_t=${Date.now()}`, { timeout: 15000 });   // 【ストール対策】
       const list = res?.data?.users || [];
       setStaffList(list);
       localStorage.setItem("sf_staff_cache", JSON.stringify(list));
@@ -160,7 +160,14 @@ function App() {
     for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
       try {
         const [gasRes] = await Promise.all([
-          axios.get(`${GAS_URL}?_t=${Date.now()}&email=${encodeURIComponent(getUserEmail())}`),
+          // 【ストール対策】timeout 無指定（＝無制限）だと、一時URLが応答を
+          // 返さないまま接続を保持した場合に await が永遠に終わらない。
+          // FormSettings 等の保存処理は保存後に await refresh() でここを待つため、
+          // ストールすると保存スピナーが止まらなくなる。~669kB の大きな応答と
+          // GAS 側の集計時間を考慮して90秒で打ち切り、既存のリトライ（最大3回）
+          // → loadError 確定の経路に乗せる。refresh は例外を内部で握って必ず
+          // 返る設計なので、これで保存スピナーも必ず終了する。
+          axios.get(`${GAS_URL}?_t=${Date.now()}&email=${encodeURIComponent(getUserEmail())}`, { timeout: 90000 }),
           attempt === 1 ? refreshStaff() : Promise.resolve(),
         ]);
         const data = gasRes?.data;
@@ -238,6 +245,7 @@ function App() {
     try {
       const res = await axios.post(GAS_URL, JSON.stringify({ action: "getCustomers" }), {
         headers: { "Content-Type": "text/plain;charset=utf-8" },
+        timeout: 60000,   // 【ストール対策】refresh と同趣旨（無応答ストールでの無限待機を防ぐ）
       });
       const customers = res?.data?.customers;
       if (customers) setD(prev => ({ ...prev, customers }));
@@ -278,7 +286,10 @@ function App() {
       //     既知の限界（完全な失効はGAS側のリクエスト毎認証が必要）
       try {
         const url = `${MASTER_WHITELIST_API}?action=checkAllowUser&email=${encodeURIComponent(user.email)}&company=${encodeURIComponent(CLIENT_COMPANY_NAME)}&_t=${Date.now()}`;
-        const check = await axios.get(url);
+        // 【ストール対策】この await の先に前回データ描画（appCache.get→setD）があるため、
+        // ここが無応答ストールすると起動画面のまま固まる。15秒で打ち切れば既存 catch が
+        // 「可用性優先で継続」してくれる。
+        const check = await axios.get(url, { timeout: 15000 });
         if (check?.data?.allowed === false) {
           if (!cancelled) {
             localStorage.removeItem("sf_user");
@@ -322,7 +333,7 @@ function App() {
                   const email = dec.email || "";
                   try {
                     const url = `${MASTER_WHITELIST_API}?action=checkAllowUser&email=${encodeURIComponent(email)}&company=${encodeURIComponent(CLIENT_COMPANY_NAME)}`;
-                    const check = await axios.get(url);
+                    const check = await axios.get(url, { timeout: 15000 });   // 【ストール対策】無応答時にログインが固まるのを防ぐ
                     if (!check.data?.allowed) {
                       setAuthError(`${email} はこの環境へのアクセス権がありません。管理者に連絡してください。`);
                       return;
