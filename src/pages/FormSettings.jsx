@@ -189,7 +189,19 @@ export default function FormSettings({ formSettings = [], sheetCustomColumns = [
       // GAS側は「クライアントが見ていない既存項目の削除」を拒否する（部分減少ガード）。
       // 古い表示のまま保存した場合に、画面に無かった項目が黙って消える事故を防ぐ。
       const knownNames = (formSettings || []).map(f => String(f?.name || "").trim()).filter(Boolean);
-      await apiCall.post(GAS_URL, { action: "saveFormSettings", settings, confirmWipe, knownNames });
+      // 【既知事象対策】GAS WebアプリのPOSTは 302 → script.googleusercontent.com の一時URLへ
+      // リダイレクトされて応答が返るが、GAS側の処理完了「後」にこの一時URLが404を返す
+      // ことがある（＝シートには保存済みなのにフロントだけ「保存に失敗しました: 404」になる）。
+      // saveFormSettings は同一ペイロードの再送が冪等であることを確認済み：
+      //   ・1回目が成功済みの再送では、rename は oldCustomNames に旧名が無くスキップ、
+      //     新規列は既存判定でスキップ、削除対象（toRemove）は空、と全て no-op になる。
+      // そのため retry:true で自動再試行し、この既知404を自己回復させる。
+      // ※ 他の書き込みアクション（add 等）は再送で重複登録が起きうるため一律有効化はしないこと。
+      await apiCall.post(
+        GAS_URL,
+        { action: "saveFormSettings", settings, confirmWipe, knownNames },
+        { retry: true }
+      );
 
       // 【G2-014】GAS への保存が終わっても、画面側の formSettings は onRefresh 完了まで
       // 古いまま。「同期完了！」はここではなく再取得の後に出す（先に出すとユーザーが
@@ -207,8 +219,14 @@ export default function FormSettings({ formSettings = [], sheetCustomColumns = [
       nav(backTo);
     } catch (err) {
       console.error("saveFormSettings error:", err);
+      // 【既知事象対策】transient＝応答が届かなかっただけの失敗（apiCall が付与）。
+      // リトライ上限まで応答が取れなかった場合でも保存自体は完了している可能性が
+      // 高いため、英語の生エラーではなく再読み込みでの確認を促す文言にする。
+      const msg = err?.transient
+        ? "通信エラーで保存結果を確認できませんでした。保存自体は完了している可能性があります。ページを再読み込みして項目をご確認ください"
+        : "保存に失敗しました: " + (err?.message || "不明なエラー");
       if (aliveRef.current) {
-        showToast("保存に失敗しました: " + (err?.message || "不明なエラー"), "error");
+        showToast(msg, "error");
       } else {
         showToast("登録項目の保存に失敗しました。設定画面で再度お試しください", "error");
       }

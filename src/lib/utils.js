@@ -186,6 +186,16 @@ export const apiCall = {
       } catch (e) {
         lastErr = e;
         if (e?.deliberate) throw e;   // GASの意図的なエラーは再試行せず即座に返す
+        // 【安定化】一時URLの404が「200+HTML応答」ではなく「HTTPステータス404」として
+        // 返る変種。axios がここで直接 throw するため従来は素通りし、英語の生メッセージ
+        // （Request failed with status code 404）がそのままユーザーに表示されていた。
+        // GAS本体の doPost はリダイレクト前に実行完了しているため、これは
+        // 「処理は済んだが結果が届かなかった」だけの一時的失敗。transient として扱い、
+        // メッセージを既知事象の説明に差し替える（retryable なアクションなら再試行で自己回復する）。
+        if (e?.response || e?.request) {
+          e.transient = true;
+          e.message = "GASの応答を受信できませんでした（一時URLの404等の既知事象）。処理自体は完了している可能性があります。もう一度お試しください。";
+        }
         if (attempt < maxAttempts) {
           await new Promise(r => setTimeout(r, 400 * attempt)); // 0.4s, 0.8s の指数バックオフ
           continue;
