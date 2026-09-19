@@ -71,20 +71,53 @@ export default function FormSettings({ formSettings = [], sheetCustomColumns = [
   const [saved, setSaved]         = useState(false);
   const [confirmModal, setConfirmModal] = useState(null);
 
-  // ── 【G2-012】props 到着後の再同期 ────────────────────────────────
+  // ── 【G2-012改】props 到着後の再同期 ────────────────────────────────
   // App.jsx は load=true の間もルートを描画する（App.jsx:287-289）ため、
   // /form-settings に直接アクセス／再読み込みすると GAS 取得完了前の
-  // formSettings=[]（App.jsx:74）を初期値として掴み、以後 items が空のまま
-  // 固定される＝既存カスタム項目が0件に見える。
-  // ColumnSettings.jsx:127-170 / StatusSettings.jsx:448-479 と同じく props を
-  // state へ同期する。取り込みは「最初にデータが届いた1回だけ」に限定し、
-  // 編集中の上書き・無限ループを防ぐ。
-  const hydratedRef = useRef((formSettings || []).length > 0);
+  // formSettings=[]（App.jsx:74）を初期値として掴むことがある。
+  //
+  // 旧実装は「最初にデータが届いた1回だけ」取り込む方式だったが、
+  // stale-while-revalidate（App.jsx: IndexedDB の前回データを即描画→裏で refresh）
+  // 環境では、マウント時にキャッシュ由来の古い formSettings で hydrated 扱いになり、
+  // その後に届く最新データ（例: 一時URL404で応答が喪失した保存＝実際にはシート反映済みの
+  // 項目や、別端末・別タブでの保存で増えた項目）が
+  // 画面に一切反映されなかった。ヘッダーの「データを同期」も同じ理由で無効化していた。
+  // さらに doSave の knownNames が props 直参照だったため、「props は最新・画面は古い」
+  // 状態で保存すると、画面に表示されていない既存項目が knownNames に含まれて
+  // GAS の部分減少ガードを通過し、列がデータごと無言削除される危険があった。
+  //
+  // 対策: props の内容が変わるたびに再同期する。
+  //   ・未編集（dirtyRef=false）→ 全量を再取り込み（originalName も最新化される）
+  //   ・編集中（dirtyRef=true）→ 編集内容は保持しつつ、画面に無い既存項目だけ末尾に補完
+  // 併せて hydratedNamesRef（画面が実際に取り込んだ既存項目名）を保持し、
+  // doSave の knownNames はこれを使う。「GASに削除してよいと伝える集合」＝
+  // 「ユーザーが画面上で見て判断できた集合」を厳密に一致させるため。
+  const dirtyRef = useRef(false);   // ユーザーが items を編集したか（保存成功でリセット）
+  const hydratedSigRef   = useRef((formSettings || []).length > 0 ? JSON.stringify(formSettings) : null);
+  const hydratedNamesRef = useRef(new Set(
+    (formSettings || []).map(f => String(f?.name || "").trim()).filter(Boolean)
+  ));
   useEffect(() => {
-    if (hydratedRef.current) return;
-    if (!formSettings || formSettings.length === 0) return;
-    hydratedRef.current = true;
-    setItems(buildItems(formSettings));
+    const list = formSettings || [];
+    if (list.length === 0) return;                    // 未ロード（or 取得失敗）は据え置き
+    const sig = JSON.stringify(list);
+    if (sig === hydratedSigRef.current) return;       // 内容変化なし
+    hydratedSigRef.current = sig;
+    hydratedNamesRef.current = new Set(list.map(f => String(f?.name || "").trim()).filter(Boolean));
+    if (!dirtyRef.current) {
+      setItems(buildItems(list));
+      return;
+    }
+    // 編集中: 編集内容は保持し、画面に存在しない既存項目だけ末尾に補完する。
+    // 補完しないと、ユーザーが見ていない項目を「削除の意思あり」として送る事故か、
+    // knownNames に載らず部分減少ガードで保存不能になるかのどちらかになる。
+    setItems(prev => {
+      const seen = new Set(
+        prev.flatMap(i => [String(i.originalName || "").trim(), String(i.name || "").trim()]).filter(Boolean)
+      );
+      const additions = buildItems(list.filter(f => !seen.has(String(f?.name || "").trim())));
+      return additions.length ? [...prev, ...additions] : prev;
+    });
   }, [formSettings]);
 
   // ── 【G2-014】画面離脱後の強制遷移を防ぐ生存フラグ ──────────────
@@ -146,10 +179,13 @@ export default function FormSettings({ formSettings = [], sheetCustomColumns = [
   }, [items, formSettings, customers]);
 
   // ── 項目操作 ──────────────────────────────────────
-  const updateItem = useCallback((index, patch) =>
-    setItems(prev => prev.map((item, i) => i === index ? { ...item, ...patch } : item)), []);
+  const updateItem = useCallback((index, patch) => {
+    dirtyRef.current = true;   // 【G2-012改】編集開始＝props 再同期は「補完のみ」に切替
+    setItems(prev => prev.map((item, i) => i === index ? { ...item, ...patch } : item));
+  }, []);
 
   const handleAdd = () => {
+    dirtyRef.current = true;   // 【G2-012改】
     setItems(prev => {
       const next = [...prev, { name: "", type: "text", required: true, options: [""], originalName: "" }];
       setOpenIndex(next.length - 1);
@@ -158,6 +194,7 @@ export default function FormSettings({ formSettings = [], sheetCustomColumns = [
   };
 
   const handleDelete = (index) => {
+    dirtyRef.current = true;   // 【G2-012改】
     setItems(prev => prev.filter((_, i) => i !== index));
     setOpenIndex(null);
   };
@@ -188,7 +225,11 @@ export default function FormSettings({ formSettings = [], sheetCustomColumns = [
       // 【G2-012追加ガード】knownNames: この画面が読み込み時に認識していた既存項目名。
       // GAS側は「クライアントが見ていない既存項目の削除」を拒否する（部分減少ガード）。
       // 古い表示のまま保存した場合に、画面に無かった項目が黙って消える事故を防ぐ。
-      const knownNames = (formSettings || []).map(f => String(f?.name || "").trim()).filter(Boolean);
+      // 【G2-012改】knownNames は props ではなく「画面が実際に取り込んだ既存項目名」を送る。
+      // props 直参照だと、裏で refresh が完了して props だけ最新化された瞬間に、
+      // 画面に表示されていない既存項目まで「認識済み（＝削除の意思あり）」として
+      // 送ってしまい、GAS の部分減少ガードを通過して列がデータごと無言削除される。
+      const knownNames = [...hydratedNamesRef.current];
       // 【既知事象対策】GAS WebアプリのPOSTは 302 → script.googleusercontent.com の一時URLへ
       // リダイレクトされて応答が返るが、GAS側の処理完了「後」にこの一時URLが404を返す
       // ことがある（＝シートには保存済みなのにフロントだけ「保存に失敗しました: 404」になる）。
@@ -202,6 +243,11 @@ export default function FormSettings({ formSettings = [], sheetCustomColumns = [
         { action: "saveFormSettings", settings, confirmWipe, knownNames },
         { retry: true }
       );
+
+      // 【G2-012改】保存成功＝編集内容はサーバーへ反映済み。dirty を解除しておくことで、
+      // 直後の onRefresh で届く最新 formSettings が全量再取り込みされ、
+      // originalName・hydratedNamesRef が最新状態に揃う。
+      dirtyRef.current = false;
 
       // 【G2-014】GAS への保存が終わっても、画面側の formSettings は onRefresh 完了まで
       // 古いまま。「同期完了！」はここではなく再取得の後に出す（先に出すとユーザーが
