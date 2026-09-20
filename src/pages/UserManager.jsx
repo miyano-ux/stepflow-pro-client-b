@@ -569,7 +569,10 @@ export default function UserManager({
                 <th style={lS.tableTh}>メールアドレス</th>
                 <th style={lS.tableTh}>電話番号</th>
                 <th style={lS.tableTh}>紹介ページ</th>
-                <th style={{ ...lS.tableTh, textAlign: "center", width: 120 }}>操作</th>
+                {/* 【固定列】横スクロール時も操作（編集・削除）を常時表示。separator用に左シャドウ */}
+                <th style={{ ...lS.tableTh, textAlign: "center", width: 120, minWidth: 120,
+                  position: "sticky", right: 0, zIndex: 2,
+                  boxShadow: "-8px 0 8px -8px rgba(15, 23, 42, 0.15)" }}>操作</th>
               </tr>
             </thead>
             <tbody>
@@ -583,7 +586,7 @@ export default function UserManager({
                 staffList.map(u => (
                   <tr
                     key={u.email}
-                    style={{ transition: "0.15s" }}
+                    style={{ transition: "0.15s", backgroundColor: "white" }}
                     onMouseEnter={e => e.currentTarget.style.backgroundColor = "#F8FAFC"}
                     onMouseLeave={e => e.currentTarget.style.backgroundColor = "white"}
                   >
@@ -625,7 +628,10 @@ export default function UserManager({
                         <span style={{ fontSize: 12, color: THEME.textMuted }}>非公開</span>
                       )}
                     </td>
-                    <td style={lS.tableTd}>
+                    <td style={{ ...lS.tableTd, width: 120, minWidth: 120,
+                      position: "sticky", right: 0, zIndex: 1,
+                      backgroundColor: "inherit",
+                      boxShadow: "-8px 0 8px -8px rgba(15, 23, 42, 0.12)" }}>
                       <div style={{ display: "flex", gap: 16, justifyContent: "center" }}>
                         <button
                           onClick={() => navigate(`/users/edit/${encodeURIComponent(u.email)}`, { state: { user: u } })}
