@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { Trash2 } from "lucide-react";
+import CustomSelect from "./CustomSelect";
 import { THEME } from "../lib/constants";
 
 // ==========================================
@@ -102,9 +103,12 @@ function ConfirmModal({
           </p>
         )}
 
-        {/* 【G1-006拡張】付け替え先などの選択プルダウン
-            ネイティブ select を使う（CustomSelect はドロップダウン描画が
-            モーダルの zIndex:3000 と干渉しうるため、共通部品側は依存を持たない）。 */}
+        {/* 【G1-006拡張】付け替え先などの選択プルダウン。
+            アプリ標準のデザイン化プルダウン（CustomSelect）を使う。
+            CustomSelect のドロップダウンはトリガー直下に position:absolute で
+            描画される（ポータル非使用）ため、このモーダル DOM の内側にある限り
+            zIndex:3000 のオーバーレイとは干渉しない。モーダル本体（白カード）は
+            overflow を指定していないので、リストがカード外へはみ出しても表示される。 */}
         {hasSelect && (
           <div style={{ margin: "0 0 24px", textAlign: "left" }}>
             {select.label && (
@@ -112,22 +116,13 @@ function ConfirmModal({
                 {select.label}
               </div>
             )}
-            <select
+            <CustomSelect
               value={selected}
-              onChange={(e) => setSelected(e.target.value)}
-              style={{
-                width: "100%", boxSizing: "border-box",
-                padding: "10px 12px", borderRadius: 10,
-                border: "1.5px solid #E5E7EB",
-                fontSize: 14, fontWeight: 700, color: "#111827",
-                backgroundColor: "white", outline: "none",
-                cursor: "pointer",
-              }}
-            >
-              {select.options.map((o) => (
-                <option key={o.value} value={o.value}>{o.label}</option>
-              ))}
-            </select>
+              onChange={(v) => setSelected(v)}
+              options={select.options}
+              color={select.color}
+              placeholder={select.placeholder}
+            />
           </div>
         )}
 
