@@ -259,8 +259,12 @@ export default function AnalysisReport({ customers = [], statuses = [], tracking
   const maxAvgDays    = Math.max(...phaseTransitions.map(p => p.avgDays ?? 0), 1);
 
   // 下部グリッド列数
+  // 【レスポンシブ】従来はステータス数≦4で repeat(N,1fr) 固定だったが、中間幅(768〜1200px)で
+  //   1枚のカードが極端に潰れるため、auto-fit + minmax で幅に応じ自動で折返す方式に統一。
+  //   ≦4件は auto-fit（空トラックを畳んでカードが行幅いっぱいに伸びる）、
+  //   5件以上は従来通り auto-fill（カード幅を揃えて整列）。
   const terminalGridCols = terminalStatuses.length <= 4
-    ? `repeat(${terminalStatuses.length}, 1fr)`
+    ? "repeat(auto-fit, minmax(220px, 1fr))"
     : "repeat(auto-fill, minmax(240px, 1fr))";
 
   return (

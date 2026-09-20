@@ -451,7 +451,9 @@ export default function CustomerDetail({
   const { id } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
-  const { isMobile } = useWindowWidth();
+  // 【レスポンシブ】右カラム固定360pxの2カラムは中間幅(768〜1023px)で左カラムが潰れるため、
+  //   isDesktop(1024px以上)でのみ2カラム、それ未満は縦積みにする。
+  const { isMobile, isDesktop } = useWindowWidth();
 
   const [isEditing, setIsEditing] = useState(false);
   const [scenarioConfirm, setScenarioConfirm] = useState(null); // { newStatus, scenarioId }
@@ -1018,7 +1020,7 @@ export default function CustomerDetail({
       </div>
 
       {/* ── メインコンテンツ ── */}
-      <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 360px", gap: isMobile ? 20 : 28, alignItems: "start" }}>
+      <div style={{ display: "grid", gridTemplateColumns: isDesktop ? "1fr 360px" : "1fr", gap: isDesktop ? 28 : 20, alignItems: "start" }}>
 
         {/* 左：顧客情報 */}
         <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>

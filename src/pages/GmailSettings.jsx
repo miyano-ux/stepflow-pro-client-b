@@ -196,7 +196,8 @@ export default function GmailSettings({
 }) {
   const showToast = useToast();
   const navigate  = useNavigate();
-  const { isMobile } = useWindowWidth();
+  // 【レスポンシブ】isDesktop はモーダル右プレビュー(320px)の2カラム切替に使用(中間幅では縦積み)
+  const { isMobile, isDesktop } = useWindowWidth();
 
   // ── state / ref 宣言（useEffectより前に全部置く・TDZエラー防止）──
   // IDはコンポーネントライフタイムで単調増加するカウンターで管理する。
@@ -664,7 +665,7 @@ export default function GmailSettings({
             maxHeight: isMobile ? "100%" : "92vh",
             overflowY: "auto",
             display: "grid",
-            gridTemplateColumns: isMobile ? "1fr" : "1fr 320px",
+            gridTemplateColumns: isDesktop ? "1fr 320px" : "1fr",
             boxShadow: "0 24px 48px rgba(0,0,0,0.15)",
           }}>
 

@@ -11,7 +11,8 @@ const BAR_COLORS = ["#EF4444","#F97316","#EAB308","#84CC16","#06B6D4","#8B5CF6",
 export default function LostReport({ customers = [], statuses = [], staffList = [], isLoading = false }) {
   const navigate  = useNavigate();
   const [filterStaff, setFilterStaff] = useState("");
-  const { isMobile } = useWindowWidth();
+  // 【レスポンシブ】isDesktop はランキング2カラム(2fr 1fr)の切替に使用(中間幅では縦積み)
+  const { isMobile, isDesktop } = useWindowWidth();
 
   // 【E5-004】失注ステータスは terminalType だけで解決する。
   //   旧実装の `|| statuses[statuses.length - 1]` は、terminalType==="lost" が
@@ -106,7 +107,7 @@ export default function LostReport({ customers = [], statuses = [], staffList = 
         ) : (
         <>
         {/* サマリ */}
-        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr 1fr", gap: isMobile ? 12 : 20, marginBottom: 32 }}>
+        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fit, minmax(200px, 1fr))", gap: isMobile ? 12 : 20, marginBottom: 32 }}>
           {[
             { label: "失注総数", value: totalLost, unit: "件", color: "#DC2626", bg: "#FEF2F2" },
             { label: "失注率", value: scopedCustomers.length > 0 ? `${Math.round(totalLost / scopedCustomers.length * 100)}%` : "–", unit: "", color: "#D97706", bg: "#FFFBEB" },
@@ -119,7 +120,7 @@ export default function LostReport({ customers = [], statuses = [], staffList = 
           ))}
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "2fr 1fr", gap: isMobile ? 16 : 24 }}>
+        <div style={{ display: "grid", gridTemplateColumns: isDesktop ? "2fr 1fr" : "1fr", gap: isDesktop ? 24 : 16 }}>
           {/* 失注理由ランキング */}
           <div style={{ backgroundColor: "white", borderRadius: 16, border: `1px solid ${THEME.border}`, padding: isMobile ? "20px 18px" : "28px 32px", boxShadow: "0 2px 8px rgba(0,0,0,0.04)" }}>
             <div style={{ fontSize: 16, fontWeight: 900, color: THEME.textMain, marginBottom: 24 }}>失注理由ランキング</div>

@@ -178,7 +178,8 @@ function DirectSms({ customers = [], templates = [], staffList = [], onRefresh, 
   const { id } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
-  const { isMobile } = useWindowWidth();
+  // 【レスポンシブ】isDesktop は右カラム固定350pxレイアウトの切替に使用(中間幅では縦積み)
+  const { isMobile, isDesktop } = useWindowWidth();
   const [mobileTemplatesOpen, setMobileTemplatesOpen] = useState(false);
 
   // 【C4-002残穴対応】顧客特定(customers の id × URLパラメータ)を trim 対称化する。
@@ -423,7 +424,7 @@ function DirectSms({ customers = [], templates = [], staffList = [], onRefresh, 
         >
           <ArrowLeft size={16} /> {c["姓"]} {c["名"]} 様の詳細に戻る
         </button>
-        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 350px", gap: isMobile ? "20px" : "32px" }}>
+        <div style={{ display: "grid", gridTemplateColumns: isDesktop ? "1fr 350px" : "1fr", gap: isDesktop ? "32px" : "20px" }}>
 
           {/* ── 左カラム：送信設定 */}
           <div>

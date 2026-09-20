@@ -250,7 +250,9 @@ export default function SourceReport({
   const fetchedWonEntries = wonRes ? (wonRes.wonEntries || []) : null;
 
   const navigate = useNavigate();
-  const { isMobile } = useWindowWidth();
+  // 【レスポンシブ】isTablet は専任率ランキング(220px固定)＋グラフの2カラム切替に使用。
+  //   モバイルは従来通り横スクロール(main側 overflowX)で閲覧するため挙動を変えない。
+  const { isMobile, isTablet } = useWindowWidth();
   const [periodCP, setPeriodCP]     = useState({ from: "", to: "" });  // 契約獲得力
   const [periodROI, setPeriodROI]   = useState({ from: "", to: "" });  // 成約金額ROI
   const [periodCost, setPeriodCost] = useState({ from: "", to: "" });  // 費用対効果
@@ -764,7 +766,7 @@ export default function SourceReport({
             </div>
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "220px 1fr", gap: 20 }}>
+          <div style={{ display: "grid", gridTemplateColumns: isTablet ? "1fr" : "220px 1fr", gap: 20 }}>
 
             {/* 専任率ランキング */}
             <div>

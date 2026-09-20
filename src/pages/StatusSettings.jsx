@@ -43,7 +43,7 @@ const REAPPROACH_MONTH_OPTIONS = [
 
 // ── 通常フロー行 ───────────────────────────────────────
 function StatusRow({ s, idx, total, scenarios, onChange, onDelete, onDragStart, onDragOver, onDrop, onMoveUp, onMoveDown, onPromptAdd, onPromptRemove, usedScenarios }) {
-  const { isMobile } = useWindowWidth();
+  const { isMobile, isDesktop } = useWindowWidth();
   return (
     <div
       draggable={!isMobile}
@@ -65,7 +65,7 @@ function StatusRow({ s, idx, total, scenarios, onChange, onDelete, onDragStart, 
         <div style={{ paddingTop: 10, color: THEME.textMuted, flexShrink: 0 }}><GripVertical size={16} /></div>
       )}
 
-      <div style={{ flex: 1, minWidth: 0, display: "grid", gridTemplateColumns: isMobile ? "1fr" : "2fr 2fr 1.2fr", gap: 10, alignItems: "start" }}>
+      <div style={{ flex: 1, minWidth: 0, display: "grid", gridTemplateColumns: isDesktop ? "2fr 2fr 1.2fr" : "1fr", gap: 10, alignItems: "start" }}>
         <div>
           <div style={{ fontSize: 11, fontWeight: 700, color: THEME.textMuted, marginBottom: 4 }}>ステータス名</div>
           <input style={{ ...styles.input, margin: 0 }} value={s.name} onChange={e => onChange(idx, "name", e.target.value)} placeholder="例: 対応中" />
@@ -121,7 +121,7 @@ const CONTRACT_BG     = "#F0F9FF";
 const CONTRACT_BORDER = "#BAE6FD";
 
 function ContractRow({ s, idx, total, scenarios, onChange, onDelete, onDragStart, onDragOver, onDrop, onMoveUp, onMoveDown, onPromptAdd, onPromptRemove, usedScenarios }) {
-  const { isMobile } = useWindowWidth();
+  const { isMobile, isDesktop } = useWindowWidth();
   return (
     <div
       draggable={!isMobile}
@@ -151,7 +151,7 @@ function ContractRow({ s, idx, total, scenarios, onChange, onDelete, onDragStart
         <div style={{ paddingTop: 10, color: CONTRACT_COLOR, flexShrink: 0 }}><GripVertical size={16} /></div>
       )}
 
-      <div style={{ flex: 1, minWidth: 0, display: "grid", gridTemplateColumns: isMobile ? "1fr" : "2fr 2fr 1.2fr", gap: 10, alignItems: "start" }}>
+      <div style={{ flex: 1, minWidth: 0, display: "grid", gridTemplateColumns: isDesktop ? "2fr 2fr 1.2fr" : "1fr", gap: 10, alignItems: "start" }}>
         <div>
           <div style={{ fontSize: 11, fontWeight: 700, color: CONTRACT_COLOR, marginBottom: 4 }}>ステータス名</div>
           <input
@@ -211,7 +211,7 @@ function ContractRow({ s, idx, total, scenarios, onChange, onDelete, onDragStart
 
 // ── 終点ステータス行 ──────────────────────────────────
 function TerminalRow({ row, idx, scenarios, usedScenarios, flowStatusNames = [], linkedScenarioByName = {}, onChange, onDelete }) {
-  const { isMobile } = useWindowWidth();
+  const { isMobile, isDesktop } = useWindowWidth();
   const meta = TERMINAL_META[row.terminalType] || TERMINAL_META.dormant;
   const { icon, color, bg, canDelete, canRename, hasPlacement } = meta;
   const isLost = row.terminalType === "lost";
@@ -241,7 +241,7 @@ function TerminalRow({ row, idx, scenarios, usedScenarios, flowStatusNames = [],
         </div>
 
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : (isDormant ? "1.5fr 1fr 0.8fr" : "1.5fr 1.5fr 1fr 0.8fr"), gap: 10, alignItems: "start" }}>
+          <div style={{ display: "grid", gridTemplateColumns: isDesktop ? (isDormant ? "1.5fr 1fr 0.8fr" : "1.5fr 1.5fr 1fr 0.8fr") : "1fr", gap: 10, alignItems: "start" }}>
             {/* ステータス名 */}
             <div>
               <div style={{ fontSize: 11, fontWeight: 700, color, marginBottom: 4 }}>ステータス名</div>
