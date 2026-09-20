@@ -249,13 +249,20 @@ export default function FormSettings({ formSettings = [], sheetCustomColumns = [
       // originalName・hydratedNamesRef が最新状態に揃う。
       dirtyRef.current = false;
 
-      // 【G2-014】GAS への保存が終わっても、画面側の formSettings は onRefresh 完了まで
-      // 古いまま。「同期完了！」はここではなく再取得の後に出す（先に出すとユーザーが
-      // 完了と誤認して別ページへ移動し、遅れて発火する nav に引き戻される）。
-      if (onRefresh) await onRefresh();
+      // 【G2-014改】完了表示・画面遷移を、全件再取得（onRefresh）の完了から切り離す。
+      // 従来は await onRefresh()（全件GET・数秒〜十数秒）の後にしか「同期完了！」が
+      // 出なかったため、待ち時間中にユーザーがリロード／離脱すると
+      //   ・保存は成功しているのに完了表示を一度も見られない
+      //   ・リロード後は IndexedDB の旧データが先に描画され、裏の refresh が
+      //     失敗し続けるとシートと画面の表記が乖離したままになる
+      // という事故が起きていた。saveFormSettings が成功した時点でサーバー側は
+      // 確定しているため、完了表示と遷移は即時に行い、再取得は待たずに裏で開始する
+      // （refresh は App 側の関数なので、この画面のアンマウント後も安全に完走して
+      // d と IndexedDB キャッシュを最新化する）。
+      // 旧G2-014の懸念「遅延して発火する nav に引き戻される」は、nav を即時実行する
+      // ことで待機中の nav 自体が存在しなくなり解消する。
+      if (onRefresh) onRefresh();   // await しない（背景で最新化）
 
-      // 【G2-014】待機中に別ページへ移動済みなら、遷移も state 更新も行わない。
-      // 保存自体は成功しているのでトーストだけで結果を伝える。
       if (!aliveRef.current) {
         showToast("登録項目の保存が完了しました", "success");
         return;
@@ -601,8 +608,8 @@ export default function FormSettings({ formSettings = [], sheetCustomColumns = [
         </div>
 
         {/* 保存ボタン */}
-        {/* 【G2-014】「同期完了！」は onRefresh 後にしか立たない（doSave 参照）。
-            待機中は所要時間と離脱時の挙動を明示して、誤認による離脱を減らす。 */}
+        {/* 【G2-014改】「同期完了！」は saveFormSettings 成功の直後に立つ（doSave 参照）。
+            最新データの再取得は背景で行われるため、待機は保存POSTの間のみ。 */}
         <button
           onClick={handleSave}
           disabled={saving || isLoading}
@@ -620,8 +627,8 @@ export default function FormSettings({ formSettings = [], sheetCustomColumns = [
 
         {saving && (
           <p style={{ marginTop: 12, fontSize: 12, color: THEME.textMuted, textAlign: "center", lineHeight: 1.7 }}>
-            保存内容を顧客リストへ反映し、最新データを再取得しています（数秒〜十数秒かかる場合があります）。<br />
-            このまま他の画面へ移動しても保存は継続されます。
+            保存内容をサーバーへ反映しています（通常は数秒で完了します）。<br />
+            完了後、最新データの再取得は自動的に背景で行われます。
           </p>
         )}
       </div>

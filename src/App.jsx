@@ -124,6 +124,10 @@ function App() {
   const [loadError, setLoadError] = useState(false);
   // 【高速化 E】最終更新時刻 / 前回データ表示中フラグ
   const [lastUpdated, setLastUpdated] = useState(null);
+  // 【乖離自己修復】refresh 全試行失敗後の自動再試行タイマーと、
+  // setTimeout から常に最新の refresh を呼ぶための参照（下で毎レンダー更新）
+  const refreshRetryTimer = useRef(null);
+  const refreshFnRef      = useRef(null);
   const [fromCache,   setFromCache]   = useState(false);
   const [user, setUser] = useState(() => {
     const sUser = localStorage.getItem("sf_user");
@@ -208,6 +212,8 @@ function App() {
         }
         setD(data);
         setLoadError(false);
+        // 【乖離自己修復】成功したので予約済みの自動再試行を解除
+        if (refreshRetryTimer.current) { clearTimeout(refreshRetryTimer.current); refreshRetryTimer.current = null; }
         // 【高速化 E】復元済みの d を次回起動用に保存（ユーザー単位キー）
         setLastUpdated(Date.now());
         setFromCache(false);
@@ -236,9 +242,20 @@ function App() {
         console.error("[refresh] データ取得に失敗しました（リトライ上限）", e);
         setLoadError(true);
         setLoad(false);
+        // 【乖離自己修復】失敗をここで打ち切ると、IndexedDB の旧データが描画された
+        // まま次のリロードまで最新化の機会が無く、サーバー（スプレッドシート）と
+        // 画面の表記が乖離し続ける。20秒後に自動で再試行を予約し、回復し次第
+        // d とキャッシュを最新化して乖離を自己修復する（成功時に予約は解除される。
+        // ログアウト時は userRef ガードで自然に停止する）。
+        if (refreshRetryTimer.current) clearTimeout(refreshRetryTimer.current);
+        refreshRetryTimer.current = setTimeout(() => {
+          refreshRetryTimer.current = null;
+          if (userRef.current) refreshFnRef.current?.();
+        }, 20000);
       }
     }
   }, [getDisplaySettings, getUserEmail, refreshStaff]);
+  refreshFnRef.current = refresh;   // 【乖離自己修復】setTimeout から最新版を呼ぶための同期
 
   const lightRefresh = useCallback(async () => {
     if (!GAS_URL) return;
@@ -413,12 +430,23 @@ function App() {
           />
 
           {/* 【高速化 E】最終更新バッジ */}
+          {/* 【乖離自己修復】失敗時はバッジを操作可能にし、自動再試行（20秒毎）を
+              待たずにタップで即時再試行できるようにする。従来は pointerEvents:none の
+              小さな「・最新化に失敗」だけで、失敗に気づけず古い表示を信じてしまっていた。 */}
           {lastUpdated && (
-            <div style={{ position: "fixed", right: 12, bottom: 8, zIndex: 50, fontSize: 11, color: THEME.textMuted,
-                          background: "rgba(255,255,255,.9)", padding: "2px 8px", borderRadius: 6, pointerEvents: "none" }}>
+            <div
+              onClick={loadError ? () => refresh() : undefined}
+              title={loadError ? "タップで最新データを再取得します" : undefined}
+              style={{ position: "fixed", right: 12, bottom: 8, zIndex: 50, fontSize: 11,
+                       color: loadError ? "#B91C1C" : THEME.textMuted,
+                       background: loadError ? "#FEF2F2" : "rgba(255,255,255,.9)",
+                       border: loadError ? "1px solid #FECACA" : "none",
+                       padding: "2px 8px", borderRadius: 6,
+                       pointerEvents: loadError ? "auto" : "none",
+                       cursor: loadError ? "pointer" : "default" }}>
               最終更新 {new Date(lastUpdated).toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" })}
               {fromCache && !loadError && "（更新中…）"}
-              {loadError && "・最新化に失敗"}
+              {loadError && "・最新化に失敗（タップで再試行）"}
             </div>
           )}
 
