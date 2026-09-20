@@ -527,6 +527,21 @@ export default function CustomerDetail({
   // 【ペイロード分離】履歴系は props ではなく getCustomerBundle で顧客単位に取得する
   const [fetchedStatusHistory, setFetchedStatusHistory] = useState(null);
   const [fetchedTrackingLogs, setFetchedTrackingLogs]   = useState(null);
+  // 【誤認防止】getCustomerBundle の初回取得が完了するまでは「まだありません」ではなく
+  //   「読み込み中...」を表示する。0件／読み込み中／取得失敗を区別しないと、
+  //   シートに履歴行があるのに数秒間「まだ履歴がありません」と表示され誤認を招く。
+  //   ※ 保存後の reloadBundle 再実行時は既存の表示データを維持したいため、
+  //     true に戻すのは下の「顧客ID変更時のリセット」のみ（finally で false 固定）。
+  const [isBundleLoading, setIsBundleLoading] = useState(true);
+
+  // 顧客IDが変わったら取得済みデータを破棄し、読み込み中状態に戻す
+  // （顧客Aの履歴が顧客Bの画面に一瞬表示されるのも防ぐ）
+  useEffect(() => {
+    setFetchedStatusHistory(null);
+    setFetchedTrackingLogs(null);
+    setIsBundleLoading(true);
+  }, [id]);
+
   const reloadBundle = useCallback(async () => {
     if (!id) return;
     try {
@@ -550,6 +565,10 @@ export default function CustomerDetail({
     } catch (e) {
       console.warn("[CustomerDetail] getCustomerBundle 取得失敗", e);
       showToast("履歴・物件情報の取得に失敗しました（表示が最新でない可能性があります）", "error");
+    } finally {
+      // 成功・失敗にかかわらず読み込み中表示は解除する
+      // （失敗時に「読み込み中...」が永久に残るのを防ぐ。失敗は上のトーストで通知済み）
+      setIsBundleLoading(false);
     }
   }, [id, showToast]);
   useEffect(() => { reloadBundle(); }, [reloadBundle]);
@@ -1245,7 +1264,7 @@ export default function CustomerDetail({
         <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
 
         {/* ステータス遷移タイムライン */}
-        <StatusTimeline history={customerStatusHistory} />
+        <StatusTimeline history={customerStatusHistory} isLoading={isBundleLoading} />
 
         {/* アクティビティログ */}
         <div style={styles.card}>
@@ -1253,7 +1272,14 @@ export default function CustomerDetail({
             <History size={15} /> アクティビティ
           </h3>
 
-          {customerLogs.length === 0 ? (
+          {/* 【誤認防止】初回取得完了前は「まだありません」ではなく読み込み中を表示。
+              isBundleLoading && length===0 の判定にしているのは、保存後の再取得中でも
+              表示できるデータがあればスピナーで隠さずそのまま見せるため */}
+          {isBundleLoading && customerLogs.length === 0 ? (
+            <div style={{ textAlign: "center", padding: "40px 0", color: THEME.textMuted, fontSize: 13, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+              <Loader2 size={16} className="animate-spin" /> アクティビティを読み込み中...
+            </div>
+          ) : customerLogs.length === 0 ? (
             <div style={{ textAlign: "center", padding: "40px 0", color: THEME.textMuted, fontSize: 13 }}>
               アクティビティはまだありません
             </div>

@@ -1,5 +1,5 @@
 import React from "react";
-import { Clock } from "lucide-react";
+import { Clock, Loader2 } from "lucide-react";
 import { THEME } from "../lib/constants";
 
 // ==========================================
@@ -52,7 +52,9 @@ function DaysBadge({ duration, isCurrent }) {
   );
 }
 
-export default function StatusTimeline({ history = [] }) {
+// isLoading: getCustomerBundle の初回取得が完了するまで true（CustomerDetail から渡される）。
+// 0件と読み込み中を区別し、「まだ履歴がありません」の誤表示を防ぐ。
+export default function StatusTimeline({ history = [], isLoading = false }) {
   // 古い順に並べる
   const sorted = [...history].sort((a, b) => new Date(a["変更日時"]) - new Date(b["変更日時"]));
 
@@ -72,7 +74,13 @@ export default function StatusTimeline({ history = [] }) {
         <Clock size={15} /> ステータス遷移
       </h3>
 
-      {sorted.length === 0 ? (
+      {/* 【誤認防止】isLoading && 0件 のときのみ読み込み中表示。
+          楽観的更新エントリ等で表示できる履歴があればそちらを優先して見せる */}
+      {isLoading && sorted.length === 0 ? (
+        <div style={{ textAlign: "center", padding: "32px 0", color: THEME.textMuted, fontSize: 13, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+          <Loader2 size={16} className="animate-spin" /> 履歴を読み込み中...
+        </div>
+      ) : sorted.length === 0 ? (
         <div style={{ textAlign: "center", padding: "32px 0", color: THEME.textMuted, fontSize: 13 }}>
           まだ履歴がありません
         </div>
