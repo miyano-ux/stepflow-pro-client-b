@@ -28,7 +28,11 @@ function CustomerSchedule({ customers = [], deliveryLogs = [], onRefresh, isLoad
     return m ? `シナリオのステップ${m[2]}` : s;
   };
 
-  const c = customers?.find((x) => String(x.id) === String(id));
+  // 【C4-002残穴対応】顧客特定(customers の id × URLパラメータ)を trim 対称化する。
+  //   シート側の顧客IDセルに末尾スペース等が入ると「C0133␣」(x.id) vs「C0133」(URL)で
+  //   厳密一致が外れ、実在する顧客なのに Z-016 の404画面が誤表示されていた。
+  //   ※ 本当に存在しないIDでは trim 後も一致しないため Z-016 本来の404挙動は維持される。
+  const c = customers?.find((x) => String(x.id).trim() === String(id).trim());
 
   const [edit, setEdit]                 = useState(null);
   const [isSavingEdit, setIsSavingEdit] = useState(false);

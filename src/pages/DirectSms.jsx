@@ -181,7 +181,10 @@ function DirectSms({ customers = [], templates = [], staffList = [], onRefresh, 
   const { isMobile } = useWindowWidth();
   const [mobileTemplatesOpen, setMobileTemplatesOpen] = useState(false);
 
-  const c = customers?.find((x) => String(x.id) === String(id));
+  // 【C4-002残穴対応】顧客特定(customers の id × URLパラメータ)を trim 対称化する。
+  //   CustomerDetail / CustomerSchedule と同型。末尾スペース入り顧客IDで
+  //   Z-016 の404画面が誤表示されるのを防ぐ(実在しないIDの404挙動は維持)。
+  const c = customers?.find((x) => String(x.id).trim() === String(id).trim());
 
   const [msg, setMsg] = useState(location.state?.prefilledMessage || "");
   const [isConverting, setIsConverting] = useState(false);

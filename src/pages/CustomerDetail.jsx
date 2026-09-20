@@ -499,7 +499,10 @@ export default function CustomerDetail({
     const source = (fetchedProperties ?? allProperties) || [];
     setLocalProperties(prev => {
       const filtered = source
-        .filter(p => String(p.customerId) === String(id))
+        // 【C4-002残穴対応】物件の customerId はシート生値のため trim 対称で突合する
+        //  (GAS getCustomerBundle は trim 一致で行を返すが、この再フィルタが
+        //   厳密一致のままだと返却行をここで振り落としてしまう)
+        .filter(p => String(p.customerId).trim() === String(id).trim())
         .filter(p => !deletedIdsRef.current.has(p.id));
       const pendingTemps = prev.filter(
         p => p._isTemp && !filtered.some(f => f.name === p.name)
@@ -508,14 +511,27 @@ export default function CustomerDetail({
     });
   }, [fetchedProperties, allProperties, id]);
 
+  // 【C4-002残穴対応】顧客特定(customers の id × URLパラメータ)を trim 対称化する。
+  //   シート側の顧客IDセルに末尾スペース等が入ると「C0133␣」(c.id) vs「C0133」(URL)で
+  //   厳密一致が外れ、実在する顧客なのに Z-016 の404画面が誤表示されていた。
+  //   GAS getCustomerBundle 側は C4-002 で trim 突合済みだが、顧客そのものの特定
+  //   (この find)が未対応のまま残っていた。
+  //   ※ 本当に存在しないID(/detail/ZZZZ 等)は trim 後も一致しないため、
+  //     Z-016 本来の404挙動は維持される。
+  //   【エッジケース】「C0133」と「C0133␣」が両方シートに存在する場合は trim 後に
+  //     同一視され先頭ヒット行を掴むが、顧客IDは GAS 側 max+1 採番で重複しない前提であり
+  //     空白違い重複は手動編集でのみ発生しうる。その場合も GAS の findCustomerRowByUUID
+  //     (trim 一致・先頭行優先)と同じ「先頭一致」で一貫するため、従来(404で開けない)より
+  //     悪化することはない。詳細は gas_updated.js getAppData のコメント参照。
   const customer = useMemo(
-    () => customers.find((c) => String(c.id) === String(id)),
+    () => customers.find((c) => String(c.id).trim() === String(id).trim()),
     [customers, id]
   );
 
   useEffect(() => {
     const updated = location.state?.updatedCustomer;
-    if (updated && String(updated.id) === String(id)) {
+    // 【C4-002残穴対応】updated.id は customers 由来の生値(末尾スペース含みうる)のため trim 対称化
+    if (updated && String(updated.id).trim() === String(id).trim()) {
       setFormData({ ...updated });
       window.history.replaceState({}, "");
       return;
@@ -580,8 +596,12 @@ export default function CustomerDetail({
   const listRefresh = onLightRefresh || onRefresh;
 
   const customerStatusHistory = useMemo(() => {
+    // 【C4-002残穴対応】GAS getCustomerBundle は trim 一致で履歴行を返すが(C4-002)、
+    //   返却値の「顧客ID」はシート生値のまま。この再フィルタが厳密一致だと
+    //   GAS が返した行をここで全件振り落とし「履歴0件」になる。
+    //   CustomerSchedule.jsx の cidNorm(C4-001)と同方式で trim 対称化する。
     const base = ((fetchedStatusHistory ?? statusHistory) || [])
-      .filter(h => String(h["顧客ID"]) === String(id))
+      .filter(h => String(h["顧客ID"] ?? "").trim() === String(id).trim())
       .sort((a, b) => new Date(a["変更日時"]) - new Date(b["変更日時"]));
     if (!pendingHistoryEntry) return base;
     // すでに同じステータス・日時が存在する場合は重複追加しない
@@ -595,7 +615,8 @@ export default function CustomerDetail({
   const customerLogs = useMemo(
     () =>
       ((fetchedTrackingLogs ?? trackingLogs) || [])
-        .filter((log) => String(log.customer_id) === String(id) && parseInt(log.click_count || 0) > 0)
+        // 【C4-002残穴対応】customer_id はシート生値のため trim 対称で突合(上の履歴フィルタと同方式)
+        .filter((log) => String(log.customer_id ?? "").trim() === String(id).trim() && parseInt(log.click_count || 0) > 0)
         .sort((a, b) => new Date(b.last_clicked_at) - new Date(a.last_clicked_at)),
     [trackingLogs, fetchedTrackingLogs, id]
   );
