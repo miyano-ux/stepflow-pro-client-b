@@ -31,7 +31,8 @@ export default function TrackingDashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState(null);
   const [updatedAt, setUpdatedAt] = useState("");
-  const { isMobile } = useWindowWidth();
+  // 【レスポンシブ】isDesktop はKPIカード4列⇔2×2の切替に使用（中間幅で4列は1枚が潰れるため）
+  const { isMobile, isDesktop } = useWindowWidth();
 
   const inFlight    = useRef(false);
   const lastFetchAt = useRef(0);
@@ -133,7 +134,7 @@ export default function TrackingDashboard() {
           </div>
         )}
 
-        <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(4, 1fr)", gap: isMobile ? "12px" : "24px", marginBottom: isMobile ? "24px" : "40px" }}>
+        <div style={{ display: "grid", gridTemplateColumns: isDesktop ? "repeat(4, 1fr)" : "1fr 1fr", gap: isMobile ? "12px" : "24px", marginBottom: isMobile ? "24px" : "40px" }}>
           <div style={{ ...styles.statCard, padding: isMobile ? "16px" : "24px" }}>
             <div style={{ color: THEME.textMuted, fontSize: "11px", fontWeight: "800", marginBottom: "8px" }}>総送信リンク数</div>
             <div style={{ fontSize: isMobile ? "22px" : "28px", fontWeight: "900" }}>{totals.links} <span style={{ fontSize: "14px" }}>件</span></div>

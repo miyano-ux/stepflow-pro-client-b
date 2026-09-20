@@ -81,7 +81,8 @@ export default function SmsUsageReport({ isLoading = false, deliveryLogs = [], c
   const [monthDetail, setMonthDetail]       = useState({ key: null, logs: [], loading: false });
 
 
-  const { isMobile } = useWindowWidth();
+  // 【レスポンシブ】isDesktop はKPIカード4列⇔2×2の切替に使用（中間幅で4列は1枚が潰れるため）
+  const { isMobile, isDesktop } = useWindowWidth();
   const [range, setRange]           = useState(12);
   const [openMonth, setOpenMonth]   = useState(null); // ドリルダウン対象の月キー
   const [showRanges, setShowRanges] = useState(false);
@@ -252,7 +253,7 @@ export default function SmsUsageReport({ isLoading = false, deliveryLogs = [], c
         {/* ── KPI ── */}
         <div style={{
           display: "grid",
-          gridTemplateColumns: isMobile ? "1fr 1fr" : "repeat(4, 1fr)",
+          gridTemplateColumns: isDesktop ? "repeat(4, 1fr)" : "1fr 1fr",
           gap: isMobile ? 10 : 16,
           marginBottom: isMobile ? 16 : 24,
         }}>

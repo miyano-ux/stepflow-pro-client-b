@@ -560,7 +560,9 @@ export default function UserManager({
           </div>
         ) : (
         <div style={{ ...lS.card, marginBottom: 48 }}>
-          <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: 0 }}>
+          {/* 【レスポンシブ】中間幅で5列が潰れないよう、設計幅760pxを保証しテーブル単体で横スクロール */}
+          <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
+          <table style={{ width: "100%", minWidth: 760, borderCollapse: "separate", borderSpacing: 0 }}>
             <thead>
               <tr>
                 <th style={lS.tableTh}>担当スタッフ</th>
@@ -644,6 +646,7 @@ export default function UserManager({
               )}
             </tbody>
           </table>
+          </div>
         </div>
         )}
 

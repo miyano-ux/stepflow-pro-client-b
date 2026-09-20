@@ -232,7 +232,10 @@ function ImportErrorList({ errors = [], onRefresh }) {
           </div>
         ) : (
         <div style={{ ...styles.card, padding: 0, overflow: "hidden" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+          {/* 【レスポンシブ】中間幅で5列（件名列が長い）が潰れないよう設計幅760pxを保証し、
+            狭い環境ではテーブル単体で横スクロール */}
+          <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
+          <table style={{ width: "100%", minWidth: 760, borderCollapse: "collapse" }}>
             <thead>
               <tr>
                 <th style={styles.tableTh}>日時</th>
@@ -298,6 +301,7 @@ function ImportErrorList({ errors = [], onRefresh }) {
               )}
             </tbody>
           </table>
+          </div>
         </div>
         )}
 

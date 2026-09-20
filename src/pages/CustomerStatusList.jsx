@@ -183,7 +183,10 @@ export default function CustomerStatusList({ customers = [], statuses = [], staf
         ) : (
           /* PC/タブレット：テーブル形式 */
           <div style={{ backgroundColor: "white", borderRadius: 16, border: `1px solid ${THEME.border}`, overflow: "hidden" }}>
-            <table style={{ width: "100%", borderCollapse: "separate", borderSpacing: 0 }}>
+            {/* 【レスポンシブ】中間幅で6〜7列が潰れないよう設計幅を保証（休眠リストは再アプローチ予定列がある分広め）。
+                狭い環境ではテーブル単体で横スクロール */}
+            <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
+            <table style={{ width: "100%", minWidth: isDormantList ? 880 : 760, borderCollapse: "separate", borderSpacing: 0 }}>
               <thead>
                 <tr style={{ backgroundColor: "#F8FAFC" }}>
                   {tableHeaders.map((h) => (
@@ -255,6 +258,7 @@ export default function CustomerStatusList({ customers = [], statuses = [], staf
                 })}
               </tbody>
             </table>
+            </div>
           </div>
         )}
       </div>
