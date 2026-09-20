@@ -242,7 +242,10 @@ function ImportErrorList({ errors = [], onRefresh }) {
                 <th style={styles.tableTh}>送信元</th>
                 <th style={styles.tableTh}>件名 / 反響番号</th>
                 <th style={styles.tableTh}>エラー原因</th>
-                <th style={{ ...styles.tableTh, textAlign: "right" }}>詳細</th>
+                {/* 【固定列】横スクロール時も詳細ボタンを常時表示 */}
+                <th style={{ ...styles.tableTh, textAlign: "right", whiteSpace: "nowrap",
+                  position: "sticky", right: 0, zIndex: 2, backgroundColor: "white",
+                  boxShadow: "-8px 0 8px -8px rgba(15, 23, 42, 0.15)", width: 72, minWidth: 72 }}>詳細</th>
               </tr>
             </thead>
             <tbody>
@@ -250,15 +253,15 @@ function ImportErrorList({ errors = [], onRefresh }) {
                 sortedErrors.map((e, i) => (
                   <tr
                     key={i}
-                    style={{ transition: "0.2s" }}
+                    style={{ transition: "0.2s", backgroundColor: "white" }}
                     onMouseEnter={(el) =>
                       (el.currentTarget.style.backgroundColor = THEME.bg)
                     }
                     onMouseLeave={(el) =>
-                      (el.currentTarget.style.backgroundColor = "transparent")
+                      (el.currentTarget.style.backgroundColor = "white")
                     }
                   >
-                    <td style={styles.tableTd}>{formatDate(e["日時"])}</td>
+                    <td style={{ ...styles.tableTd, whiteSpace: "nowrap" }}>{formatDate(e["日時"])}</td>
                     <td style={styles.tableTd}>{e["送信元"]}</td>
                     <td style={styles.tableTd}>{e["件名 / 反響番号"]}</td>
                     <td style={styles.tableTd}>
@@ -266,11 +269,15 @@ function ImportErrorList({ errors = [], onRefresh }) {
                         {e["エラー原因"]}
                       </span>
                     </td>
-                    <td style={{ ...styles.tableTd, textAlign: "right" }}>
+                    <td style={{ ...styles.tableTd, textAlign: "right",
+                      position: "sticky", right: 0, zIndex: 1, backgroundColor: "inherit",
+                      boxShadow: "-8px 0 8px -8px rgba(15, 23, 42, 0.12)", width: 72, minWidth: 72 }}>
                       {/* 【D4-005】詳細が空の行（媒体連携由来の一部エラー等）は👁を出さず空欄にする */}
                       {String(e["詳細"] || "").trim() && (
                         <button
                           onClick={() => setSelected(e)}
+                          aria-label="エラー詳細を表示"
+                          title="エラー詳細を表示"
                           style={{
                             background: "none",
                             border: "none",

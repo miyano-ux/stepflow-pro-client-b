@@ -91,6 +91,13 @@ export default function CustomerStatusList({ customers = [], statuses = [], staf
     ? ["顧客名", "対応ステータス", "担当者", "シナリオ", "再アプローチ予定", "登録日", "操作"]
     : ["顧客名", "対応ステータス", "担当者", "シナリオ", "登録日", "操作"];
 
+  // 【視認性】テーブルセル共通スタイル。行内の縦位置を中央に揃え、
+  //   各セルの折返し（nowrap）は内容側で明示制御する。
+  const tdBase = { padding: "16px 20px", borderBottom: `1px solid ${THEME.border}`, verticalAlign: "middle" };
+  // 【固定列】操作列を右端に固定するための共通スタイル（UserManagerと同方式）
+  const stickyTh = { position: "sticky", right: 0, zIndex: 2, backgroundColor: "#F8FAFC", boxShadow: "-8px 0 8px -8px rgba(15, 23, 42, 0.15)" };
+  const stickyTd = { position: "sticky", right: 0, zIndex: 1, backgroundColor: "inherit", boxShadow: "-8px 0 8px -8px rgba(15, 23, 42, 0.12)" };
+
   return (
     <div style={{ minHeight: "100vh", backgroundColor: THEME.bg }}>
       <div style={{ padding: isMobile ? "20px 16px" : "40px 64px", maxWidth: "1200px", margin: "0 auto", boxSizing: "border-box" }}>
@@ -189,8 +196,13 @@ export default function CustomerStatusList({ customers = [], statuses = [], staf
             <table style={{ width: "100%", minWidth: isDormantList ? 880 : 760, borderCollapse: "separate", borderSpacing: 0 }}>
               <thead>
                 <tr style={{ backgroundColor: "#F8FAFC" }}>
-                  {tableHeaders.map((h) => (
-                    <th key={h} style={{ padding: "14px 20px", fontSize: 11, fontWeight: 800, color: THEME.textMuted, textAlign: "left", borderBottom: `1px solid ${THEME.border}`, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                  {tableHeaders.map((h, i) => (
+                    <th key={h} style={{
+                      padding: "14px 20px", fontSize: 11, fontWeight: 800, color: THEME.textMuted, textAlign: "left",
+                      borderBottom: `1px solid ${THEME.border}`, textTransform: "uppercase", letterSpacing: "0.05em",
+                      whiteSpace: "nowrap",  // 【視認性】見出しの途中改行（「再アプローチ予\n定」等）を防止
+                      ...(i === tableHeaders.length - 1 ? { ...stickyTh, width: 175, minWidth: 175 } : {}),
+                    }}>
                       {h}
                     </th>
                   ))}
@@ -207,44 +219,46 @@ export default function CustomerStatusList({ customers = [], statuses = [], staf
                     : statusDef?.terminalType === "excluded" ? { bg: "#F3F4F6", text: "#6B7280" }
                     : { bg: "#FEF3C7", text: "#D97706" };
                   return (
-                    <tr key={c.id} onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#F8FAFC")} onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "white")} style={{ transition: "0.1s" }}>
-                      <td style={{ padding: "16px 20px", borderBottom: `1px solid ${THEME.border}` }}>
-                        <div style={{ fontWeight: 900, fontSize: 15 }}>
+                    <tr key={c.id} onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = "#F8FAFC")} onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = "white")} style={{ transition: "0.1s", backgroundColor: "white" }}>
+                      <td style={tdBase}>
+                        {/* 【視認性】氏名の途中改行を防止。極端に長い場合は…で省略し title で全文表示 */}
+                        <div title={`${c["姓"]} ${c["名"]} 様`} style={{ fontWeight: 900, fontSize: 15, whiteSpace: "nowrap", maxWidth: 240, overflow: "hidden", textOverflow: "ellipsis" }}>
                           <Link to={`/detail/${c.id}`} state={{ from: location.pathname }} style={{ color: THEME.primary, textDecoration: "underline", textUnderlineOffset: 3, cursor: "pointer" }}>
                             {c["姓"]} {c["名"]} 様
                           </Link>
                         </div>
-                        <div style={{ fontSize: 12, color: THEME.textMuted, marginTop: 2 }}>{c["電話番号"] || "-"}</div>
+                        <div style={{ fontSize: 12, color: THEME.textMuted, marginTop: 2, whiteSpace: "nowrap" }}>{c["電話番号"] || "-"}</div>
                       </td>
-                      <td style={{ padding: "16px 20px", borderBottom: `1px solid ${THEME.border}` }}>
+                      <td style={tdBase}>
                         <span style={{ fontSize: 12, backgroundColor: stColor.bg, color: stColor.text, padding: "4px 10px", borderRadius: 8, fontWeight: 800, whiteSpace: "nowrap" }}>
                           {c["対応ステータス"] || "-"}
                         </span>
                       </td>
-                      <td style={{ padding: "16px 20px", borderBottom: `1px solid ${THEME.border}` }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, color: THEME.textMuted }}>
-                          <UserCircle size={14} color={THEME.primary} />
+                      <td style={tdBase}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, color: THEME.textMuted, whiteSpace: "nowrap" }}>
+                          <UserCircle size={14} color={THEME.primary} style={{ flexShrink: 0 }} />
                           {staff ? `${staff.lastName} ${staff.firstName}` : "未割当"}
                         </div>
                       </td>
-                      <td style={{ padding: "16px 20px", borderBottom: `1px solid ${THEME.border}` }}>
-                        <span style={{ fontSize: 12, backgroundColor: "#EEF2FF", color: THEME.primary, padding: "3px 10px", borderRadius: 6, fontWeight: 800 }}>
+                      <td style={tdBase}>
+                        <span title={c["シナリオID"] || ""} style={{ fontSize: 12, backgroundColor: "#EEF2FF", color: THEME.primary, padding: "3px 10px", borderRadius: 6, fontWeight: 800, whiteSpace: "nowrap", display: "inline-block", maxWidth: 160, overflow: "hidden", textOverflow: "ellipsis", verticalAlign: "middle" }}>
                           {c["シナリオID"] || "-"}
                         </span>
                       </td>
                       {/* 【B1-046】再アプローチ予定（休眠リストのみ） */}
                       {isDormantList && (
-                        <td style={{ padding: "16px 20px", borderBottom: `1px solid ${THEME.border}` }}>
+                        <td style={tdBase}>
                           <ReapproachBadge customer={c} />
                         </td>
                       )}
-                      <td style={{ padding: "16px 20px", borderBottom: `1px solid ${THEME.border}` }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 13, color: THEME.textMuted }}>
-                          <Calendar size={13} /> {formatDate(c["登録日"])}
+                      <td style={tdBase}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 13, color: THEME.textMuted, whiteSpace: "nowrap" }}>
+                          <Calendar size={13} style={{ flexShrink: 0 }} /> {formatDate(c["登録日"])}
                         </div>
                       </td>
-                      <td style={{ padding: "16px 20px", borderBottom: `1px solid ${THEME.border}` }}>
-                        <div style={{ display: "flex", gap: 6 }}>
+                      {/* 【固定列】横スクロール時も詳細・SMSを常時表示 */}
+                      <td style={{ ...tdBase, ...stickyTd, width: 175, minWidth: 175 }}>
+                        <div style={{ display: "flex", gap: 6, whiteSpace: "nowrap" }}>
                           <Link to={`/detail/${c.id}`} style={{ display: "flex", alignItems: "center", gap: 4, padding: "6px 10px", backgroundColor: "#EEF2FF", color: THEME.primary, borderRadius: 8, fontWeight: 800, fontSize: 12, textDecoration: "none" }}>
                             <ExternalLink size={13} /> 詳細
                           </Link>
