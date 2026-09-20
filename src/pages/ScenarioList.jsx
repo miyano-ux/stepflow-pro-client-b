@@ -210,9 +210,41 @@ export default function ScenarioList({ scenarios = [], statuses = [], onRefresh,
 
   // 自動適用シナリオ設定：ステータスに紐づき、かつ全シナリオに実在するものだけ表示する。
   // （削除済みシナリオへのダングリング参照がステータス設定側に残っていても表記しない）
-  const linkedStatuses = visibleStatuses.filter(
-    st => st.scenarioId && existingScenarioIds.has(st.scenarioId)
-  );
+  //
+  // 【追加】終点ステータスの「🔁 再アプローチ設定」（Nヶ月後にシナリオを自動予約）も
+  //   このセクションに表示する。従来は「移動と同時に発動する連動シナリオ」だけを
+  //   表示していたため、休眠などの終点で設定した一定期間後のシナリオ適用が
+  //   この画面から見えなかった。
+  // 復帰先ステータスに連動シナリオがある場合はそのシナリオが強制適用される
+  // （B1-047：StatusSettings／KanbanBoard／GAS と同じ解決順）。
+  const linkedScenarioByStatusName = {};
+  visibleStatuses.forEach(st => { if (st.scenarioId) linkedScenarioByStatusName[st.name] = st.scenarioId; });
+  const resolveReapproach = st => {
+    const months = Number(st.reapproachMonths) || 0;
+    if (months <= 0) return null;
+    const linked     = linkedScenarioByStatusName[st.reapproachNextStatus || ""] || "";
+    const scenarioId = linked || st.reapproachScenarioId || "";
+    // シナリオ未設定・削除済みシナリオへのダングリング参照は表示しない（連動表示と同方針）
+    if (!scenarioId || !existingScenarioIds.has(scenarioId)) return null;
+    return { months, scenarioId, nextStatus: st.reapproachNextStatus || "" };
+  };
+
+  // カード表示対象＝「移動と同時に発動するシナリオ」または「Nヶ月後の再アプローチ予約」があるステータス
+  const autoApplyCards = visibleStatuses
+    .map(st => ({
+      st,
+      immediateId: (st.scenarioId && existingScenarioIds.has(st.scenarioId)) ? st.scenarioId : "",
+      reapproach:  resolveReapproach(st),
+    }))
+    .filter(c => c.immediateId || c.reapproach);
+
+  // 全シナリオ一覧用：再アプローチで使われているシナリオ → ステータスの逆引き
+  const scenarioToReapproachStatus = {};
+  autoApplyCards.forEach(c => {
+    if (c.reapproach && !scenarioToReapproachStatus[c.reapproach.scenarioId]) {
+      scenarioToReapproachStatus[c.reapproach.scenarioId] = c.st;
+    }
+  });
 
   const handleDeleteConfirm = async () => {
     if (!deleteModal) return;
@@ -289,7 +321,7 @@ export default function ScenarioList({ scenarios = [], statuses = [], onRefresh,
           <SectionHeading
             icon={<Zap size={18} color={THEME.primary} />}
             label="自動適用シナリオ設定"
-            sub="ステータスに移動したとき、自動でシナリオが開始されます"
+            sub="ステータスに移動したとき、自動でシナリオが開始されます。終点ステータスの再アプローチ（一定期間後のシナリオ予約）もここに表示されます"
             action={
               <button
                 onClick={() => navigate("/status-settings")}
@@ -300,16 +332,20 @@ export default function ScenarioList({ scenarios = [], statuses = [], onRefresh,
             }
           />
 
-          {linkedStatuses.length === 0 ? (
+          {autoApplyCards.length === 0 ? (
             <div style={{ padding: "28px 24px", backgroundColor: "white", borderRadius: 14, border: `2px dashed ${THEME.border}`, textAlign: "center", color: THEME.textMuted, fontSize: 13 }}>
               シナリオが紐づいているステータスがありません。<br />
               ステータス設定からシナリオを割り当ててください。
             </div>
           ) : (
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: isMobile ? 14 : 16 }}>
-              {linkedStatuses.map(st => {
-                const col   = statusColor(st.terminalType);
-                const steps = (grouped[st.scenarioId] || []).sort((a, b) => a["ステップ数"] - b["ステップ数"]);
+              {autoApplyCards.map(({ st, immediateId, reapproach }) => {
+                const col = statusColor(st.terminalType);
+                // ステップ一覧・編集リンクは「移動と同時に発動するシナリオ」を優先し、
+                // 再アプローチのみのカードでは予約されるシナリオを対象にする
+                const mainScenarioId = immediateId || reapproach.scenarioId;
+                const steps   = (grouped[mainScenarioId] || []).sort((a, b) => a["ステップ数"] - b["ステップ数"]);
+                const raSteps = reapproach ? (grouped[reapproach.scenarioId] || []) : [];
                 return (
                   <div key={st.name} style={{ backgroundColor: "white", borderRadius: 16, border: `1px solid ${col.border}`, overflow: "hidden" }}>
                     <div style={{ backgroundColor: col.bg, padding: "14px 20px", borderBottom: `1px solid ${col.border}` }}>
@@ -317,12 +353,35 @@ export default function ScenarioList({ scenarios = [], statuses = [], onRefresh,
                       <div style={{ fontSize: 17, fontWeight: 900, color: col.text }}>{st.name}</div>
                     </div>
                     <div style={{ padding: "14px 20px 18px" }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 12, flexWrap: "wrap" }}>
-                        <Zap size={11} color={THEME.primary} />
-                        <span style={{ fontSize: 11, color: THEME.textMuted, fontWeight: 700 }}>発動シナリオ：</span>
-                        <span style={{ fontSize: 13, fontWeight: 900, color: THEME.primary }}>{st.scenarioId}</span>
-                        <span style={{ fontSize: 11, color: THEME.textMuted }}>（{steps.length} ステップ）</span>
-                      </div>
+                      {immediateId && (
+                        <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 12, flexWrap: "wrap" }}>
+                          <Zap size={11} color={THEME.primary} />
+                          <span style={{ fontSize: 11, color: THEME.textMuted, fontWeight: 700 }}>発動シナリオ：</span>
+                          <span style={{ fontSize: 13, fontWeight: 900, color: THEME.primary }}>{immediateId}</span>
+                          <span style={{ fontSize: 11, color: THEME.textMuted }}>（{(grouped[immediateId] || []).length} ステップ）</span>
+                        </div>
+                      )}
+                      {/* 【追加】終点の再アプローチ設定（一定期間後のシナリオ自動予約）の表記 */}
+                      {reapproach && (
+                        <div style={{ backgroundColor: "#FFFBEB", border: "1px solid #FDE68A", borderRadius: 10, padding: "10px 12px", marginBottom: 12 }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", marginBottom: 4 }}>
+                            <Clock size={11} color="#B45309" />
+                            <span style={{ fontSize: 11, color: "#92400E", fontWeight: 800 }}>再アプローチ：</span>
+                            <span style={{ fontSize: 13, fontWeight: 900, color: "#B45309" }}>{reapproach.months}ヶ月後</span>
+                            <span style={{ fontSize: 11, color: "#92400E", fontWeight: 700 }}>にシナリオを自動予約</span>
+                          </div>
+                          <div style={{ fontSize: 12, color: "#92400E", lineHeight: 1.6 }}>
+                            <Link
+                              to={`/scenarios/edit/${encodeURIComponent(reapproach.scenarioId)}`}
+                              style={{ fontWeight: 900, color: "#B45309", textDecoration: "underline" }}
+                            >「{reapproach.scenarioId}」</Link>
+                            （{raSteps.length} ステップ）
+                            {reapproach.nextStatus
+                              ? `の配信開始と同時に、ステータスが「${reapproach.nextStatus}」へ変更されます`
+                              : "が配信されます"}
+                          </div>
+                        </div>
+                      )}
                       {steps.length > 0 && (
                         <div style={{ display: "flex", flexDirection: "column", gap: 5, marginBottom: 14 }}>
                           {steps.slice(0, 3).map((s, i) => (
@@ -336,7 +395,7 @@ export default function ScenarioList({ scenarios = [], statuses = [], onRefresh,
                         </div>
                       )}
                       <Link
-                        to={`/scenarios/edit/${encodeURIComponent(st.scenarioId)}`}
+                        to={`/scenarios/edit/${encodeURIComponent(mainScenarioId)}`}
                         style={{ display: "flex", justifyContent: "space-between", alignItems: "center", backgroundColor: col.bg, padding: "9px 14px", borderRadius: 10, textDecoration: "none", color: col.text, fontWeight: 800, fontSize: 12, border: `1px solid ${col.border}` }}
                       >
                         <span>ステップを編集</span><ChevronRight size={15} />
@@ -386,6 +445,12 @@ export default function ScenarioList({ scenarios = [], statuses = [], onRefresh,
                         {linkedSt && (
                           <span style={{ fontSize: 11, fontWeight: 800, backgroundColor: col.bg, color: col.text, border: `1px solid ${col.border}`, padding: "2px 8px", borderRadius: 99, display: "flex", alignItems: "center", gap: 4 }}>
                             <Zap size={10} /> {linkedSt.name} で自動適用
+                          </span>
+                        )}
+                        {/* 【追加】再アプローチ設定で予約されるシナリオにもバッジを表示 */}
+                        {scenarioToReapproachStatus[id] && (
+                          <span style={{ fontSize: 11, fontWeight: 800, backgroundColor: "#FFFBEB", color: "#B45309", border: "1px solid #FDE68A", padding: "2px 8px", borderRadius: 99, display: "flex", alignItems: "center", gap: 4 }}>
+                            <Clock size={10} /> {scenarioToReapproachStatus[id].name} の再アプローチで予約
                           </span>
                         )}
                       </div>
