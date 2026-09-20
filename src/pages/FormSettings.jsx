@@ -56,7 +56,7 @@ function buildItems(formSettings) {
   }));
 }
 
-export default function FormSettings({ formSettings = [], sheetCustomColumns = [], customers = [], isLoading = false, loadError = false, onRefresh }) {
+export default function FormSettings({ formSettings = [], sheetCustomColumns = [], customers = [], isLoading = false, loadError = false, onRefresh, onApplySaved }) {
   const nav = useNavigate();
   const location = useLocation();
   const from = location.state?.from;
@@ -248,6 +248,20 @@ export default function FormSettings({ formSettings = [], sheetCustomColumns = [
       // 直後の onRefresh で届く最新 formSettings が全量再取り込みされ、
       // originalName・hydratedNamesRef が最新状態に揃う。
       dirtyRef.current = false;
+
+      // 【G2-016】保存内容を即座に全画面へ反映（楽観反映）。
+      // settings は saveFormSettings がそのまま確定させた新定義なので、
+      // 全件再取得を待たずに App の formSettings と IndexedDB キャッシュへ直接反映する。
+      // これで遷移先の新規登録フォーム等が旧名称のまま表示される時間差が消える。
+      // リネーム分（originalName ≠ name）は顧客データのキーもローカルで付け替え、
+      // 一覧・詳細も遷移直後から新名称で値ごと揃う（GAS 側 migrate のローカル版）。
+      if (onApplySaved) {
+        const renames = settings
+          .filter(s => s.originalName && s.name && s.originalName !== s.name)
+          .map(s => ({ from: s.originalName, to: s.name }));
+        // getAppData と同じ形（name/type/required/options）に揃えて渡す
+        onApplySaved(settings.map(({ name, type, required, options }) => ({ name, type, required, options })), renames);
+      }
 
       // 【G2-014改】完了表示・画面遷移を、全件再取得（onRefresh）の完了から切り離す。
       // 従来は await onRefresh()（全件GET・数秒〜十数秒）の後にしか「同期完了！」が

@@ -257,6 +257,41 @@ function App() {
   }, [getDisplaySettings, getUserEmail, refreshStaff]);
   refreshFnRef.current = refresh;   // 【乖離自己修復】setTimeout から最新版を呼ぶための同期
 
+  // 【G2-016】登録項目 保存直後の楽観反映。
+  // saveFormSettings が成功した時点で settings はサーバー確定値なので、
+  // 全件再取得（refresh: 数秒〜十数秒）の完了を待たずに、d.formSettings と
+  // IndexedDB キャッシュへ直接反映する。これにより保存→/add 遷移直後の
+  // 新規登録フォームや顧客一覧・詳細が旧名称のまま表示される時間差が消える。
+  // renames（旧名→新名）が渡された場合は、GAS 側の migrate と同等の
+  // キー付け替えをローカルの顧客データにも適用し、詳細画面の入力値が
+  // 「新名称なのに空欄」になる不整合も防ぐ。裏で走る refresh が完了すれば
+  // 同内容のサーバー値で上書きされ、最終的な整合はサーバーが担保する。
+  const applyFormSettings = useCallback((settings, renames) => {
+    setD(prev => {
+      if (!prev) return prev;
+      let customers = prev.customers;
+      if (Array.isArray(renames) && renames.length && Array.isArray(customers)) {
+        customers = customers.map(c => {
+          let changed = false;
+          const nc = { ...c };
+          for (const { from, to } of renames) {
+            if (from && to && from !== to && Object.prototype.hasOwnProperty.call(nc, from)) {
+              nc[to] = nc[from];
+              delete nc[from];
+              changed = true;
+            }
+          }
+          return changed ? nc : c;
+        });
+      }
+      const next = { ...prev, formSettings: settings, customers };
+      // リロード耐性: 楽観反映をIndexedDBにも書く（保存直後にリロードされても
+      // 旧名称に戻らない）。put は冪等なので StrictMode 等で二重実行されても無害。
+      appCache.set(getUserEmail(), next);
+      return next;
+    });
+  }, [getUserEmail]);
+
   const lightRefresh = useCallback(async () => {
     if (!GAS_URL) return;
     try {
@@ -468,7 +503,7 @@ function App() {
                   ・isLoading: 取得完了前に保存すると items=[] のまま saveFormSettings が飛び、
                     GAS が顧客シートのカスタム列ごと削除する（FormSettings.jsx handleSave のガード）。
                   ・customers: 削除確認モーダルの「入力済み N 件」が常に 0 件表示になる。 */}
-              <Route path="/form-settings" element={<FormSettings formSettings={d?.formSettings} sheetCustomColumns={d?.sheetCustomColumns || []} customers={d?.customers} isLoading={load} loadError={loadError} onRefresh={refresh} />} />
+              <Route path="/form-settings" element={<FormSettings formSettings={d?.formSettings} sheetCustomColumns={d?.sheetCustomColumns || []} customers={d?.customers} isLoading={load} loadError={loadError} onRefresh={refresh} onApplySaved={applyFormSettings} />} />
               <Route path="/sources" element={<SourceManager sources={d?.sources} onRefresh={refresh} gasUrl={GAS_URL} isLoading={load} loadError={loadError} />} />
               {/* 【G4-012】customers を伝播（改名マイグレーションの影響件数提示用。G2-014 と同方針） */}
               <Route path="/contract-types" element={<ContractTypeManager contractTypes={d?.contractTypes} exclusiveContractTypes={d?.exclusiveContractTypes} customers={d?.customers} onRefresh={refresh} gasUrl={GAS_URL} />} />
