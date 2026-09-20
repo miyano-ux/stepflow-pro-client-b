@@ -193,6 +193,7 @@ export default function AnalysisReport({ customers = [], statuses = [], tracking
       s.terminalType &&
       s.terminalType !== "excluded" &&
       s.terminalType !== "won" &&            // 成約は上部「案件分布」グラフに表示済みのため下部サマリからは除外
+      s.terminalType !== "lost" &&           // 失注は下部サマリに表示しない（失注リストへのカードを削除。失注分析は専用の失注分析レポートで参照）
       s.reportCount
     ),
     [statuses]
