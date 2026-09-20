@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState, useEffect } from "react";
 import { Trash2 } from "lucide-react";
 import { THEME } from "../lib/constants";
 
@@ -12,7 +12,12 @@ import { THEME } from "../lib/constants";
  * @param {string}   title         - モーダルタイトル
  * @param {string}   [message]     - 本文テキスト（省略可）
  * @param {string}   [note]        - 補足テキスト（薄い色で表示、省略可）
- * @param {function} onConfirm     - 確認ボタン押下時コールバック
+ * @param {object}   [select]      - 【G1-006拡張】モーダル内プルダウン（省略可）
+ *                                   { label: string, options: [{value, label}], defaultValue: string }
+ *                                   指定時は onConfirm(選択値) が呼ばれる。
+ *                                   未指定時は従来どおり onConfirm() が引数なしで呼ばれる
+ *                                   （既存の呼び出し元には影響しない）。
+ * @param {function} onConfirm     - 確認ボタン押下時コールバック（select 指定時は選択値が渡る）
  * @param {function} onCancel      - キャンセルボタン・オーバーレイ押下時コールバック
  * @param {string}   [confirmLabel] - 確認ボタンラベル（デフォルト: 削除する）
  * @param {string}   [confirmColor] - 確認ボタン色（デフォルト: THEME.danger）
@@ -24,6 +29,7 @@ function ConfirmModal({
   title,
   message,
   note,
+  select,
   onConfirm,
   onCancel,
   confirmLabel = "削除する",
@@ -31,12 +37,23 @@ function ConfirmModal({
   icon,
   iconBg,
 }) {
+  // 【G1-006拡張】プルダウンの選択状態。モーダルを開くたびに defaultValue で初期化する
+  //（同じモーダルインスタンスを使い回すため、前回の選択が次回の削除確認に残らないようにする）。
+  const [selected, setSelected] = useState("");
+  useEffect(() => {
+    if (open) setSelected(select?.defaultValue ?? select?.options?.[0]?.value ?? "");
+    // select はレンダーごとに新しいオブジェクトになりうるため、依存は open と
+    // defaultValue のみに絞る（オブジェクト同一性による無限初期化を避ける）
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, select?.defaultValue]);
+
   if (!open) return null;
 
   // 【G2-015】削除以外（名称変更など）の確認にも使えるよう、アイコンと配色を差し替え可能にする。
   // 未指定時は従来どおり「赤いゴミ箱」なので既存の呼び出しには影響しない。
   const btnColor = confirmColor || THEME.danger;
   const circleBg = iconBg || "#FEE2E2";
+  const hasSelect = !!(select && Array.isArray(select.options) && select.options.length > 0);
 
   return (
     <div
@@ -78,17 +95,47 @@ function ConfirmModal({
           </p>
         )}
 
-        {/* 補足 */}
+        {/* 補足（プルダウンがある場合は下マージンを詰めて連続表示にする） */}
         {note && (
-          <p style={{ margin: "0 0 28px", fontSize: 13, color: "#6B7280", lineHeight: 1.7 }}>
+          <p style={{ margin: hasSelect ? "0 0 14px" : "0 0 28px", fontSize: 13, color: "#6B7280", lineHeight: 1.7, textAlign: hasSelect ? "left" : "center" }}>
             {note}
           </p>
         )}
-        {!note && <div style={{ marginBottom: 28 }} />}
+
+        {/* 【G1-006拡張】付け替え先などの選択プルダウン
+            ネイティブ select を使う（CustomSelect はドロップダウン描画が
+            モーダルの zIndex:3000 と干渉しうるため、共通部品側は依存を持たない）。 */}
+        {hasSelect && (
+          <div style={{ margin: "0 0 24px", textAlign: "left" }}>
+            {select.label && (
+              <div style={{ fontSize: 12, fontWeight: 800, color: "#374151", marginBottom: 6 }}>
+                {select.label}
+              </div>
+            )}
+            <select
+              value={selected}
+              onChange={(e) => setSelected(e.target.value)}
+              style={{
+                width: "100%", boxSizing: "border-box",
+                padding: "10px 12px", borderRadius: 10,
+                border: "1.5px solid #E5E7EB",
+                fontSize: 14, fontWeight: 700, color: "#111827",
+                backgroundColor: "white", outline: "none",
+                cursor: "pointer",
+              }}
+            >
+              {select.options.map((o) => (
+                <option key={o.value} value={o.value}>{o.label}</option>
+              ))}
+            </select>
+          </div>
+        )}
+
+        {!note && !hasSelect && <div style={{ marginBottom: 28 }} />}
 
         {/* 確認ボタン */}
         <button
-          onClick={onConfirm}
+          onClick={() => onConfirm(hasSelect ? selected : undefined)}
           style={{
             width: "100%", padding: "14px",
             backgroundColor: btnColor, color: "white",

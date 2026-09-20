@@ -500,9 +500,13 @@ export default function StatusSettings({ statuses: statusesProp = [], scenarios 
   // 突き合わせて、乖離していれば保存を拒否する（古いキャッシュ・別端末・API直叩き後の
   // 未リロード保存による全件置換上書きで、失注理由選択肢などの実データが失われる事故を防ぐ）。
   const baselineRef = useRef([]);
-  // 【G1-006】削除確定した「顧客が紐づくステータス」の元名称。保存時に renames へ
-  // 合流させ、GAS の改名マイグレーション（gas_updated.js:1300-1348）を流用して
-  // 顧客シート・ステータス履歴を先頭フローステータスへ一括付け替えする。
+  // 【G1-006拡張】削除確定した「顧客が紐づくステータス」の付け替え予約 {from, to}。
+  // from は元名称（_originalName）、to は削除確認モーダルのプルダウンで選択された
+  // 付け替え先ステータス名（選択時点の名称）。保存時に renames へ合流させ、
+  // GAS の改名マイグレーション（gas_updated.js:1860-1952）を流用して
+  // 顧客シート・ステータス履歴を選択先へ一括付け替えする。
+  // ※ ステータスは ID を持たず名称のみで紐づくため、to は保存時に
+  //   「①改名追従 → ②連鎖解決 → ③実在チェック」を経て確定する（handleSave 参照）。
   const [pendingReassigns, setPendingReassigns] = useState([]);
 
   // ── 【G1-006】ステータス名ごとの利用顧客件数 ────────────────────────
@@ -575,25 +579,79 @@ export default function StatusSettings({ statuses: statusesProp = [], scenarios 
 
   // フロー行操作
   const handleFlowChange   = (idx, key, val) => setFlowRows(prev => prev.map((r, i) => i === idx ? { ...r, [key]: val } : r));
-  // 【G1-006】確認モーダル経由に変更（SourceManager.jsx:213-244 の削除UXに揃える）。
-  // 顧客が紐づく場合は削除を予約として控え、保存時に先頭フローステータスへ自動付け替えする。
-  const handleFlowDelete   = (idx) => {
-    const row = flowRows[idx];
-    const n   = usageOf(row?.name);
+  // ── 【G1-006拡張】削除確認モーダル（付け替え先プルダウン付き）の共通処理 ──────
+  // ・顧客が紐づく（n > 0）場合は付け替え先をプルダウンで選択させる。
+  //   初期値は先頭フローステータス（＝従来の固定仕様と同じ）なので、
+  //   そのまま「削除する」を押せば挙動は従来どおり。
+  // ・選択肢は「通常フローのステータス」のみ。終点（成約・失注・除外・休眠）への
+  //   付け替えは、GAS 側ではシート上の名称書き換えだけで副作用（成約金額・失注理由の
+  //   入力プロンプト、再アプローチ予約、連動シナリオ起動）が一切走らないため、
+  //   成約金額なしの成約顧客の量産（A4-016 の ROI 集計崩れ）等を招く。
+  //   B1-046 の復帰先ステータスと同じ制約に揃えて対象外とする。
+  //   契約固定（isFixed）も受託情報の入力を伴うため対象外（同じく B1-046 と同基準）。
+  // ・削除対象が既存予約の付け替え先（p.to）になっている場合は、顧客 0 件でも
+  //   プルダウンを表示して既存予約の付け替え先を選び直させる。
+  //   （＝予約の連鎖 A→B→C を削除時点で解消し、GAS renameMap の1パス適用でも
+  //     取り残しが出ないようにする。宙吊り予約の予防措置。）
+  const requestStatusDelete = ({ row, candidates, isPendingTarget, removeRow }) => {
+    const name = (row?.name || "").trim();
+    const n    = usageOf(row?.name);
+    const needsSelect = n > 0 || isPendingTarget;
+
+    if (needsSelect && candidates.length === 0) {
+      showToast("顧客の付け替え先となる通常フローのステータスがありません。先にステータスを追加してください。", "warning");
+      return;
+    }
+
     setConfirmModal({
-      title: `「${row?.name || "（無題）"}」を削除しますか？`,
+      title: `「${name || "（無題）"}」を削除しますか？`,
       note: n > 0
-        ? `このステータスは現在 ${n} 件の顧客に設定されています。削除して保存すると、該当顧客の対応ステータスは先頭のステータスへ自動で付け替えられます。`
-        : "この操作は「保存する」を押すまでシートには反映されません。",
-      onConfirm: () => {
-        if (n > 0) {
+        ? `このステータスは現在 ${n} 件の顧客に設定されています。削除して保存すると、該当顧客の対応ステータスは下で選択したステータスへ付け替えられます。`
+        : isPendingTarget
+          ? "このステータスは、先に削除したステータスの付け替え先に指定されています。新しい付け替え先を選択してください。"
+          : "この操作は「保存する」を押すまでシートには反映されません。",
+      select: needsSelect ? {
+        label: "付け替え先ステータス",
+        options: candidates.map(c => ({ value: c, label: c })),
+        defaultValue: candidates[0],
+      } : undefined,
+      onConfirm: (selectedTo) => {
+        if (needsSelect) {
           // 顧客シート側が保持しているのは読み込み時点の名称（_originalName）
-          const from = (row?._originalName || row?.name || "").trim();
-          if (from) setPendingReassigns(prev => prev.some(p => p.from === from) ? prev : [...prev, { from }]);
+          const from   = (row?._originalName || row?.name || "").trim();
+          const target = (selectedTo || candidates[0] || "").trim();
+          setPendingReassigns(prev => {
+            // この行（の現名称）を付け替え先にしている既存予約は、選び直した先へ retarget する
+            const retargeted = prev.map(p => ((p.to || "").trim() === name && name) ? { ...p, to: target } : p);
+            // 顧客が紐づく場合のみ新規予約を追加（n=0 の retarget 専用ケースでは
+            // 従来どおり GAS へ移送エントリを送らない＝履歴の書き換え範囲を従来と同じに保つ）
+            if (n > 0 && from && target && !retargeted.some(p => p.from === from)) {
+              return [...retargeted, { from, to: target }];
+            }
+            return retargeted;
+          });
         }
-        setFlowRows(prev => prev.filter((_, i) => i !== idx));
+        removeRow();
         setConfirmModal(null);
       },
+    });
+  };
+
+  // 【G1-006】確認モーダル経由に変更（SourceManager.jsx:213-244 の削除UXに揃える）。
+  // 【G1-006拡張】顧客が紐づく場合は付け替え先をモーダル内プルダウンで選択させる。
+  const handleFlowDelete   = (idx) => {
+    const row  = flowRows[idx];
+    const name = (row?.name || "").trim();
+    requestStatusDelete({
+      row,
+      // 削除対象自身（index 一致で除外。編集中は同名重複がありうるため名称比較にしない）
+      // ・契約固定・無名行を除いた通常フローのステータス名
+      candidates: flowRows
+        .map((r, i) => ({ r, i }))
+        .filter(({ r, i }) => i !== idx && !r.isFixed && (r.name || "").trim())
+        .map(({ r }) => r.name.trim()),
+      isPendingTarget: !!name && pendingReassigns.some(p => (p.to || "").trim() === name),
+      removeRow: () => setFlowRows(prev => prev.filter((_, i) => i !== idx)),
     });
   };
   // 【安定化】新規行は全キーを明示して作る。キー欠落（undefined）の行は GAS 側の
@@ -636,23 +694,16 @@ export default function StatusSettings({ statuses: statusesProp = [], scenarios 
 
   // 終点行操作
   const handleTerminalChange = (idx, key, val) => setTerminalRows(prev => prev.map((r, i) => i === idx ? { ...r, [key]: val } : r));
-  // 【G1-006】終点ステータスも同様に確認モーダル経由＋保存時の自動付け替えにする
+  // 【G1-006】終点ステータスも同様に確認モーダル経由＋保存時の付け替えにする
+  // 【G1-006拡張】付け替え先はモーダル内プルダウンで選択（選択肢は通常フローのみ）
   const handleTerminalDelete = (idx) => {
     const row = terminalRows[idx];
-    const n   = usageOf(row?.name);
-    setConfirmModal({
-      title: `「${row?.name || "（無題）"}」を削除しますか？`,
-      note: n > 0
-        ? `このステータスは現在 ${n} 件の顧客に設定されています。削除して保存すると、該当顧客の対応ステータスは先頭のステータスへ自動で付け替えられます。`
-        : "この操作は「保存する」を押すまでシートには反映されません。",
-      onConfirm: () => {
-        if (n > 0) {
-          const from = (row?._originalName || row?.name || "").trim();
-          if (from) setPendingReassigns(prev => prev.some(p => p.from === from) ? prev : [...prev, { from }]);
-        }
-        setTerminalRows(prev => prev.filter((_, i) => i !== idx));
-        setConfirmModal(null);
-      },
+    requestStatusDelete({
+      row,
+      candidates: flowRows.filter(r => !r.isFixed && (r.name || "").trim()).map(r => r.name.trim()),
+      // 付け替え先の選択肢は通常フロー限定のため、終点行が既存予約の to になることはない
+      isPendingTarget: false,
+      removeRow: () => setTerminalRows(prev => prev.filter((_, i) => i !== idx)),
     });
   };
   const handleTerminalAdd    = () => {
@@ -730,21 +781,55 @@ export default function StatusSettings({ statuses: statusesProp = [], scenarios 
       .filter(r => r._originalName && r._originalName.trim() !== r.name.trim())
       .map(r => ({ from: r._originalName.trim(), to: r.name.trim() }));
 
-    // ── 【G1-006】削除されたステータスの顧客付け替え ──────────────
+    // ── 【G1-006拡張】削除されたステータスの顧客付け替え（付け替え先＝ユーザー選択） ──
     // GAS 側は G1-020 の renames マイグレーション（多対一許容・from の実在チェックなし・
-    // ステータス履歴の追従込み / gas_updated.js:1295-1348）をそのまま流用するため、
-    // サーバー変更は不要。付け替え先は「先頭フローステータス」に固定し、
-    // 表示フォールバック（KanbanBoard.jsx:1432-1437 / CustomerList.jsx:116）および
-    // GAS の既定解決（getStatusMaster_ / gas_updated.js:4311-4326）と同一規則にする。
+    // ステータス履歴の追従込み / gas_updated.js:1860-1952）をそのまま流用するため、
+    // サーバー変更は不要。付け替え先は削除確認モーダルのプルダウンで選択された to を使う。
+    //
+    // GAS の renameMap は「1パス適用」（置換後の値を再処理しない / 1885-1892行）のため、
+    // 名称ベース紐付けの取りこぼしを防ぐ目的で、送信前に以下を行う。
+    //   ① 改名追従: 削除確定後に付け替え先が改名された場合、renames の対応表で新名称へ差し替え
+    //     （例:「A削除→Bへ」の後に B を B' に改名 → A の顧客は B' へ送る。
+    //       固定 fallbackTo だった従来はこの問題自体が起きなかったが、選択制では必須）
+    //   ② 連鎖解決: 付け替え先自体が削除予約されている場合、最終的な行き先まで辿って平坦化
+    //     （例: {A→B, B→C} をそのまま送ると1パス適用で A の顧客が消滅済みの B で止まる → A→C に解決。
+    //       通常は削除時の retarget（requestStatusDelete）で連鎖は発生しないが、
+    //       「選択後に付け替え先を改名してから削除」等の複合操作に対する最終ガード）
+    //   ③ 実在チェック: 解決後の to が現存する通常フロー（契約固定除く）にあることを確認
     const currentNames = new Set(allRows.map(r => (r.name || "").trim()));
-    const fallbackTo   = (allRows.find(r => !r.terminalType)?.name || "").trim();
-    const deleteMoves  = pendingReassigns
-      .filter(p => !currentNames.has(p.from))   // 同名で作り直された場合は付け替え不要
-      .filter(p => p.from !== fallbackTo)
-      .map(p => ({ from: p.from, to: fallbackTo }));
+    const renameTo = {};
+    renames.forEach(r => { renameTo[r.from] = r.to; });
+    const rawMoves = pendingReassigns.filter(p => !currentNames.has(p.from));   // 同名で作り直された場合は付け替え不要
+    const moveByFrom = {};
+    rawMoves.forEach(p => { moveByFrom[p.from] = p; });
+    // 従来仕様の「先頭フローステータス」は、to 欠落時のフォールバックとしてのみ残す
+    //（契約固定 isFixed は選択肢と同じ理由で除外。従来の allRows.find(!terminalType) より安全側）
+    const fallbackTo = (flowRows.find(r => !r.isFixed && (r.name || "").trim())?.name || "").trim();
+    const resolveTo = (to) => {
+      let cur = (to || "").trim();
+      const maxHops = rawMoves.length + renames.length + 1;   // 万一の循環予約でも必ず停止させる
+      for (let hops = 0; hops < maxHops; hops++) {
+        if (renameTo[cur])   { cur = renameTo[cur]; continue; }                      // ① 改名追従
+        if (moveByFrom[cur]) { cur = (moveByFrom[cur].to || "").trim(); continue; }  // ② 連鎖解決
+        break;
+      }
+      return cur;
+    };
+    const deleteMoves = rawMoves
+      .map(p => ({ from: p.from, to: resolveTo(p.to) || fallbackTo }))
+      .filter(m => m.from !== m.to);
 
-    if (deleteMoves.length > 0 && !fallbackTo) {
-      showToast("顧客の付け替え先となる通常フローのステータスがありません。先にステータスを追加してください。", "warning");
+    // ③ 実在チェック。「付け替え先に選んだステータスを、その後にフローから消した
+    //（顧客0件で削除・契約固定化 等）」場合にここで止める（宙吊り名称の書き込み防止）。
+    const flowNameSet = new Set(flowRows.filter(r => !r.isFixed).map(r => (r.name || "").trim()).filter(Boolean));
+    const badMove = deleteMoves.find(m => !m.to || !flowNameSet.has(m.to));
+    if (badMove) {
+      showToast(
+        badMove.to
+          ? `削除した「${badMove.from}」の付け替え先「${badMove.to}」が通常フローに存在しません。付け替え先のステータスを確認するか、ページを再読み込みして削除をやり直してください。`
+          : "顧客の付け替え先となる通常フローのステータスがありません。先にステータスを追加してください。",
+        "warning"
+      );
       return;
     }
 
@@ -838,12 +923,15 @@ export default function StatusSettings({ statuses: statusesProp = [], scenarios 
 
   return (
     <div style={{ minHeight: "100vh", backgroundColor: THEME.bg, padding: isMobile ? "20px 16px" : "40px 48px", boxSizing: "border-box" }}>
-      {/* 【G1-006 / G1-020】破壊的操作の確認モーダル（共通コンポーネント） */}
+      {/* 【G1-006 / G1-020】破壊的操作の確認モーダル（共通コンポーネント）
+          【G1-006拡張】select を渡すと付け替え先プルダウンが表示され、
+          確定時に onConfirm(選択値) が呼ばれる */}
       <ConfirmModal
         open={!!confirmModal}
         title={confirmModal?.title || ""}
         message={confirmModal?.message}
         note={confirmModal?.note}
+        select={confirmModal?.select}
         confirmLabel={confirmModal?.confirmLabel}
         confirmColor={confirmModal?.confirmColor}
         onConfirm={confirmModal?.onConfirm}
