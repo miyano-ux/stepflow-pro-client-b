@@ -170,7 +170,9 @@ function KpiCard({ label, value, sub, color }) {
   return (
     <div style={{
       background: "white", borderRadius: 12, border: `1px solid ${THEME.border}`,
-      padding: "16px 18px", flex: 1, minWidth: 0,
+      // 【レスポンシブ】flex:1 固定だと親幅が狭い時にカードが極端に潰れて文字が縦落ちする。
+      //   基準幅170pxを持たせ、親の flexWrap で折返す。
+      padding: "16px 18px", flex: "1 1 170px", minWidth: 0,
     }}>
       <div style={{ fontSize: 11, fontWeight: 700, color: THEME.textMuted, marginBottom: 5 }}>{label}</div>
       <div style={{ fontSize: 22, fontWeight: 900, color: color || THEME.textMain, lineHeight: 1.1 }}>{value}</div>
@@ -252,7 +254,7 @@ export default function SourceReport({
   const navigate = useNavigate();
   // 【レスポンシブ】isTablet は専任率ランキング(220px固定)＋グラフの2カラム切替に使用。
   //   モバイルは従来通り横スクロール(main側 overflowX)で閲覧するため挙動を変えない。
-  const { isMobile, isTablet } = useWindowWidth();
+  const { isMobile, isTablet, width } = useWindowWidth();
   const [periodCP, setPeriodCP]     = useState({ from: "", to: "" });  // 契約獲得力
   const [periodROI, setPeriodROI]   = useState({ from: "", to: "" });  // 成約金額ROI
   const [periodCost, setPeriodCost] = useState({ from: "", to: "" });  // 費用対効果
@@ -673,7 +675,13 @@ export default function SourceReport({
 
   return (
     <div style={{ minHeight: "100vh", backgroundColor: THEME.bg, overflowX: isMobile ? "auto" : undefined, WebkitOverflowScrolling: isMobile ? "touch" : undefined }}>
-      <div style={{ minWidth: isMobile ? 1100 : undefined, padding: "40px 56px", maxWidth: "1100px", margin: "0 auto" }}>
+      <div style={{
+        minWidth: isMobile ? 1100 : undefined,
+        // 【レスポンシブ】本ページは約1100px前提のデザイン。モバイルは minWidth+横スクロールで
+        //   原寸を保つが、中間幅(非モバイル)では圧縮されるため余白を段階的に縮めて実効幅を稼ぐ。
+        padding: isMobile ? "40px 56px" : width < 1280 ? "24px 20px" : "40px 56px",
+        maxWidth: "1100px", margin: "0 auto",
+      }}>
 
         {/* ── ヘッダー ── */}
         <header style={{ marginBottom: 36 }}>
@@ -730,15 +738,15 @@ export default function SourceReport({
           <ExcludedNote ex={excludedCP} />
 
           {/* KPIカード */}
-          <div style={{ display: "flex", gap: 12, marginBottom: 20 }}>
+          <div style={{ display: "flex", gap: 12, marginBottom: 20, flexWrap: "wrap" }}>
             {/* 左50%：2カード */}
-            <div style={{ display: "flex", gap: 12, flex: 1 }}>
+            <div style={{ display: "flex", gap: 12, flex: "1 1 320px" }}>
               <KpiCard label="全体・専任媒介率" value={`${cpKpi.overallRate}%`} sub={`専任 ${cpKpi.totalSenin}件 / 計 ${cpKpi.totalWon}件`} color="#4F46E5" />
               <KpiCard label="専任率 No.1 流入元" value={cpKpi.topSrc ? cpKpi.topSrc.src : "−"} sub={cpKpi.topSrc ? `専任率 ${cpKpi.topSrc.seninRate}%` : undefined} color="#7C3AED" />
             </div>
             {/* 右50%：3種別の内訳カード */}
             <div style={{
-              flex: 1, background: "white", borderRadius: 12, border: `1px solid ${THEME.border}`,
+              flex: "1 1 360px", background: "white", borderRadius: 12, border: `1px solid ${THEME.border}`,
               padding: "16px 20px", display: "flex", flexDirection: "column", justifyContent: "space-between",
             }}>
               <div style={{ fontSize: 11, fontWeight: 700, color: THEME.textMuted, marginBottom: 10 }}>契約種別の内訳</div>
@@ -910,14 +918,17 @@ export default function SourceReport({
           )}
 
           {/* KPIカード */}
-          <div style={{ display: "flex", gap: 12, marginBottom: 20 }}>
+          <div style={{ display: "flex", gap: 12, marginBottom: 20, flexWrap: "wrap" }}>
             <KpiCard label="仲介手数料合計（推定）" value={fmtMan(roiKpi.totalCommission)} sub={`成約金額合計 ${fmtMan(roiKpi.totalAmt)} の3% ＋ 6万×${roiKpi.totalWon}件`} color="#059669" />
             <KpiCard label="1成約あたり平均金額" value={roiKpi.avgAmt > 0 ? fmtMan(roiKpi.avgAmt) : "−"} sub="成約金額合計 ÷ 成約件数" />
             <KpiCard label="全体平均ROI" value={roiKpi.overallRoi ? roiKpi.overallRoi.toFixed(2) + "倍" : "−"} sub="仲介手数料合計 ÷ 広告費合計" color={roiKpi.overallRoi >= 1 ? "#1D6F42" : "#C0392B"} />
             <KpiCard label="ROI最高流入元" value={roiKpi.topRoi ? roiKpi.topRoi.src : "−"} sub={roiKpi.topRoi && roiKpi.topRoi.roi ? `${roiKpi.topRoi.roiStr}倍（標準比 ${Math.round(roiKpi.topRoi.roi / 8.3 * 100)}%）` : undefined} color="#185FA5" />
           </div>
 
-          <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed" }}>
+          {/* 【レスポンシブ】fixed+%列の表は容器が狭いと列が広がれず文字が隣セルへ重なる。
+              設計幅960pxを最低保証し、狭い環境では表単体の横スクロールで閲覧する。 */}
+          <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
+          <table style={{ width: "100%", minWidth: 960, borderCollapse: "collapse", tableLayout: "fixed" }}>
             <colgroup>
               <col style={{ width: "10%" }} />
               <col style={{ width: "7%" }} />
@@ -1047,6 +1058,7 @@ export default function SourceReport({
               )}
             </tbody>
           </table>
+          </div>
         </div>
 
         {/* ── ② 費用対効果 ── */}
@@ -1061,6 +1073,9 @@ export default function SourceReport({
             <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 16, marginTop: -8 }}>
               <MonthRangeFilter value={periodCost} onChange={setPeriodCost} min={costMonthBounds.min} max={costMonthBounds.max} />
             </div>
+            {/* 【レスポンシブ】極端な狭幅では横スクロールで保護（min 520px） */}
+            <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
+            <div style={{ minWidth: 520 }}>
             <div style={{ display: "grid", gridTemplateColumns: "140px 1fr 1fr", columnGap: 24, marginBottom: 8 }}>
               <div />
               <div style={colHd()}>総獲得コスト</div>
@@ -1104,6 +1119,8 @@ export default function SourceReport({
                 </div>
               );
             })}
+            </div>
+            </div>
           </div>
         )}
         </>
