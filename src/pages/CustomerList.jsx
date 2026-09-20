@@ -208,7 +208,7 @@ export default function CustomerList({
   const showToast = useToast();
   const navigate = useNavigate();
   const location = useLocation();
-  const { isMobile } = useWindowWidth();
+  const { isMobile, width } = useWindowWidth();
 
   const [search, setSearch] = useState({});
   const [dateRange, setDateRange] = useState({});
@@ -777,7 +777,16 @@ export default function CustomerList({
 
   return (
     <div style={localStyles.main}>
-      <div style={{ ...localStyles.wrapper, ...(isMobile ? { padding: "16px 16px 80px" } : {}) }}>
+      <div style={{
+        ...localStyles.wrapper,
+        // 【レスポンシブ】サイドバー(240px)分を差し引いた実効幅が狭い中間帯(〜1280px)では
+        //   左右64pxの余白が過大で検索パネルを圧迫するため段階的に縮める。
+        ...(isMobile
+          ? { padding: "16px 16px 80px" }
+          : width < 1280
+            ? { padding: "32px 24px" }
+            : {}),
+      }}>
 
         <header style={{
           marginBottom: isMobile ? "20px" : "40px",
@@ -864,14 +873,22 @@ export default function CustomerList({
           </div>
         ) : (
           <div style={localStyles.card}>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "24px", alignItems: "end" }}>
+            <div style={{
+              display: "grid",
+              // 【レスポンシブ】固定4列だと中間幅(768〜1200px)で1列が145px程度まで潰れ、
+              //   DateRangePicker(最低230px程度必要)やプレースホルダが崩れる。
+              //   auto-fit + minmax で幅に応じて 4→3→2→1 列へ自動段階化する。
+              gridTemplateColumns: "repeat(auto-fit, minmax(230px, 1fr))",
+              gap: width < 1280 ? "16px 20px" : "24px",
+              alignItems: "end",
+            }}>
               {sCols.map((col) => (
                 <div key={col}>{renderSearchField(col)}</div>
               ))}
               <div>
                 <button
                   onClick={() => { setSearch({}); setDateRange({}); }}
-                  style={{ background: "none", border: "none", color: THEME.primary, fontWeight: "900", cursor: "pointer", fontSize: 14 }}
+                  style={{ background: "none", border: "none", color: THEME.primary, fontWeight: "900", cursor: "pointer", fontSize: 14, whiteSpace: "nowrap", padding: "12px 0" }}
                 >
                   条件クリア
                 </button>

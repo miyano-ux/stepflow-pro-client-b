@@ -27,8 +27,8 @@ function DateRangePicker({ label, value = {}, onChange }) {
       </label>
 
       {/* 日付入力 */}
-      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-        <div style={{ flex: 1, borderRadius: "12px", border: `1px solid ${THEME.border}`, overflow: "hidden", backgroundColor: "white" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+        <div style={{ flex: "1 1 96px", minWidth: 96, borderRadius: "12px", border: `1px solid ${THEME.border}`, overflow: "hidden", backgroundColor: "white" }}>
             <input
               type="date"
               style={{ width: "100%", padding: "8px 12px", border: "none", outline: "none", fontSize: "13px", cursor: "pointer", boxSizing: "border-box", backgroundColor: "transparent", fontFamily: "inherit" }}
@@ -37,7 +37,7 @@ function DateRangePicker({ label, value = {}, onChange }) {
             />
           </div>
           <span style={{ color: THEME.textMuted, fontSize: 13, flexShrink: 0 }}>〜</span>
-          <div style={{ flex: 1, borderRadius: "12px", border: `1px solid ${THEME.border}`, overflow: "hidden", backgroundColor: "white" }}>
+          <div style={{ flex: "1 1 96px", minWidth: 96, borderRadius: "12px", border: `1px solid ${THEME.border}`, overflow: "hidden", backgroundColor: "white" }}>
             <input
               type="date"
               style={{ width: "100%", padding: "8px 12px", border: "none", outline: "none", fontSize: "13px", cursor: "pointer", boxSizing: "border-box", backgroundColor: "transparent", fontFamily: "inherit" }}
