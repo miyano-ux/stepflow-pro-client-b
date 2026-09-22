@@ -1,6 +1,6 @@
 import React, { useMemo } from "react";
 import { Link, useParams, useNavigate, useLocation } from "react-router-dom";
-import { ArrowLeft, ExternalLink, Send, UserCircle, Calendar } from "lucide-react";
+import { ArrowLeft, ExternalLink, Send, UserCircle, Calendar, Loader2 } from "lucide-react";
 import { THEME } from "../lib/constants";
 import { useWindowWidth } from "../lib/useWindowWidth";
 
@@ -51,7 +51,7 @@ function ReapproachBadge({ customer, compact = false }) {
   );
 }
 
-export default function CustomerStatusList({ customers = [], statuses = [], staffList = [] }) {
+export default function CustomerStatusList({ customers = [], statuses = [], staffList = [], isLoading = false }) {
   const { type, name } = useParams(); // type: "won"|"dormant"|"lost" | name: encodeURIComponent(ステータス名)
   const navigate = useNavigate();
   const location = useLocation();
@@ -119,13 +119,22 @@ export default function CustomerStatusList({ customers = [], statuses = [], staf
               {targetLabel}リスト
             </h1>
             <p style={{ color: THEME.textMuted, fontSize: 14, margin: "4px 0 0" }}>
-              {list.length} 名
+              {/* 【誤解防止】データ取得中に「0 名」と出さない（取得完了後に実数を表示） */}
+              {isLoading && list.length === 0 ? "読み込み中…" : `${list.length} 名`}
             </p>
           </div>
         </div>
 
         {/* リスト */}
-        {list.length === 0 ? (
+        {/* 【誤解防止】データ取得完了前に「顧客はいません」と表示しない。
+            取得中かつ手元にデータが無い場合はローディング表示（CustomerList と同トーン）。
+            キャッシュ由来のデータが既にある場合は従来通り即時表示する。 */}
+        {isLoading && list.length === 0 ? (
+          <div style={{ backgroundColor: "white", borderRadius: 16, border: `1px solid ${THEME.border}`, padding: isMobile ? "48px 20px" : "80px", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 14, color: THEME.textMuted }}>
+            <Loader2 size={40} color={config.color} style={{ animation: "spin 0.9s linear infinite" }} />
+            <div style={{ fontSize: 14, fontWeight: 800 }}>{targetLabel}リストを読み込んでいます…</div>
+          </div>
+        ) : list.length === 0 ? (
           <div style={{ backgroundColor: "white", borderRadius: 16, border: `1px solid ${THEME.border}`, padding: isMobile ? "40px 20px" : "80px", textAlign: "center", color: THEME.textMuted }}>
             {targetLabel}の顧客はいません
           </div>

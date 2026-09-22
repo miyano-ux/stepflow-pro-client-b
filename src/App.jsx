@@ -544,8 +544,8 @@ function App() {
               <Route path="/tracking" element={<TrackingDashboard />} />
 
               {/* ステータス別リスト */}
-              <Route path="/status-list/:type" element={<CustomerStatusList customers={d?.customers} statuses={d?.statuses} staffList={staffList} />} />
-              <Route path="/status-list/:type/:name" element={<CustomerStatusList customers={d?.customers} statuses={d?.statuses} staffList={staffList} />} />
+              <Route path="/status-list/:type" element={<CustomerStatusList isLoading={load} customers={d?.customers} statuses={d?.statuses} staffList={staffList} />} />
+              <Route path="/status-list/:type/:name" element={<CustomerStatusList isLoading={load} customers={d?.customers} statuses={d?.statuses} staffList={staffList} />} />
 
               {/* カンバン */}
               <Route path="/kanban" element={<KanbanBoard customers={d?.customers} statuses={d?.statuses} scenarios={d?.scenarios} scenarioSettings={d?.scenarioSettings} staffList={staffList} properties={d?.properties} onRefresh={refresh} onLightRefresh={lightRefresh} gasUrl={GAS_URL} sources={d?.sources} contractTypes={d?.contractTypes} />} />
