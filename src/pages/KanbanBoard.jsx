@@ -41,7 +41,9 @@ const S = {
   excludedCorner: { width: "256px", flexShrink: 0, borderLeft: `1px solid ${THEME.border}`, backgroundColor: "#F1F2F4", padding: "0", marginLeft: "16px" },
   zone:      { minWidth: "260px", height: "96px", borderRadius: "16px", display: "flex", alignItems: "center", justifyContent: "center", gap: "10px", fontWeight: "900", fontSize: "15px", border: "3px dashed transparent", transition: "all 0.2s", cursor: "default", padding: "0 24px" },
   overlay:   { position: "fixed", inset: 0, backgroundColor: "rgba(15,23,42,0.6)", display: "flex", justifyContent: "center", alignItems: "center", zIndex: 2000, backdropFilter: "blur(4px)" },
-  modal:     { backgroundColor: "white", borderRadius: 24, padding: "40px", width: 460, boxShadow: "0 24px 48px rgba(0,0,0,0.15)" },
+  // 【レスポンシブ】固定460px(+padding80)は狭い画面で画面外にはみ出すため、従来の合計幅540pxを
+  //   上限とした min() でキャップ。通常画面の見た目は不変。width を上書きする場合も同様に min() で指定する。
+  modal:     { backgroundColor: "white", borderRadius: 24, padding: "40px", width: "min(540px, calc(100vw - 32px))", boxSizing: "border-box", boxShadow: "0 24px 48px rgba(0,0,0,0.15)" },
 };
 
 // ─────────────────────────────────────────────────────────
@@ -207,7 +209,7 @@ function DormantModal({ info, scenarios, statuses = [], gasUrl, onDone, onCancel
   };
   return (
     <div style={S.overlay}>
-      <div style={{ ...S.modal, width: 500 }}>
+      <div style={{ ...S.modal, width: "min(580px, calc(100vw - 32px))" }}>
         <div style={{ textAlign: "center", marginBottom: 24 }}>
           <div style={{ fontSize: 48, marginBottom: 8 }}>🌙</div>
           <h3 style={{ fontSize: 20, fontWeight: 900, color: THEME.textMain, margin: "0 0 8px" }}>「{info.newStatus}」に変更</h3>
@@ -397,7 +399,7 @@ function LostModal({ info, gasUrl, onDone, onCancel, showToast }) {
 
   return (
     <div style={S.overlay}>
-      <div style={{ ...S.modal, width: 480 }}>
+      <div style={{ ...S.modal, width: "min(560px, calc(100vw - 32px))" }}>
         {/* ヘッダー */}
         <div style={{ textAlign: "center", marginBottom: 28 }}>
           <div style={{ width: 56, height: 56, borderRadius: 16, backgroundColor: "#FEF2F2", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 12px", fontSize: 26 }}>🗑</div>
@@ -563,7 +565,7 @@ function UketsukeModal({ info, gasUrl, contractTypes, staffList, onDone, onCance
   // ── レンダリング ──────────────────────────
   return (
     <div style={{ position: "fixed", inset: 0, backgroundColor: "rgba(15,23,42,0.6)", display: "flex", justifyContent: "center", alignItems: "center", zIndex: 2000, backdropFilter: "blur(4px)" }}>
-      <div style={{ backgroundColor: "white", borderRadius: 24, padding: "36px 40px", width: 500, boxShadow: "0 24px 48px rgba(0,0,0,0.15)", maxHeight: "90vh", overflowY: "auto" }}>
+      <div style={{ backgroundColor: "white", borderRadius: 24, padding: "36px 40px", width: "min(580px, calc(100vw - 32px))", boxSizing: "border-box", boxShadow: "0 24px 48px rgba(0,0,0,0.15)", maxHeight: "90vh", overflowY: "auto" }}>
 
         {/* ヘッダー */}
         <div style={{ textAlign: "center", marginBottom: 24 }}>
@@ -848,7 +850,7 @@ function WonModal({ info, gasUrl, onDone, onCancel, showToast }) {
 
   return (
     <div style={{ position: "fixed", inset: 0, backgroundColor: "rgba(15,23,42,0.6)", display: "flex", justifyContent: "center", alignItems: "center", zIndex: 2000, backdropFilter: "blur(4px)" }}>
-      <div style={{ backgroundColor: "white", borderRadius: 24, padding: "36px 40px", width: 500, boxShadow: "0 24px 48px rgba(0,0,0,0.15)", maxHeight: "90vh", overflowY: "auto" }}>
+      <div style={{ backgroundColor: "white", borderRadius: 24, padding: "36px 40px", width: "min(580px, calc(100vw - 32px))", boxSizing: "border-box", boxShadow: "0 24px 48px rgba(0,0,0,0.15)", maxHeight: "90vh", overflowY: "auto" }}>
 
         {/* ヘッダー */}
         <div style={{ textAlign: "center", marginBottom: 24 }}>
@@ -1013,7 +1015,7 @@ function UketsukeBackModal({ info, onConfirm, onCancel }) {
   if (!info) return null;
   return (
     <div style={{ position: "fixed", inset: 0, backgroundColor: "rgba(15,23,42,0.6)", display: "flex", justifyContent: "center", alignItems: "center", zIndex: 2000, backdropFilter: "blur(4px)" }}>
-      <div style={{ backgroundColor: "white", borderRadius: 24, padding: "40px", width: 460, boxShadow: "0 24px 48px rgba(0,0,0,0.15)" }}>
+      <div style={{ backgroundColor: "white", borderRadius: 24, padding: "40px", width: "min(540px, calc(100vw - 32px))", boxSizing: "border-box", boxShadow: "0 24px 48px rgba(0,0,0,0.15)" }}>
         <div style={{ textAlign: "center", marginBottom: 28 }}>
           <div style={{ fontSize: 48, marginBottom: 10 }}>⚠️</div>
           <h3 style={{ fontSize: 20, fontWeight: 900, color: THEME.textMain, margin: "0 0 12px" }}>受託済みステータスを前に戻します</h3>

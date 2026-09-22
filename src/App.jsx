@@ -373,7 +373,7 @@ function App() {
     return (
       <div style={{ height: "100vh", display: "flex", alignItems: "center", justifyContent: "center", backgroundColor: THEME.bg }}>
         <style>{globalStyle}</style>
-        <div style={{ ...styles.card, textAlign: "center", width: "400px", padding: "48px" }}>
+        <div style={{ ...styles.card, textAlign: "center", width: "min(496px, calc(100vw - 32px))", boxSizing: "border-box", padding: "48px" }}>
           <div style={{ margin: "0 auto 40px", display: "flex", justifyContent: "center" }}>
             <img src="/logo_beta.png" alt="SMOOSy" style={{ height: "80px", width: "auto", objectFit: "contain" }} />
           </div>

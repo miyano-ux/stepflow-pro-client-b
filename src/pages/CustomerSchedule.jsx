@@ -496,7 +496,9 @@ function CustomerSchedule({ customers = [], deliveryLogs = [], onRefresh, isLoad
           }}
         >
           <div onClick={(e) => e.stopPropagation()} style={{
-            ...styles.card, width: "550px", padding: "32px",
+            ...styles.card,
+            // 【レスポンシブ】固定550pxは狭い画面ではみ出すため従来合計幅614pxを上限にキャップ
+            width: "min(614px, calc(100vw - 32px))", boxSizing: "border-box", padding: "32px",
             boxShadow: "0 20px 25px -5px rgba(0,0,0,0.1)",
           }}>
             <h3 style={{ marginBottom: "24px", fontSize: "20px", fontWeight: "900", marginTop: 0 }}>
@@ -554,7 +556,8 @@ function CustomerSchedule({ customers = [], deliveryLogs = [], onRefresh, isLoad
           }}
         >
           <div onClick={(e) => e.stopPropagation()} style={{
-            ...styles.card, width: "460px", padding: "32px",
+            ...styles.card,
+            width: "min(524px, calc(100vw - 32px))", boxSizing: "border-box", padding: "32px",
             boxShadow: "0 20px 25px -5px rgba(0,0,0,0.1)",
           }}>
             <div style={{
