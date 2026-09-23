@@ -42,6 +42,21 @@ export function getReport(action, params, { force = false } = {}) {
   };
 }
 
+/**
+ * 【SMS通数監査⑥】GAS側キャッシュ（CacheService・TTL 6時間）ごと作り直す強制再集計。
+ * force:true を GAS に渡して再計算させ、結果は通常キーで保存する（以降の getReport が
+ * 最新値を返す）。シートを直接編集した場合の反映用。同時実行は1本にまとめる。
+ */
+export async function refreshReport(action, params) {
+  const key = keyOf(action, params);
+  if (inflight.has(key)) return inflight.get(key);
+  const p = apiCall.post(GAS_URL, { action, ...(params || {}), force: true })
+    .then(res => put(action, params, res))
+    .finally(() => inflight.delete(key));
+  inflight.set(key, p);
+  return p;
+}
+
 /** 更新系操作の後に呼ぶと、次回表示時に必ず再取得する */
 export function invalidateReports() { store.clear(); }
 

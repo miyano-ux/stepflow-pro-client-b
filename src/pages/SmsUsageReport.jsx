@@ -1,7 +1,7 @@
 import React, { useMemo, useState, useEffect } from "react";
 import {
   MessageSquare, TrendingUp, TrendingDown, Minus,
-  Clock, AlertTriangle, Download, ChevronDown, ChevronUp, Info, Loader2,
+  Clock, AlertTriangle, Download, ChevronDown, ChevronUp, Info, Loader2, RefreshCw,
 } from "lucide-react";
 import { THEME, GAS_URL } from "../lib/constants";
 import { useWindowWidth } from "../lib/useWindowWidth";
@@ -15,7 +15,8 @@ import { useReport } from "../lib/useReport";   // 【レポート高速化】
 //   配信管理シート（deliveryLogs）を月別に集計して表示する。
 //   請求根拠となるのは「配信済み」レコードのみ。
 //   料金は本文の文字量で変動するため、件数ではなく
-//   「送信通数」換算（lib/utils.js の smsUnits）で集計する。
+//   「送信通数」換算（lib/utils.js の smsUnits＝アクリート サービス説明書 2.7 の
+//   課金表準拠）で集計する。
 // ==========================================
 
 const STATUS_SENT     = "配信済み";
@@ -30,17 +31,19 @@ const RANGE_OPTIONS = [
 ];
 
 // 通数レンジ表（参考表示用）
+// 【SMS通数監査②】アクリート「SMSコネクト サービス説明書」2.7 課金 の換算表に準拠。
+//   全角/半角の区別なし・66文字刻み・最大10通。lib/utils.js smsUnits と一致させること。
 const UNIT_RANGES = [
-  ["1〜70文字",    "1〜160文字",       1],
-  ["71〜134文字",  "161〜306文字",     2],
-  ["135〜201文字", "307〜459文字",     3],
-  ["202〜268文字", "460〜612文字",     4],
-  ["269〜335文字", "613〜765文字",     5],
-  ["336〜402文字", "766〜918文字",     6],
-  ["403〜469文字", "919〜1,071文字",   7],
-  ["470〜536文字", "1,072〜1,224文字", 8],
-  ["537〜603文字", "1,225〜1,377文字", 9],
-  ["604〜670文字", "1,378〜1,530文字", 10],
+  ["1〜70文字",    1],
+  ["71〜132文字",  2],
+  ["133〜198文字", 3],
+  ["199〜264文字", 4],
+  ["265〜330文字", 5],
+  ["331〜396文字", 6],
+  ["397〜462文字", 7],
+  ["463〜528文字", 8],
+  ["529〜594文字", 9],
+  ["595〜660文字", 10],
 ];
 
 // ── 日時 → "YYYY-MM"（日本時間で判定）────────────────
@@ -88,7 +91,8 @@ export default function SmsUsageReport({ isLoading = false, deliveryLogs = [], c
   const [showRanges, setShowRanges] = useState(false);
 
   // 【レポート高速化】range 変更のたびにサーバ集計サマリーを取得（フロントキャッシュ優先・裏で更新）
-  const { data: summary, loading: summaryLoading } = useReport("getSmsUsageSummary", { range });
+  // 【SMS通数監査⑤】error / reload も受け取り、取得失敗（キャッシュなし）を画面で扱う
+  const { data: summary, loading: summaryLoading, error: summaryError, reload: reloadSummary, refresh: refreshSummary } = useReport("getSmsUsageSummary", { range });
 
   // ドリルダウン：月を開いたらその月の配信明細だけを取得
   useEffect(() => {
@@ -122,6 +126,10 @@ export default function SmsUsageReport({ isLoading = false, deliveryLogs = [], c
   const byMonth = summary?.byMonth || months.map((k) => ({ key: k, count: 0, units: 0, manualUnits: 0, autoUnits: 0, multi: 0, error: 0 }));
   const totals  = summary?.totals  || { count: 0, units: 0, manualUnits: 0, autoUnits: 0, multi: 0, error: 0 };
   const pending = summary?.pending || { count: 0, units: 0 };
+
+  // 【SMS通数監査⑤】取得失敗かつキャッシュなし。この状態では byMonth / totals が
+  //   ゼロ埋めプレースホルダーのままなので、実績として描画してはならない。
+  const summaryFailed = !summaryLoading && !summary && summaryError;
 
   const thisMonth = byMonth[byMonth.length - 1] || { units: 0, count: 0, error: 0 };
   const lastMonth = byMonth[byMonth.length - 2] || { units: 0, count: 0 };
@@ -231,6 +239,25 @@ export default function SmsUsageReport({ isLoading = false, deliveryLogs = [], c
               ))}
             </div>
 
+            {/* 【SMS通数監査⑥】キャッシュ（フロント60秒＋GAS 6時間）を無視した強制再集計。
+                シートを直接編集した場合、通常表示は最大6時間反映されないための逃し弁。 */}
+            <button
+              onClick={refreshSummary}
+              disabled={summaryLoading}
+              title="キャッシュを無視して配信ログから再集計します（シートを直接編集した場合の反映用。データ量により数秒〜十数秒かかります）"
+              style={{
+                display: "inline-flex", alignItems: "center", gap: 6,
+                padding: isMobile ? "8px 12px" : "9px 16px",
+                backgroundColor: "white", color: THEME.textMain,
+                border: `1px solid ${THEME.border}`, borderRadius: 10,
+                fontSize: 12, fontWeight: 800,
+                cursor: summaryLoading ? "not-allowed" : "pointer",
+                opacity: summaryLoading ? 0.45 : 1,
+              }}
+            >
+              <RefreshCw size={14} /> 最新に更新
+            </button>
+
             <button
               onClick={handleExport}
               disabled={exportDisabled}
@@ -250,6 +277,38 @@ export default function SmsUsageReport({ isLoading = false, deliveryLogs = [], c
           </div>
         </div>
 
+        {/* 【SMS通数監査⑤】サマリー取得失敗かつキャッシュなしのとき、ゼロ埋めプレース
+            ホルダー（全月0）が本物の実績のように描画されるのを防ぐ。請求根拠の画面の
+            ため、取得できるまで数値は一切出さず全面エラー表示に差し替える。
+            （CSVは既存の A5-008 ガード＝exportDisabled で出力不可のまま） */}
+        {summaryFailed ? (
+          <Card style={{
+            padding: isMobile ? "40px 20px" : "64px 32px",
+            display: "flex", flexDirection: "column", alignItems: "center",
+            gap: 14, textAlign: "center",
+          }}>
+            <AlertTriangle size={34} color={THEME.danger} />
+            <div style={{ fontSize: isMobile ? 15 : 17, fontWeight: 900, color: THEME.textMain }}>
+              集計を取得できませんでした
+            </div>
+            <div style={{ fontSize: 12, color: THEME.textMuted, lineHeight: 1.8 }}>
+              通信状況をご確認のうえ、再試行してください。<br />
+              本レポートは請求根拠となるため、集計を取得できるまで数値は表示しません。
+            </div>
+            <button
+              onClick={reloadSummary}
+              style={{
+                marginTop: 4, padding: "10px 22px",
+                backgroundColor: THEME.primary, color: "white",
+                border: "none", borderRadius: 10,
+                fontSize: 13, fontWeight: 800, cursor: "pointer",
+              }}
+            >
+              再試行
+            </button>
+          </Card>
+        ) : (
+        <>
         {/* ── KPI ── */}
         <div style={{
           display: "grid",
@@ -491,8 +550,8 @@ export default function SmsUsageReport({ isLoading = false, deliveryLogs = [], c
                                             {isManualSms(log) ? "個別SMS" : (log["ステップ名"] || "シナリオ")}
                                           </span>
                                         </td>
-                                        {/* 【A5-009】文字数は課金換算（smsUnits と同じ正規化・GSM拡張2文字換算）で表示。
-                                            旧表示の生 length は CRLF・GSM拡張文字で通数換算ルール表と食い違っていた。 */}
+                                        {/* 【A5-009/SMS通数監査②】文字数は課金換算（smsUnits と同じ CRLF→LF 正規化後の
+                                            文字数）で表示し、換算ルール表とそのまま突き合う値にする。 */}
                                         <td style={{ padding: "8px", fontSize: 11, color: THEME.textMuted, textAlign: "right" }}>
                                           {smsCharCount(log["内容"])}
                                         </td>
@@ -560,10 +619,10 @@ export default function SmsUsageReport({ isLoading = false, deliveryLogs = [], c
                 <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 400 }}>
                   <thead>
                     <tr style={{ borderBottom: `2px solid ${THEME.border}` }}>
-                      {["全角", "半角英数字", "送信通数"].map((h, i) => (
+                      {["文字数（全角・半角共通）", "送信通数"].map((h, i) => (
                         <th key={h} style={{
                           padding: "8px 12px", fontSize: 11, fontWeight: 800, color: THEME.textMuted,
-                          textAlign: i === 2 ? "right" : "left", whiteSpace: "nowrap",
+                          textAlign: i === 1 ? "right" : "left", whiteSpace: "nowrap",
                         }}>
                           {h}
                         </th>
@@ -571,10 +630,9 @@ export default function SmsUsageReport({ isLoading = false, deliveryLogs = [], c
                     </tr>
                   </thead>
                   <tbody>
-                    {UNIT_RANGES.map(([z, h, u]) => (
+                    {UNIT_RANGES.map(([r, u]) => (
                       <tr key={u} style={{ borderBottom: `1px solid ${THEME.border}` }}>
-                        <td style={{ padding: "8px 12px", fontSize: 12, color: THEME.textMain, whiteSpace: "nowrap" }}>{z}</td>
-                        <td style={{ padding: "8px 12px", fontSize: 12, color: THEME.textMuted, whiteSpace: "nowrap" }}>{h}</td>
+                        <td style={{ padding: "8px 12px", fontSize: 12, color: THEME.textMain, whiteSpace: "nowrap" }}>{r}</td>
                         <td style={{ padding: "8px 12px", fontSize: 12, fontWeight: 800, color: THEME.primary, textAlign: "right", whiteSpace: "nowrap" }}>
                           {u} 通
                         </td>
@@ -584,7 +642,7 @@ export default function SmsUsageReport({ isLoading = false, deliveryLogs = [], c
                 </table>
               </div>
               <div style={{ marginTop: 12, fontSize: 11, color: THEME.textMuted, lineHeight: 1.8 }}>
-                本文に全角文字が1文字でも含まれる場合は「全角」のレンジで換算します。半角英数字のみの本文は「半角英数字」のレンジで換算します。改行も1文字としてカウントされます。
+                通数は文字数のみで決まります（全角・半角の区別はありません。最大10通分）。改行も1文字としてカウントされ、絵文字など一部の文字は2文字分になる場合があります。
               </div>
             </div>
           )}
@@ -603,6 +661,8 @@ export default function SmsUsageReport({ isLoading = false, deliveryLogs = [], c
             長文は文字量に応じて複数通に換算されます（配信日時は日本時間で集計）。
           </div>
         </div>
+        </>
+        )}
 
       </div>
     </div>

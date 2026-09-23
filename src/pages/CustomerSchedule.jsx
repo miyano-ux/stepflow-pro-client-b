@@ -136,11 +136,14 @@ function CustomerSchedule({ customers = [], deliveryLogs = [], onRefresh, isLoad
   //   GAS が返した行をここで全件振り落とし、シナリオ配信タイムラインと
   //   個別メッセージ履歴の両方が 0 件（＝タイムライン常時空欄）になる。
   const cidNorm = String(id).trim();
-  const allLogs = ((fetchedLogs ?? deliveryLogs) || []).filter(
-    (l) =>
-      String(l["顧客ID"] ?? "").trim() === cidNorm ||
-      (cP && smartNormalizePhone(l["電話番号"]) === cP)
-  );
+  const allLogs = ((fetchedLogs ?? deliveryLogs) || []).filter((l) => {
+    const rid = String(l["顧客ID"] ?? "").trim();
+    // 【SMS通数監査①】削除済み顧客の匿名化行（顧客ID="deleted:..."）は履歴画面から除外。
+    //   GAS getCustomerBundle の dHit フィルタと同一条件。フォールバックで全件
+    //   deliveryLogs を受けた場合もここで確実に落とす。
+    if (rid.startsWith("deleted:")) return false;
+    return rid === cidNorm || (cP && smartNormalizePhone(l["電話番号"]) === cP);
+  });
 
   const scenarioParentLogs = allLogs
     .filter((l) => !l["親ログID"] && l["ステップ名"] !== "個別SMS")
