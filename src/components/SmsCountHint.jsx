@@ -5,7 +5,8 @@ import { smsUnits } from "../lib/utils";
 // 🔢 SmsCountHint - SMS文字数・送信通数の目安表示
 // ==========================================
 // 【C1-015／案B】SMSは本文の文字数で課金通数が変わる
-//（全角: 1〜70=1通／71〜134=2通／135〜201=3通…、半角英数字のみ: 160/153区切り）。
+//（【SMS通数監査②】1〜70=1通／71〜132=2通／133〜198=3通…66文字刻み・最大10通。
+//   全角/半角の区別なし＝アクリート サービス説明書 2.7 の課金表準拠）。
 // 編集中に通数を可視化し、意図せず2通以上になるテンプレートの量産を防ぐ。
 //
 // 使い分け（案B）:
@@ -27,7 +28,7 @@ export default function SmsCountHint({ text, exact = false, style = {} }) {
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", ...style }}>
       <span
-        title="全角: 1〜70文字=1通／71〜134=2通／135〜201=3通（半角英数字のみの本文は160文字=1通）"
+        title="1〜70文字=1通／71〜132文字=2通／133〜198文字=3通…（全角・半角の区別なし・最大10通）"
         style={{
           fontSize: 11, fontWeight: 800, padding: "2px 9px", borderRadius: 99,
           color: warn ? "#B45309" : "#475569",
@@ -40,8 +41,8 @@ export default function SmsCountHint({ text, exact = false, style = {} }) {
       </span>
       <span style={{ fontSize: 10, color: "#94A3B8", fontWeight: 600, lineHeight: 1.5 }}>
         {exact
-          ? "全角70文字=1通／〜134文字=2通／〜201文字=3通"
-          : "変数（{{姓}} 等）は置換後に増減します（全角70文字=1通／〜134=2通／〜201=3通）"}
+          ? "70文字=1通／〜132文字=2通／〜198文字=3通（全角・半角共通）"
+          : "変数（{{姓}} 等）は置換後に増減します（70文字=1通／〜132=2通／〜198=3通）"}
       </span>
     </div>
   );

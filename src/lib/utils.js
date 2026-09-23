@@ -282,14 +282,17 @@ export const downloadCSV = (rows, filename) => {
 /**
  * SMS本文 → 送信通数（課金通数）を算出する
  *
- * SMSは本文の文字種で符号化方式が変わり、1通あたりの上限文字数が異なる。
- *   - 半角英数字のみ（GSM-7）: 1通=160文字 / 2通以上は153文字ごと
- *   - 全角を含む（UCS-2）    : 1通=70文字  / 2通以上は67文字ごと
+ * 【SMS通数監査②】アクリート「SMSコネクト サービス説明書」（TA2306028）2.7 課金 の
+ * 換算表に準拠:
+ *   1〜70文字=1通 / 71〜132=2通 / 133〜198=3通 / 以降66文字ごとに+1通 /
+ *   595〜660=10通（最大10通分まで）
+ *   ・全角/半角の区別なし（課金表は文字数のみで規定。送信は常に text.long）
+ *   ・文字数は UTF-16 符号単位（String.length）。絵文字（サロゲートペア）は2文字。
+ *     API仕様書の上限チェック（Unicode 660文字）と同一基準。
+ *   ・CRLF は送信時に LF へ正規化するため（API仕様書 注記*2）、通数計算も同じ文字列で行う
  *
- * 料金レンジ表との対応（全角）:
- *   1〜70=1通 / 71〜134=2通 / 135〜201=3通 / 202〜268=4通 / 269〜335=5通 ...
- * 料金レンジ表との対応（半角英数字）:
- *   1〜160=1通 / 161〜306=2通 / 307〜459=3通 / 460〜612=4通 / 613〜765=5通 ...
+ * 旧実装（全角67字区切り・半角英数のみは GSM-7 160/153区切り）は課金表と不一致
+ * （66n＜文字数≦67n の帯、および半角のみ71〜160字で過少計上）だったため統一した。
  *
  * ※ gas_updated.js / license_gas.js の smsUnits_() と同一ロジック。
  *    どれかを直したら全て直すこと。
@@ -297,39 +300,21 @@ export const downloadCSV = (rows, filename) => {
  * @param {string} text SMS本文
  * @returns {number} 送信通数
  */
-const GSM7_BASIC = "@\u00a3$\u00a5\u00e8\u00e9\u00f9\u00ec\u00f2\u00c7\n\u00d8\u00f8\r\u00c5\u00e5\u0394_\u03a6\u0393\u039b\u03a9\u03a0\u03a8\u03a3\u0398\u039e\u00c6\u00e6\u00df\u00c9 !\"#\u00a4%&'()*+,-./0123456789:;<=>?\u00a1ABCDEFGHIJKLMNOPQRSTUVWXYZ\u00c4\u00d6\u00d1\u00dc\u00a7\u00bf abcdefghijklmnopqrstuvwxyz\u00e4\u00f6\u00f1\u00fc\u00e0";
-// 拡張文字は2文字分としてカウントされる
-const GSM7_EXT = "^{}\\[~]|\u20ac";
-
 export const smsUnits = (text) => {
   // 送信時に CRLF→LF へ正規化するため、通数計算も同じ文字列で行う
   const s = String(text ?? "").replace(/\r\n/g, "\n");
   if (!s) return 1; // 配信済みレコードは最低1通として扱う
-
-  // ① GSM-7（半角英数字のみ）で送れるか判定しつつ、拡張文字は2文字で数える
-  let isGsm7 = true;
-  let gsmLen = 0;
-  for (const ch of s) {
-    if (GSM7_BASIC.indexOf(ch) >= 0)     gsmLen += 1;
-    else if (GSM7_EXT.indexOf(ch) >= 0)  gsmLen += 2;
-    else { isGsm7 = false; break; }
-  }
-  if (isGsm7) return gsmLen <= 160 ? 1 : Math.ceil(gsmLen / 153);
-
-  // ② 全角を含む場合は UCS-2。JSのlengthはUTF-16符号単位数なので
-  //    絵文字（サロゲートペア）が2文字分になる挙動もSMS仕様と一致する。
   const len = s.length;
-  return len <= 70 ? 1 : Math.ceil(len / 67);
+  if (len <= 70) return 1;
+  return Math.min(10, Math.ceil(len / 66)); // サービス説明書 2.7: 最大10通分
 };
 
 /**
- * SMS本文 → 課金換算の文字数を返す（smsUnits と同じ判定・同じ正規化）。
+ * SMS本文 → 課金換算の文字数を返す（smsUnits と同じ正規化）。
  *
- * SMS配信レポートの明細「文字数」列で使う。旧表示の String(body).length は
- *   ・CRLF を 2 文字と数える（送信時は LF に正規化されるため実際は 1 文字）
- *   ・GSM-7 の拡張文字（^ { } [ ] ~ | € \）を 1 文字と数える（課金上は 2 文字）
- * の2点で通数換算ルール表と食い違い、「文字数と通数が合わない」ように見えていた。
- * 本関数は smsUnits の判定と完全に同じ土俵の文字数（レンジ表と突き合う値）を返す。
+ * SMS配信レポートの明細「文字数」列で使う。CRLF を LF に正規化した後の
+ * UTF-16 長で、課金換算表（1〜70=1通／71〜132=2通…）とそのまま突き合う値を返す。
+ * 【SMS通数監査②】文字種の区別が課金表から無くなったため、GSM-7 の重み付けは廃止。
  * ※ ロジックを変えるときは smsUnits と必ずセットで見直すこと。
  *
  * @param {string} text SMS本文
@@ -337,13 +322,5 @@ export const smsUnits = (text) => {
  */
 export const smsCharCount = (text) => {
   const s = String(text ?? "").replace(/\r\n/g, "\n");
-  if (!s) return 0;
-  let isGsm7 = true;
-  let gsmLen = 0;
-  for (const ch of s) {
-    if (GSM7_BASIC.indexOf(ch) >= 0)     gsmLen += 1;
-    else if (GSM7_EXT.indexOf(ch) >= 0)  gsmLen += 2;
-    else { isGsm7 = false; break; }
-  }
-  return isGsm7 ? gsmLen : s.length;
+  return s.length;
 };
