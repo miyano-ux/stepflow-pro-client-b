@@ -386,56 +386,60 @@ export default function SmsUsageReport({ isLoading = false, deliveryLogs = [], c
             </div>
           ) : (
           <>
-          <div style={{
-            display: "flex", alignItems: "flex-end", gap: isMobile ? 4 : 8,
-            height: isMobile ? 140 : 200, overflowX: "auto", paddingBottom: 4,
-          }}>
-            {byMonth.map((m) => {
-              const h = Math.round((m.units / maxUnits) * 100);
-              const isCurrent = m.key === months[months.length - 1];
-              return (
-                <div
-                  key={m.key}
-                  onClick={() => setOpenMonth(openMonth === m.key ? null : m.key)}
-                  title={`${monthLabel(m.key)}：${m.units}通 / 配信${m.count}件`}
-                  style={{
-                    flex: 1, minWidth: isMobile ? 26 : 34,
-                    height: "100%", display: "flex", flexDirection: "column",
-                    justifyContent: "flex-end", alignItems: "center",
-                    cursor: "pointer",
-                  }}
-                >
-                  <div style={{ fontSize: isMobile ? 10 : 12, fontWeight: 800, color: THEME.textMain, marginBottom: 4 }}>
-                    {m.units > 0 ? m.units : ""}
+          {/* 【レスポンシブ】バー行とX軸ラベル行を別々に描画すると、バー側だけ数値の
+              最小幅でスクロールが発生し、ラベルがスクロールに追従せず位置もズレる。
+              月ごとに「バー＋ラベル」を1カラムへ統合し、単一のスクロールコンテナに
+              入れることで、どの幅でもラベルが必ず自分のバーの真下に揃う。 */}
+          <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch", paddingBottom: 4 }}>
+            <div style={{ display: "flex", gap: isMobile ? 4 : 8 }}>
+              {byMonth.map((m) => {
+                const h = Math.round((m.units / maxUnits) * 100);
+                const isCurrent = m.key === months[months.length - 1];
+                return (
+                  <div
+                    key={m.key}
+                    onClick={() => setOpenMonth(openMonth === m.key ? null : m.key)}
+                    title={`${monthLabel(m.key)}：${m.units}通 / 配信${m.count}件`}
+                    style={{
+                      flex: 1, minWidth: isMobile ? 26 : 34,
+                      display: "flex", flexDirection: "column", alignItems: "center",
+                      cursor: "pointer",
+                    }}
+                  >
+                    {/* バー領域（従来と同じ高さを維持） */}
+                    <div style={{
+                      height: isMobile ? 140 : 200, width: "100%",
+                      display: "flex", flexDirection: "column",
+                      justifyContent: "flex-end", alignItems: "center",
+                    }}>
+                      <div style={{ fontSize: isMobile ? 10 : 12, fontWeight: 800, color: THEME.textMain, marginBottom: 4 }}>
+                        {m.units > 0 ? m.units : ""}
+                      </div>
+                      <div style={{
+                        width: "100%",
+                        height: `${Math.max(h, m.units > 0 ? 3 : 1)}%`,
+                        minHeight: 2,
+                        borderRadius: "6px 6px 2px 2px",
+                        background: isCurrent
+                          ? `linear-gradient(180deg, ${THEME.accent}, #D96A48)`
+                          : `linear-gradient(180deg, ${THEME.primary}, #4A3FB5)`,
+                        opacity: openMonth && openMonth !== m.key ? 0.35 : 1,
+                        transition: "opacity 0.15s",
+                      }} />
+                    </div>
+                    {/* 月ラベル（同一カラム内なのでスクロール・位置とも必ず追従する） */}
+                    <div style={{
+                      marginTop: 8, textAlign: "center",
+                      fontSize: isMobile ? 9 : 11, fontWeight: 700,
+                      color: isCurrent ? THEME.accent : THEME.textMuted,
+                      whiteSpace: "nowrap",
+                    }}>
+                      {Number(m.key.split("-")[1])}月
+                    </div>
                   </div>
-                  <div style={{
-                    width: "100%",
-                    height: `${Math.max(h, m.units > 0 ? 3 : 1)}%`,
-                    minHeight: 2,
-                    borderRadius: "6px 6px 2px 2px",
-                    background: isCurrent
-                      ? `linear-gradient(180deg, ${THEME.accent}, #D96A48)`
-                      : `linear-gradient(180deg, ${THEME.primary}, #4A3FB5)`,
-                    opacity: openMonth && openMonth !== m.key ? 0.35 : 1,
-                    transition: "opacity 0.15s",
-                  }} />
-                </div>
-              );
-            })}
-          </div>
-
-          {/* X軸ラベル */}
-          <div style={{ display: "flex", gap: isMobile ? 4 : 8, marginTop: 8 }}>
-            {byMonth.map((m) => (
-              <div key={m.key} style={{
-                flex: 1, minWidth: isMobile ? 26 : 34, textAlign: "center",
-                fontSize: isMobile ? 9 : 11, fontWeight: 700,
-                color: m.key === months[months.length - 1] ? THEME.accent : THEME.textMuted,
-                whiteSpace: "nowrap",
-              }}>
-                {Number(m.key.split("-")[1])}月
-              </div>
-            ))}
+                );
+              })}
+            </div>
           </div>
           </>
           )}
